@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { LeadStage } from "@/types/lead";
 import { STAGES, STAGE_ORDER } from "@/constants/stages";
-import { X, Building2, User, Mail, Phone, IndianRupee, Calendar, Sparkles } from "lucide-react";
+import { X, Building2, User, Mail, Phone, IndianRupee, Calendar, Sparkles, MapPin } from "lucide-react";
 
 import { UserAccount } from "@/constants/users";
 
@@ -16,6 +16,7 @@ interface AddLeadModalProps {
     contactName: string;
     contactEmail: string;
     contactPhone?: string;
+    city?: string;
     industry: string;
     dealValue: number;
     stage: LeadStage;
@@ -35,6 +36,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
   const [contactName, setContactName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
+  const [city, setCity] = useState("");
   const [industry, setIndustry] = useState("SaaS & Software");
   const [dealValue, setDealValue] = useState("50000");
   const [stage, setStage] = useState<LeadStage>("interest");
@@ -53,6 +55,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
       contactName,
       contactEmail,
       contactPhone,
+      city,
       industry,
       dealValue: parseFloat(dealValue) || 0,
       stage,
@@ -66,6 +69,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
     setContactName("");
     setContactEmail("");
     setContactPhone("");
+    setCity("");
     setJourneyNotes("");
     onClose();
   };
@@ -170,6 +174,42 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
                   placeholder="e.g. amanda@apex.com"
                   value={contactEmail}
                   onChange={(e) => setContactEmail(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Contact Phone Number */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Phone Number
+              </label>
+              <div className="relative">
+                <Phone className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                <input
+                  type="tel"
+                  placeholder="e.g. +91 98765 43210"
+                  value={contactPhone}
+                  onChange={(e) => setContactPhone(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* City */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                City / Location
+              </label>
+              <div className="relative">
+                <MapPin className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="e.g. Mumbai, Bengaluru, Delhi"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 />
               </div>

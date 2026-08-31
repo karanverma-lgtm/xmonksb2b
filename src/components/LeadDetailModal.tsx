@@ -20,6 +20,7 @@ import {
   MessageSquare,
   AlertCircle,
   Trash2,
+  MapPin,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
@@ -125,6 +126,15 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                     <span className="flex items-center space-x-1">
                       <Phone className="w-3.5 h-3.5 text-slate-400" />
                       <span>{lead.contactPhone}</span>
+                    </span>
+                  </>
+                )}
+                {lead.city && (
+                  <>
+                    <span>•</span>
+                    <span className="flex items-center space-x-1">
+                      <MapPin className="w-3.5 h-3.5 text-indigo-400" />
+                      <span className="font-semibold text-slate-700 dark:text-slate-300">{lead.city}</span>
                     </span>
                   </>
                 )}

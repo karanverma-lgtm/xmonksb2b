@@ -17,6 +17,8 @@ import {
   History,
   Building2,
   Trash2,
+  MapPin,
+  Phone,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
@@ -162,14 +164,30 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                         </div>
 
                         {/* Company & Contact */}
-                        <h5 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors flex items-center space-x-1.5">
-                          <Building2 className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                          <span className="truncate">{lead.companyName}</span>
-                        </h5>
+                        <div className="flex items-center justify-between space-x-2">
+                          <h5 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors flex items-center space-x-1.5 min-w-0">
+                            <Building2 className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                            <span className="truncate">{lead.companyName}</span>
+                          </h5>
+                          {lead.city && (
+                            <span className="inline-flex items-center space-x-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-indigo-500 border border-indigo-500/10 flex-shrink-0">
+                              <MapPin className="w-2.5 h-2.5" />
+                              <span className="truncate max-w-[65px]">{lead.city}</span>
+                            </span>
+                          )}
+                        </div>
 
-                        <div className="flex items-center space-x-1.5 text-xs text-slate-500 mt-1">
-                          <User className="w-3 h-3 text-slate-400" />
-                          <span className="truncate">{lead.contactName}</span>
+                        <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
+                          <div className="flex items-center space-x-1 truncate">
+                            <User className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                            <span className="truncate">{lead.contactName}</span>
+                          </div>
+                          {lead.contactPhone && (
+                            <div className="flex items-center space-x-1 text-[11px] text-slate-400 flex-shrink-0">
+                              <Phone className="w-2.5 h-2.5" />
+                              <span>{lead.contactPhone}</span>
+                            </div>
+                          )}
                         </div>
 
                         {/* Deal Value & Weightage breakdown */}

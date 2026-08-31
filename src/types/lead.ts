@@ -24,8 +24,9 @@ export interface Lead {
   contactName: string;
   contactEmail: string;
   contactPhone?: string;
+  city?: string;
   industry: string;
-  dealValue: number; // In USD
+  dealValue: number; // In INR
   stage: LeadStage;
   weightage: number; // Percentage e.g. 10, 25, 50, 75, 100
   expectedCloseDate: string;

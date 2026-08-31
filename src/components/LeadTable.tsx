@@ -15,6 +15,7 @@ import {
   Eye,
   ArrowUpDown,
   Trash2,
+  MapPin,
 } from "lucide-react";
 
 import { formatINR } from "@/lib/formatters";
@@ -121,9 +122,15 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                         <div>
                           <div
                             onClick={() => onSelectLead(lead)}
-                            className="font-bold text-slate-900 dark:text-white hover:text-indigo-600 cursor-pointer"
+                            className="font-bold text-slate-900 dark:text-white hover:text-indigo-600 cursor-pointer flex items-center space-x-2"
                           >
-                            {lead.companyName}
+                            <span>{lead.companyName}</span>
+                            {lead.city && (
+                              <span className="inline-flex items-center space-x-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500">
+                                <MapPin className="w-2.5 h-2.5 text-indigo-400" />
+                                <span>{lead.city}</span>
+                              </span>
+                            )}
                           </div>
                           <div className="text-xs text-slate-500">{lead.industry}</div>
                         </div>
@@ -139,6 +146,12 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                         <Mail className="w-3 h-3 text-slate-400" />
                         <span>{lead.contactEmail}</span>
                       </div>
+                      {lead.contactPhone && (
+                        <div className="flex items-center space-x-1 text-[11px] text-slate-400 mt-0.5">
+                          <Phone className="w-3 h-3 text-slate-400" />
+                          <span>{lead.contactPhone}</span>
+                        </div>
+                      )}
                     </td>
 
                     {/* Stage & Weightage */}

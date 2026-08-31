@@ -22,6 +22,7 @@ interface ParsedCSVLead {
   contactName: string;
   contactEmail: string;
   contactPhone?: string;
+  city?: string;
   industry: string;
   dealValue: number;
   stage: LeadStage;
@@ -37,10 +38,10 @@ interface BulkUploadModalProps {
   onBulkImport: (leads: ParsedCSVLead[]) => Promise<void>;
 }
 
-const SAMPLE_CSV_CONTENT = `Company Name,Contact Name,Contact Email,Contact Phone,Industry,Deal Value,Stage,Expected Close Date,Owner,Notes
-Zenith Cloud Tech,Aarav Patel,aarav@zenithcloud.in,+91 98111 22334,SaaS & Software,1500000,interest,2026-10-31,Ruby,Inbound web demo request for enterprise cloud suite.
-Titan Financial Services,Priya Sharma,psharma@titanfin.com,+91 98765 12345,Fintech & Banking,2500000,proposal,2026-11-15,Ruby,Customized B2B banking integration proposal shared.
-Quantum Medical Systems,Dr. Vikram Sethi,v.sethi@quantummed.org,+91 99000 88776,Healthcare & Biotech,950000,discussion,2026-09-30,Admin User,Technical compliance review call scheduled.
+const SAMPLE_CSV_CONTENT = `Company Name,Contact Name,Contact Email,Contact Phone,City,Industry,Deal Value,Stage,Expected Close Date,Owner,Notes
+Zenith Cloud Tech,Aarav Patel,aarav@zenithcloud.in,+91 98111 22334,Bengaluru,SaaS & Software,1500000,interest,2026-10-31,Ruby,Inbound web demo request for enterprise cloud suite.
+Titan Financial Services,Priya Sharma,psharma@titanfin.com,+91 98765 12345,Mumbai,Fintech & Banking,2500000,proposal,2026-11-15,Ruby,Customized B2B banking integration proposal shared.
+Quantum Medical Systems,Dr. Vikram Sethi,v.sethi@quantummed.org,+91 99000 88776,Delhi,Healthcare & Biotech,950000,discussion,2026-09-30,Admin User,Technical compliance review call scheduled.
 `;
 
 export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
@@ -104,18 +105,20 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
         const contactName = cols[1] || "Primary Contact";
         const contactEmail = cols[2] || "contact@company.com";
         const contactPhone = cols[3] || "";
-        const industry = cols[4] || "SaaS & Software";
-        const dealValue = parseFloat(cols[5]) || 500000;
-        const stage = parseStageKey(cols[6]);
-        const expectedCloseDate = cols[7] || "2026-10-31";
-        const owner = cols[8] || currentUser?.name || "Ruby";
-        const journeyNotes = cols[9] || `Bulk imported from CSV file.`;
+        const city = cols[4] || "";
+        const industry = cols[5] || "SaaS & Software";
+        const dealValue = parseFloat(cols[6]) || 500000;
+        const stage = parseStageKey(cols[7]);
+        const expectedCloseDate = cols[8] || "2026-10-31";
+        const owner = cols[9] || currentUser?.name || "Ruby";
+        const journeyNotes = cols[10] || `Bulk imported from CSV file.`;
 
         leads.push({
           companyName,
           contactName,
           contactEmail,
           contactPhone,
+          city,
           industry,
           dealValue,
           stage,
