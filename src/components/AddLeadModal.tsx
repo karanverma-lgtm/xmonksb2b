@@ -38,6 +38,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
   const [contactPhone, setContactPhone] = useState("");
   const [city, setCity] = useState("");
   const [industry, setIndustry] = useState("SaaS & Software");
+  const [customIndustry, setCustomIndustry] = useState("");
   const [dealValue, setDealValue] = useState("50000");
   const [stage, setStage] = useState<LeadStage>("interest");
   const [expectedCloseDate, setExpectedCloseDate] = useState("2026-10-31");
@@ -50,13 +51,18 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
     e.preventDefault();
     if (!companyName || !contactName || !contactEmail) return;
 
+    const finalIndustry =
+      industry === "Other"
+        ? customIndustry.trim() || "Other"
+        : industry;
+
     onSubmit({
       companyName,
       contactName,
       contactEmail,
       contactPhone,
       city,
-      industry,
+      industry: finalIndustry,
       dealValue: parseFloat(dealValue) || 0,
       stage,
       expectedCloseDate,
@@ -70,6 +76,8 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
     setContactEmail("");
     setContactPhone("");
     setCity("");
+    setIndustry("SaaS & Software");
+    setCustomIndustry("");
     setJourneyNotes("");
     onClose();
   };
@@ -132,15 +140,39 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
                 className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
               >
                 <option value="SaaS & Software">SaaS & Software</option>
-                <option value="Fintech & Banking">Fintech & Banking</option>
+                <option value="Executive Coaching & Training">Executive Coaching & Training</option>
+                <option value="Manufacturing & Industrial">Manufacturing & Industrial</option>
+                <option value="Education & EdTech">Education & EdTech</option>
+                <option value="Consulting & Professional Services">Consulting & Professional Services</option>
                 <option value="Healthcare & Biotech">Healthcare & Biotech</option>
+                <option value="Fintech & Banking">Fintech & Banking</option>
+                <option value="Real Estate & Construction">Real Estate & Construction</option>
                 <option value="E-Commerce & Retail">E-Commerce & Retail</option>
                 <option value="Logistics & Supply Chain">Logistics & Supply Chain</option>
+                <option value="Media & Marketing">Media & Marketing</option>
                 <option value="Cybersecurity">Cybersecurity</option>
-                <option value="Manufacturing">Manufacturing</option>
+                <option value="Hospitality & Events">Hospitality & Events</option>
+                <option value="Other">Other (Specify Custom Below...)</option>
               </select>
             </div>
           </div>
+
+          {/* Conditional Custom Industry Input */}
+          {industry === "Other" && (
+            <div className="p-3.5 rounded-2xl bg-indigo-500/10 border border-indigo-500/20">
+              <label className="block text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1">
+                Specify Custom Industry Name *
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. Corporate Coaching, Automotive, Green Energy..."
+                value={customIndustry}
+                onChange={(e) => setCustomIndustry(e.target.value)}
+                className="w-full px-3 py-2 bg-white dark:bg-slate-950 border border-indigo-500/30 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              />
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Contact Name */}
