@@ -250,6 +250,8 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
                 />
               </div>
             </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* City */}
             <div>
@@ -287,23 +289,22 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
             </div>
           </div>
 
-            {/* Initial Stage */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Initial Stage (Sets Weightage)
-              </label>
-              <select
-                value={stage}
-                onChange={(e) => setStage(e.target.value as LeadStage)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-              >
-                {STAGE_ORDER.map((stageKey) => (
-                  <option key={stageKey} value={stageKey}>
-                    {STAGES[stageKey].label} ({STAGES[stageKey].weightage}% weightage)
-                  </option>
-                ))}
-              </select>
-            </div>
+          {/* Initial Stage */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Initial Stage (Sets Weightage)
+            </label>
+            <select
+              value={stage}
+              onChange={(e) => setStage(e.target.value as LeadStage)}
+              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            >
+              {STAGE_ORDER.map((stageKey) => (
+                <option key={stageKey} value={stageKey}>
+                  {STAGES[stageKey].label} ({STAGES[stageKey].weightage}% weightage)
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Initial Journey Note */}
