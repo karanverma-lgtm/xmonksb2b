@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Lead, LeadStage } from "@/types/lead";
 import {
   subscribeToLeads,
@@ -98,8 +98,31 @@ export default function Home() {
     return () => unsubscribe();
   }, [isAuthenticated]);
 
-  // Filter Leads based on user selection
-  const filteredLeads = leads.filter((lead) => {
+  // 1. Role-Based Access Control (RBAC):
+  // Admin can see ALL leads. Regular users (e.g. Ruby) see ONLY their own assigned leads.
+  const userScopedLeads = useMemo(() => {
+    if (!currentUser) return [];
+    const isAdmin =
+      currentUser.username.toLowerCase() === "admin" ||
+      currentUser.role.toLowerCase().includes("admin");
+
+    if (isAdmin) return leads;
+
+    return leads.filter((lead: Lead) => {
+      const ownerStr = (lead.owner || "").toLowerCase().trim();
+      const userNameStr = (currentUser.name || "").toLowerCase().trim();
+      const userHandleStr = (currentUser.username || "").toLowerCase().trim();
+      return (
+        ownerStr === userNameStr ||
+        ownerStr === userHandleStr ||
+        ownerStr.includes(userNameStr) ||
+        (userNameStr.length > 0 && userNameStr.includes(ownerStr))
+      );
+    });
+  }, [leads, currentUser]);
+
+  // 2. Filter user-scoped leads based on user toolbar selections
+  const filteredLeads = userScopedLeads.filter((lead: Lead) => {
     // 1. Search term
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase().trim();
@@ -107,6 +130,7 @@ export default function Home() {
         lead.companyName.toLowerCase().includes(term) ||
         lead.contactName.toLowerCase().includes(term) ||
         lead.contactEmail.toLowerCase().includes(term) ||
+        (lead.owner && lead.owner.toLowerCase().includes(term)) ||
         lead.industry.toLowerCase().includes(term);
       if (!matchSearch) return false;
     }
@@ -141,9 +165,9 @@ export default function Home() {
   };
 
   // Calculate total weighted pipeline across filtered leads
-  const activeFilteredLeads = filteredLeads.filter((l) => l.stage !== "closed_lost");
+  const activeFilteredLeads = filteredLeads.filter((l: Lead) => l.stage !== "closed_lost");
   const totalWeightedPipeline = activeFilteredLeads.reduce(
-    (acc, curr) => acc + (curr.dealValue || 0) * ((curr.weightage || 0) / 100),
+    (acc: number, curr: Lead) => acc + (curr.dealValue || 0) * ((curr.weightage || 0) / 100),
     0
   );
 
@@ -230,7 +254,7 @@ export default function Home() {
           setSelectedStage={setSelectedStage}
           onResetFilters={handleResetFilters}
           filteredCount={filteredLeads.length}
-          totalCount={leads.length}
+          totalCount={userScopedLeads.length}
         />
 
         {/* Tab Views */}
@@ -273,6 +297,7 @@ export default function Home() {
       <AddLeadModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
+        currentUser={currentUser}
         onSubmit={handleCreateLead}
       />
 
@@ -280,6 +305,7 @@ export default function Home() {
       <BulkUploadModal
         isOpen={isBulkModalOpen}
         onClose={() => setIsBulkModalOpen(false)}
+        currentUser={currentUser}
         onBulkImport={handleBulkImport}
       />
 

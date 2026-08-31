@@ -15,6 +15,8 @@ import {
   Sparkles,
 } from "lucide-react";
 
+import { UserAccount } from "@/constants/users";
+
 interface ParsedCSVLead {
   companyName: string;
   contactName: string;
@@ -31,6 +33,7 @@ interface ParsedCSVLead {
 interface BulkUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
+  currentUser?: UserAccount | null;
   onBulkImport: (leads: ParsedCSVLead[]) => Promise<void>;
 }
 
@@ -43,6 +46,7 @@ Quantum Medical Systems,Dr. Vikram Sethi,v.sethi@quantummed.org,+91 99000 88776,
 export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
   isOpen,
   onClose,
+  currentUser,
   onBulkImport,
 }) => {
   const [file, setFile] = useState<File | null>(null);
@@ -104,7 +108,7 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
         const dealValue = parseFloat(cols[5]) || 500000;
         const stage = parseStageKey(cols[6]);
         const expectedCloseDate = cols[7] || "2026-10-31";
-        const owner = cols[8] || "Ruby";
+        const owner = cols[8] || currentUser?.name || "Ruby";
         const journeyNotes = cols[9] || `Bulk imported from CSV file.`;
 
         leads.push({

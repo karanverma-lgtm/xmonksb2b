@@ -5,9 +5,12 @@ import { LeadStage } from "@/types/lead";
 import { STAGES, STAGE_ORDER } from "@/constants/stages";
 import { X, Building2, User, Mail, Phone, IndianRupee, Calendar, Sparkles } from "lucide-react";
 
+import { UserAccount } from "@/constants/users";
+
 interface AddLeadModalProps {
   isOpen: boolean;
   onClose: () => void;
+  currentUser?: UserAccount | null;
   onSubmit: (leadData: {
     companyName: string;
     contactName: string;
@@ -25,6 +28,7 @@ interface AddLeadModalProps {
 export const AddLeadModal: React.FC<AddLeadModalProps> = ({
   isOpen,
   onClose,
+  currentUser,
   onSubmit,
 }) => {
   const [companyName, setCompanyName] = useState("");
@@ -35,7 +39,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
   const [dealValue, setDealValue] = useState("50000");
   const [stage, setStage] = useState<LeadStage>("interest");
   const [expectedCloseDate, setExpectedCloseDate] = useState("2026-10-31");
-  const [owner, setOwner] = useState("Alex Mercer");
+  const [owner, setOwner] = useState(currentUser?.name || "Ruby");
   const [journeyNotes, setJourneyNotes] = useState("");
 
   if (!isOpen) return null;

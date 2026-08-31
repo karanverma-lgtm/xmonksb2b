@@ -160,11 +160,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>Add B2B Lead</span>
             </button>
 
-            {/* Active User Badge */}
+            {/* Active User & RBAC Scope Badge */}
             {currentUser && (
               <div className="hidden md:flex items-center space-x-1.5 px-3 py-1.5 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 rounded-xl text-xs font-semibold whitespace-nowrap">
                 <User className="w-3.5 h-3.5 text-indigo-500" />
-                <span>{currentUser.name}</span>
+                <span>
+                  {currentUser.name} (
+                  {currentUser.username.toLowerCase() === "admin"
+                    ? "All Leads View"
+                    : "My Leads View"}
+                  )
+                </span>
               </div>
             )}
 
