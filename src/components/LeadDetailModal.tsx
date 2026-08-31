@@ -116,10 +116,15 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                 </span>
               </div>
 
-              <div className="flex items-center space-x-4 text-xs text-slate-500 dark:text-slate-400 mt-1">
-                <span className="flex items-center space-x-1">
+              <div className="flex items-center space-x-4 text-xs text-slate-500 dark:text-slate-400 mt-1 flex-wrap gap-y-1">
+                <span className="flex items-center space-x-1.5">
                   <User className="w-3.5 h-3.5 text-slate-400" />
-                  <span>{lead.contactName}</span>
+                  <span className="font-medium text-slate-800 dark:text-slate-200">{lead.contactName}</span>
+                  {lead.designation && (
+                    <span className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950 px-1.5 py-0.5 rounded border border-indigo-200/60 dark:border-indigo-800/60">
+                      {lead.designation}
+                    </span>
+                  )}
                 </span>
                 <span>•</span>
                 <span className="flex items-center space-x-1">

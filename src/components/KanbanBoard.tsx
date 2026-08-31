@@ -178,9 +178,14 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                         </div>
 
                         <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
-                          <div className="flex items-center space-x-1 truncate">
+                          <div className="flex items-center space-x-1 truncate min-w-0">
                             <User className="w-3 h-3 text-slate-400 flex-shrink-0" />
                             <span className="truncate">{lead.contactName}</span>
+                            {lead.designation && (
+                              <span className="text-[10px] text-slate-400 font-normal truncate">
+                                ({lead.designation})
+                              </span>
+                            )}
                           </div>
                           {lead.contactPhone && (
                             <div className="flex items-center space-x-1 text-[11px] text-slate-400 flex-shrink-0">

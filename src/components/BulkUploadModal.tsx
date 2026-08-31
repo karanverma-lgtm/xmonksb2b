@@ -20,6 +20,7 @@ import { UserAccount } from "@/constants/users";
 interface ParsedCSVLead {
   companyName: string;
   contactName: string;
+  designation?: string;
   contactEmail: string;
   contactPhone?: string;
   city?: string;
@@ -38,10 +39,10 @@ interface BulkUploadModalProps {
   onBulkImport: (leads: ParsedCSVLead[]) => Promise<void>;
 }
 
-const SAMPLE_CSV_CONTENT = `Company Name,Contact Name,Contact Email,Contact Phone,City,Industry,Deal Value,Stage,Expected Close Date,Owner,Notes
-Zenith Cloud Tech,Aarav Patel,aarav@zenithcloud.in,+91 98111 22334,Bengaluru,SaaS & Software,1500000,interest,2026-10-31,Ruby,Inbound web demo request for enterprise cloud suite.
-Titan Financial Services,Priya Sharma,psharma@titanfin.com,+91 98765 12345,Mumbai,Fintech & Banking,2500000,proposal,2026-11-15,Ruby,Customized B2B banking integration proposal shared.
-Quantum Medical Systems,Dr. Vikram Sethi,v.sethi@quantummed.org,+91 99000 88776,Delhi,Healthcare & Biotech,950000,discussion,2026-09-30,Admin User,Technical compliance review call scheduled.
+const SAMPLE_CSV_CONTENT = `Company Name,Contact Name,Designation,Contact Email,Contact Phone,City,Industry,Deal Value,Stage,Expected Close Date,Owner,Notes
+Zenith Cloud Tech,Aarav Patel,VP of Infrastructure,aarav@zenithcloud.in,+91 98111 22334,Bengaluru,SaaS & Software,1500000,interest,2026-10-31,Ruby,Inbound web demo request for enterprise cloud suite.
+Titan Financial Services,Priya Sharma,Chief Risk Officer,psharma@titanfin.com,+91 98765 12345,Mumbai,Fintech & Banking,2500000,proposal,2026-11-15,Ruby,Customized B2B banking integration proposal shared.
+Quantum Medical Systems,Dr. Vikram Sethi,Head of R&D,v.sethi@quantummed.org,+91 99000 88776,Delhi,Healthcare & Biotech,950000,discussion,2026-09-30,Admin User,Technical compliance review call scheduled.
 `;
 
 export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
@@ -105,26 +106,53 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
       if (cols.length >= 3) {
         const companyName = cols[0] || `Imported Company ${i}`;
         const contactName = cols[1] || "Primary Contact";
-        const contactEmail = cols[2] || "contact@company.com";
-        const contactPhone = cols[3] || "";
-        const city = cols[4] || "";
-        const industry = cols[5] || "SaaS & Software";
-        const dealValue = parseFloat(cols[6]) || 500000;
-        const stage = parseStageKey(cols[7]);
-        const expectedCloseDate = cols[8] || "2026-10-31";
 
-        // Owner determination:
-        // If assignToCurrentAccount is true OR owner column is missing/empty, default to active user
-        let owner = cols[9];
+        let designation: string | undefined = undefined;
+        let contactEmail = "contact@company.com";
+        let contactPhone = "";
+        let city = "";
+        let industry = "SaaS & Software";
+        let dealValue = 500000;
+        let stage: LeadStage = "interest";
+        let expectedCloseDate = "2026-10-31";
+        let ownerCol = "";
+        let journeyNotes = "Bulk imported from CSV file.";
+
+        if (cols[2] && cols[2].includes("@")) {
+          // Legacy format without Designation column
+          contactEmail = cols[2];
+          contactPhone = cols[3] || "";
+          city = cols[4] || "";
+          industry = cols[5] || "SaaS & Software";
+          dealValue = parseFloat(cols[6]) || 500000;
+          stage = parseStageKey(cols[7]);
+          expectedCloseDate = cols[8] || "2026-10-31";
+          ownerCol = cols[9];
+          journeyNotes = cols[10] || "Bulk imported from CSV file.";
+        } else {
+          // Format with Designation column
+          designation = cols[2] || undefined;
+          contactEmail = cols[3] || "contact@company.com";
+          contactPhone = cols[4] || "";
+          city = cols[5] || "";
+          industry = cols[6] || "SaaS & Software";
+          dealValue = parseFloat(cols[7]) || 500000;
+          stage = parseStageKey(cols[8]);
+          expectedCloseDate = cols[9] || "2026-10-31";
+          ownerCol = cols[10];
+          journeyNotes = cols[11] || "Bulk imported from CSV file.";
+        }
+
+        // Owner determination
+        let owner = ownerCol;
         if (assignToCurrentAccount || !owner || owner.length === 0) {
           owner = activeUserName;
         }
 
-        const journeyNotes = cols[10] || `Bulk imported from CSV file.`;
-
         leads.push({
           companyName,
           contactName,
+          designation,
           contactEmail,
           contactPhone,
           city,

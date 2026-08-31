@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { LeadStage } from "@/types/lead";
 import { STAGES, STAGE_ORDER } from "@/constants/stages";
-import { X, Building2, User, Mail, Phone, IndianRupee, Calendar, Sparkles, MapPin } from "lucide-react";
+import { X, Building2, User, Mail, Phone, IndianRupee, Calendar, Sparkles, MapPin, Briefcase } from "lucide-react";
 
 import { UserAccount } from "@/constants/users";
 
@@ -14,6 +14,7 @@ interface AddLeadModalProps {
   onSubmit: (leadData: {
     companyName: string;
     contactName: string;
+    designation?: string;
     contactEmail: string;
     contactPhone?: string;
     city?: string;
@@ -34,6 +35,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
 }) => {
   const [companyName, setCompanyName] = useState("");
   const [contactName, setContactName] = useState("");
+  const [designation, setDesignation] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [city, setCity] = useState("");
@@ -59,6 +61,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
     onSubmit({
       companyName,
       contactName,
+      designation: designation.trim() || undefined,
       contactEmail,
       contactPhone,
       city,
@@ -73,6 +76,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
     // Reset form
     setCompanyName("");
     setContactName("");
+    setDesignation("");
     setContactEmail("");
     setContactPhone("");
     setCity("");
@@ -193,6 +197,25 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
               </div>
             </div>
 
+            {/* Designation */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Designation
+              </label>
+              <div className="relative">
+                <Briefcase className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="e.g. VP of HR, Head of L&D, CEO"
+                  value={designation}
+                  onChange={(e) => setDesignation(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Contact Email */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -210,9 +233,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
                 />
               </div>
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Contact Phone Number */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -229,7 +250,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
                 />
               </div>
             </div>
-
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* City */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -246,9 +267,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
                 />
               </div>
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Deal Value */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -266,6 +285,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
                 />
               </div>
             </div>
+          </div>
 
             {/* Initial Stage */}
             <div>

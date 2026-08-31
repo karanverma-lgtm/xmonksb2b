@@ -139,10 +139,15 @@ export const LeadTable: React.FC<LeadTableProps> = ({
 
                     {/* Contact */}
                     <td className="py-3.5 px-4">
-                      <div className="font-semibold text-slate-800 dark:text-slate-200">
-                        {lead.contactName}
+                      <div className="font-semibold text-slate-800 dark:text-slate-200 flex items-center space-x-1.5 flex-wrap">
+                        <span>{lead.contactName}</span>
+                        {lead.designation && (
+                          <span className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/80 px-1.5 py-0.5 rounded border border-indigo-200/60 dark:border-indigo-800/60">
+                            {lead.designation}
+                          </span>
+                        )}
                       </div>
-                      <div className="flex items-center space-x-1 text-xs text-slate-500">
+                      <div className="flex items-center space-x-1 text-xs text-slate-500 mt-0.5">
                         <Mail className="w-3 h-3 text-slate-400" />
                         <span>{lead.contactEmail}</span>
                       </div>
