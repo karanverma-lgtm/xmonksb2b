@@ -19,6 +19,7 @@ import {
   Tag,
   MessageSquare,
   AlertCircle,
+  Trash2,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
@@ -29,6 +30,7 @@ interface LeadDetailModalProps {
   onClose: () => void;
   onUpdateStage: (leadId: string, newStage: LeadStage, notes?: string) => void;
   onAddNote: (leadId: string, noteText: string) => void;
+  onDeleteLead?: (leadId: string) => void;
 }
 
 export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
@@ -36,6 +38,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   onClose,
   onUpdateStage,
   onAddNote,
+  onDeleteLead,
 }) => {
   const [newNoteText, setNewNoteText] = useState("");
   const [stageNotePrompt, setStageNotePrompt] = useState<{
@@ -128,12 +131,26 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center space-x-2">
+            {onDeleteLead && (
+              <button
+                type="button"
+                onClick={() => onDeleteLead(lead.id)}
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 border border-rose-500/20 transition"
+                title="Delete this B2B Lead"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Delete Lead</span>
+              </button>
+            )}
+
+            <button
+              onClick={onClose}
+              className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Scrollable Content */}

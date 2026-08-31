@@ -14,6 +14,7 @@ import {
   History,
   Eye,
   ArrowUpDown,
+  Trash2,
 } from "lucide-react";
 
 import { formatINR } from "@/lib/formatters";
@@ -22,12 +23,14 @@ interface LeadTableProps {
   leads: Lead[];
   onSelectLead: (lead: Lead) => void;
   onUpdateStage: (leadId: string, newStage: LeadStage, notes?: string) => void;
+  onDeleteLead?: (leadId: string) => void;
 }
 
 export const LeadTable: React.FC<LeadTableProps> = ({
   leads,
   onSelectLead,
   onUpdateStage,
+  onDeleteLead,
 }) => {
   const [sortBy, setSortBy] = useState<"dealValue" | "weightage" | "updatedAt">("updatedAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
@@ -180,12 +183,23 @@ export const LeadTable: React.FC<LeadTableProps> = ({
 
                     {/* Actions */}
                     <td className="py-3.5 px-4 text-right">
-                      <button
-                        onClick={() => onSelectLead(lead)}
-                        className="px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900 font-medium text-xs transition"
-                      >
-                        View Journey Logs
-                      </button>
+                      <div className="flex items-center justify-end space-x-1.5">
+                        <button
+                          onClick={() => onSelectLead(lead)}
+                          className="px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900 font-medium text-xs transition"
+                        >
+                          View Logs
+                        </button>
+                        {onDeleteLead && (
+                          <button
+                            onClick={() => onDeleteLead(lead.id)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-500/10 transition"
+                            title="Delete Lead"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

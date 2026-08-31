@@ -7,6 +7,7 @@ import {
   createLead,
   updateLeadStage,
   addJourneyNote,
+  deleteLead,
   resetDemoData,
 } from "@/lib/leadsService";
 import { Navbar } from "@/components/Navbar";
@@ -181,6 +182,14 @@ export default function Home() {
     }
   };
 
+  const handleDeleteLead = async (leadId: string) => {
+    if (confirm("Are you sure you want to delete this lead? This action cannot be undone.")) {
+      await deleteLead(leadId);
+      setLeads((prev) => prev.filter((l) => l.id !== leadId));
+      setSelectedLead((prev) => (prev && prev.id === leadId ? null : prev));
+    }
+  };
+
   const handleResetDemo = async () => {
     if (confirm("Reset all CRM data back to initial demo B2B leads?")) {
       const resetLeads = await resetDemoData();
@@ -240,6 +249,7 @@ export default function Home() {
             leads={filteredLeads}
             onSelectLead={(lead) => setSelectedLead(lead)}
             onUpdateStage={handleUpdateStage}
+            onDeleteLead={handleDeleteLead}
           />
         )}
 
@@ -248,6 +258,7 @@ export default function Home() {
             leads={filteredLeads}
             onSelectLead={(lead) => setSelectedLead(lead)}
             onUpdateStage={handleUpdateStage}
+            onDeleteLead={handleDeleteLead}
           />
         )}
 
@@ -265,6 +276,7 @@ export default function Home() {
         onClose={() => setSelectedLead(null)}
         onUpdateStage={handleUpdateStage}
         onAddNote={handleAddNote}
+        onDeleteLead={handleDeleteLead}
       />
 
       {/* Add New Lead Modal */}

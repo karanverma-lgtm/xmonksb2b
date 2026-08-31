@@ -16,6 +16,7 @@ import {
   User,
   History,
   Building2,
+  Trash2,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
@@ -25,12 +26,14 @@ interface KanbanBoardProps {
   leads: Lead[];
   onSelectLead: (lead: Lead) => void;
   onUpdateStage: (leadId: string, newStage: LeadStage, notes?: string) => void;
+  onDeleteLead?: (leadId: string) => void;
 }
 
 export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   leads,
   onSelectLead,
   onUpdateStage,
+  onDeleteLead,
 }) => {
   const getIcon = (iconName: string) => {
     switch (iconName) {
@@ -223,6 +226,19 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                 title="Advance stage & update journey log"
                               >
                                 <ChevronRight className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
+                            {onDeleteLead && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDeleteLead(lead.id);
+                                }}
+                                className="p-1 rounded text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-500/10 transition"
+                                title="Delete Lead"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             )}
                           </div>
