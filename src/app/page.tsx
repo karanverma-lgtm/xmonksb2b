@@ -183,11 +183,10 @@ export default function Home() {
   };
 
   const handleDeleteLead = async (leadId: string) => {
-    if (confirm("Are you sure you want to delete this lead? This action cannot be undone.")) {
-      await deleteLead(leadId);
-      setLeads((prev) => prev.filter((l) => l.id !== leadId));
-      setSelectedLead((prev) => (prev && prev.id === leadId ? null : prev));
-    }
+    // Immediately update state for instantaneous UI response
+    setLeads((prev) => prev.filter((l) => l.id !== leadId));
+    setSelectedLead((prev) => (prev && prev.id === leadId ? null : prev));
+    await deleteLead(leadId);
   };
 
   const handleResetDemo = async () => {

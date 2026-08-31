@@ -41,6 +41,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   onDeleteLead,
 }) => {
   const [newNoteText, setNewNoteText] = useState("");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [stageNotePrompt, setStageNotePrompt] = useState<{
     show: boolean;
     targetStage?: LeadStage;
@@ -135,7 +136,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
             {onDeleteLead && (
               <button
                 type="button"
-                onClick={() => onDeleteLead(lead.id)}
+                onClick={() => setShowDeleteConfirm(!showDeleteConfirm)}
                 className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 border border-rose-500/20 transition"
                 title="Delete this B2B Lead"
               >
@@ -152,6 +153,38 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Delete Confirmation Alert Banner */}
+        {showDeleteConfirm && (
+          <div className="mx-6 mt-4 p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center space-x-2 text-xs font-bold text-rose-600 dark:text-rose-400">
+              <AlertCircle className="w-4 h-4" />
+              <span>Are you sure you want to delete {lead.companyName}? This cannot be undone.</span>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-3 py-1 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteLead) {
+                    onDeleteLead(lead.id);
+                  }
+                  onClose();
+                }}
+                className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg shadow"
+              >
+                Confirm Delete
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Modal Scrollable Content */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1">
