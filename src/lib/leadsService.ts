@@ -15,7 +15,7 @@ import { STAGES } from "@/constants/stages";
 import { INITIAL_DEMO_LEADS } from "@/constants/demoLeads";
 
 const COLLECTION_NAME = "b2b_leads";
-const LOCAL_STORAGE_KEY = "xmonks_b2b_leads_data_v2";
+const LOCAL_STORAGE_KEY = "xmonks_b2b_leads_clean_v1";
 
 // Helper to format date nicely
 export function formatTimestamp(date: Date = new Date()): string {
@@ -29,19 +29,19 @@ export function formatTimestamp(date: Date = new Date()): string {
   });
 }
 
-// Get initial leads from LocalStorage or Demo Data
+// Get initial leads from LocalStorage
 export function getStoredLocalLeads(): Lead[] {
-  if (typeof window === "undefined") return INITIAL_DEMO_LEADS;
+  if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(INITIAL_DEMO_LEADS));
-      return INITIAL_DEMO_LEADS;
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify([]));
+      return [];
     }
     return JSON.parse(raw);
   } catch (err) {
     console.warn("Failed to parse local storage leads", err);
-    return INITIAL_DEMO_LEADS;
+    return [];
   }
 }
 
@@ -71,10 +71,8 @@ export function subscribeToLeads(
       (snapshot) => {
         if (unsubscribed) return;
         if (snapshot.empty) {
-          // If Firestore is empty, let's seed demo data to Firestore
-          seedInitialFirestoreLeads(INITIAL_DEMO_LEADS).then(() => {
-            onData(INITIAL_DEMO_LEADS, true);
-          });
+          saveStoredLocalLeads([]);
+          onData([], true);
         } else {
           const leads: Lead[] = snapshot.docs.map((docSnap) => ({
             id: docSnap.id,
@@ -105,16 +103,6 @@ export function subscribeToLeads(
   }
 }
 
-async function seedInitialFirestoreLeads(leads: Lead[]) {
-  try {
-    for (const lead of leads) {
-      const docRef = doc(db, COLLECTION_NAME, lead.id);
-      await setDoc(docRef, lead);
-    }
-  } catch (err) {
-    console.warn("Could not seed Firestore demo leads:", err);
-  }
-}
 
 // Create new B2B Lead
 export async function createLead(
@@ -289,16 +277,4 @@ export async function deleteLead(leadId: string): Promise<boolean> {
   return true;
 }
 
-// Reset / Restore Demo Data
-export async function resetDemoData(): Promise<Lead[]> {
-  saveStoredLocalLeads(INITIAL_DEMO_LEADS);
-  try {
-    for (const lead of INITIAL_DEMO_LEADS) {
-      const docRef = doc(db, COLLECTION_NAME, lead.id);
-      await setDoc(docRef, lead);
-    }
-  } catch (err) {
-    console.warn("Firestore reset skipped", err);
-  }
-  return INITIAL_DEMO_LEADS;
-}
+

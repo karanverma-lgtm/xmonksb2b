@@ -8,7 +8,6 @@ import {
   updateLeadStage,
   addJourneyNote,
   deleteLead,
-  resetDemoData,
 } from "@/lib/leadsService";
 import { Navbar } from "@/components/Navbar";
 import { DashboardStats } from "@/components/DashboardStats";
@@ -189,13 +188,6 @@ export default function Home() {
     await deleteLead(leadId);
   };
 
-  const handleResetDemo = async () => {
-    if (confirm("Reset all CRM data back to initial demo B2B leads?")) {
-      const resetLeads = await resetDemoData();
-      setLeads(resetLeads);
-    }
-  };
-
   if (!isAuthChecked) {
     return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-xs">Loading Portal...</div>;
   }
@@ -212,7 +204,6 @@ export default function Home() {
         setActiveTab={setActiveTab}
         onOpenAddModal={() => setIsAddModalOpen(true)}
         onOpenBulkModal={() => setIsBulkModalOpen(true)}
-        onResetDemoData={handleResetDemo}
         onLogout={handleLogout}
         currentUser={currentUser}
         isFirebaseSyncing={isFirebaseSyncing}

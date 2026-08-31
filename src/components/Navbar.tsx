@@ -6,7 +6,6 @@ import {
   Table as TableIcon,
   PieChart,
   Plus,
-  RotateCcw,
   CloudCheck,
   HardDrive,
   Building2,
@@ -23,7 +22,6 @@ interface NavbarProps {
   setActiveTab: (tab: "kanban" | "table" | "analytics") => void;
   onOpenAddModal: () => void;
   onOpenBulkModal: () => void;
-  onResetDemoData: () => void;
   onLogout?: () => void;
   currentUser?: UserAccount | null;
   isFirebaseSyncing: boolean;
@@ -36,7 +34,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   setActiveTab,
   onOpenAddModal,
   onOpenBulkModal,
-  onResetDemoData,
   onLogout,
   currentUser,
   isFirebaseSyncing,
@@ -143,15 +140,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {formattedWeightedVal}
               </span>
             </div>
-
-            {/* Demo Reset Button */}
-            <button
-              onClick={onResetDemoData}
-              className="p-2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-xl border border-transparent hover:border-slate-200 dark:hover:border-slate-800 transition"
-              title="Reset Demo Data"
-            >
-              <RotateCcw className="w-4 h-4" />
-            </button>
 
             {/* Bulk Upload CSV Button */}
             <button
