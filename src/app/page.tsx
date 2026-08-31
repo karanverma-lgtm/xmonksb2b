@@ -109,15 +109,17 @@ export default function Home() {
 
     if (isAdmin) return leads;
 
+    const activeName = (currentUser.name || "").toLowerCase().trim();
+    const activeUser = (currentUser.username || "").toLowerCase().trim();
+
     return leads.filter((lead: Lead) => {
       const ownerStr = (lead.owner || "").toLowerCase().trim();
-      const userNameStr = (currentUser.name || "").toLowerCase().trim();
-      const userHandleStr = (currentUser.username || "").toLowerCase().trim();
+      if (!ownerStr) return true; // Include unassigned leads for active user
       return (
-        ownerStr === userNameStr ||
-        ownerStr === userHandleStr ||
-        ownerStr.includes(userNameStr) ||
-        (userNameStr.length > 0 && userNameStr.includes(ownerStr))
+        ownerStr === activeName ||
+        ownerStr === activeUser ||
+        ownerStr.includes(activeName) ||
+        (activeName.length > 0 && activeName.includes(ownerStr))
       );
     });
   }, [leads, currentUser]);
@@ -178,9 +180,22 @@ export default function Home() {
   };
 
   const handleBulkImport = async (importedLeads: Parameters<typeof createLead>[0][]) => {
+    const activeUserName = currentUser?.name || "Ruby";
+    const isAdmin =
+      currentUser?.username.toLowerCase() === "admin" ||
+      currentUser?.role.toLowerCase().includes("admin");
+
     const createdList: Lead[] = [];
     for (const item of importedLeads) {
-      const created = await createLead(item);
+      const finalItem = {
+        ...item,
+        owner: !isAdmin
+          ? item.owner && item.owner.trim() !== ""
+            ? item.owner
+            : activeUserName
+          : item.owner || activeUserName,
+      };
+      const created = await createLead(finalItem);
       createdList.push(created);
     }
     setLeads((prev) => [...createdList, ...prev]);

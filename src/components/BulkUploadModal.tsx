@@ -54,6 +54,7 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
   const [parsedLeads, setParsedLeads] = useState<ParsedCSVLead[]>([]);
   const [error, setError] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [assignToCurrentAccount, setAssignToCurrentAccount] = useState<boolean>(true);
 
   if (!isOpen) return null;
 
@@ -81,7 +82,7 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
   };
 
   // Parse CSV Text
-  const parseCSVText = (text: string) => {
+  const parseCSVText = (text: string, forceAssignUser?: string) => {
     const lines = text.split(/\r\n|\n/).filter((line) => line.trim().length > 0);
     if (lines.length <= 1) {
       setError("CSV file is empty or missing data rows.");
@@ -89,6 +90,7 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
     }
 
     const leads: ParsedCSVLead[] = [];
+    const activeUserName = currentUser?.name || "Ruby";
 
     // Skip header line
     for (let i = 1; i < lines.length; i++) {
@@ -110,7 +112,14 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
         const dealValue = parseFloat(cols[6]) || 500000;
         const stage = parseStageKey(cols[7]);
         const expectedCloseDate = cols[8] || "2026-10-31";
-        const owner = cols[9] || currentUser?.name || "Ruby";
+
+        // Owner determination:
+        // If assignToCurrentAccount is true OR owner column is missing/empty, default to active user
+        let owner = cols[9];
+        if (assignToCurrentAccount || !owner || owner.length === 0) {
+          owner = activeUserName;
+        }
+
         const journeyNotes = cols[10] || `Bulk imported from CSV file.`;
 
         leads.push({
