@@ -13,6 +13,7 @@ import {
 import { Lead, LeadStage, JourneyLog } from "@/types/lead";
 import { STAGES } from "@/constants/stages";
 import { INITIAL_DEMO_LEADS } from "@/constants/demoLeads";
+import { formatINR } from "./formatters";
 
 const COLLECTION_NAME = "b2b_leads";
 const LOCAL_STORAGE_KEY = "xmonks_b2b_leads_clean_v1";
@@ -254,6 +255,58 @@ export async function addJourneyNote(
     });
   } catch (err) {
     console.warn("Firestore note update skipped, updating local state", err);
+  }
+
+  const updatedLeads = localLeads.map((l) => (l.id === leadId ? updatedLead : l));
+  saveStoredLocalLeads(updatedLeads);
+
+  return updatedLead;
+}
+
+// Update Deal Value with timestamped Journey Log
+export async function updateDealValue(
+  leadId: string,
+  newDealValue: number,
+  author: string = "Sales Representative"
+): Promise<Lead | null> {
+  const localLeads = getStoredLocalLeads();
+  const target = localLeads.find((l) => l.id === leadId);
+  if (!target) return null;
+
+  const previousValue = target.dealValue;
+  if (previousValue === newDealValue) return target;
+
+  const now = new Date();
+  const timestampIso = now.toISOString();
+  const formattedDate = formatTimestamp(now);
+
+  const valueLog: JourneyLog = {
+    id: "log-" + Date.now() + "-" + Math.floor(Math.random() * 1000),
+    timestamp: timestampIso,
+    formattedDate: formattedDate,
+    type: "value_update",
+    title: `Deal Value Updated to ${formatINR(newDealValue)}`,
+    description: `Adjusted estimated deal value from ${formatINR(previousValue)} to ${formatINR(newDealValue)}.`,
+    author: author,
+  };
+
+  const updatedLead: Lead = {
+    ...target,
+    dealValue: newDealValue,
+    updatedAt: timestampIso,
+    journeyLogs: [valueLog, ...target.journeyLogs],
+  };
+
+  // Firestore Update
+  try {
+    const docRef = doc(db, COLLECTION_NAME, leadId);
+    await updateDoc(docRef, {
+      dealValue: newDealValue,
+      updatedAt: timestampIso,
+      journeyLogs: updatedLead.journeyLogs,
+    });
+  } catch (err) {
+    console.warn("Firestore deal value update skipped, updating local state", err);
   }
 
   const updatedLeads = localLeads.map((l) => (l.id === leadId ? updatedLead : l));

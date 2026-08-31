@@ -21,6 +21,8 @@ import {
   AlertCircle,
   Trash2,
   MapPin,
+  Pencil,
+  Check,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
@@ -32,6 +34,7 @@ interface LeadDetailModalProps {
   onUpdateStage: (leadId: string, newStage: LeadStage, notes?: string) => void;
   onAddNote: (leadId: string, noteText: string) => void;
   onDeleteLead?: (leadId: string) => void;
+  onUpdateDealValue?: (leadId: string, newDealValue: number) => void;
 }
 
 export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
@@ -40,9 +43,12 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   onUpdateStage,
   onAddNote,
   onDeleteLead,
+  onUpdateDealValue,
 }) => {
   const [newNoteText, setNewNoteText] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isEditingValue, setIsEditingValue] = useState(false);
+  const [editedValue, setEditedValue] = useState("");
   const [stageNotePrompt, setStageNotePrompt] = useState<{
     show: boolean;
     targetStage?: LeadStage;
@@ -201,10 +207,63 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
           {/* Key Deal Metrics Bar */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800">
             <div>
-              <div className="text-xs text-slate-400 font-semibold uppercase">Total Deal Value</div>
-              <div className="text-xl font-black text-slate-900 dark:text-white mt-0.5">
-                {formatCurrency(lead.dealValue)}
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-slate-400 font-semibold uppercase">Total Deal Value</div>
+                {onUpdateDealValue && !isEditingValue && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditedValue(String(lead.dealValue));
+                      setIsEditingValue(true);
+                    }}
+                    className="p-1 text-xs text-indigo-500 hover:text-indigo-600 hover:bg-indigo-500/10 rounded flex items-center space-x-1 font-semibold transition"
+                    title="Change deal value"
+                  >
+                    <Pencil className="w-3 h-3" />
+                    <span>Edit</span>
+                  </button>
+                )}
               </div>
+
+              {isEditingValue ? (
+                <div className="flex items-center space-x-1.5 mt-1">
+                  <div className="relative flex-1">
+                    <span className="absolute left-2 top-1.5 text-xs text-slate-400 font-bold">₹</span>
+                    <input
+                      type="number"
+                      value={editedValue}
+                      onChange={(e) => setEditedValue(e.target.value)}
+                      className="w-full pl-5 pr-2 py-1 bg-white dark:bg-slate-900 border border-indigo-500 rounded-lg text-sm font-bold focus:outline-none"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const val = parseFloat(editedValue);
+                      if (!isNaN(val) && val >= 0 && onUpdateDealValue) {
+                        onUpdateDealValue(lead.id, val);
+                      }
+                      setIsEditingValue(false);
+                    }}
+                    className="p-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition"
+                    title="Save Deal Value"
+                  >
+                    <Check className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingValue(false)}
+                    className="p-1.5 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition"
+                    title="Cancel"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="text-xl font-black text-slate-900 dark:text-white mt-0.5">
+                  {formatCurrency(lead.dealValue)}
+                </div>
+              )}
             </div>
 
             <div>

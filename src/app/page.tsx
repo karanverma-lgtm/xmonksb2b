@@ -7,6 +7,7 @@ import {
   createLead,
   updateLeadStage,
   addJourneyNote,
+  updateDealValue,
   deleteLead,
 } from "@/lib/leadsService";
 import { Navbar } from "@/components/Navbar";
@@ -200,14 +201,26 @@ export default function Home() {
   const handleAddNote = async (leadId: string, noteText: string) => {
     const updated = await addJourneyNote(leadId, noteText);
     if (updated) {
-      setLeads((prev) => prev.map((l) => (l.id === leadId ? updated : l)));
+      setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
+      setSelectedLead((prev) => (prev && prev.id === leadId ? updated : prev));
+    }
+  };
+
+  const handleUpdateDealValue = async (leadId: string, newDealValue: number) => {
+    const updated = await updateDealValue(
+      leadId,
+      newDealValue,
+      currentUser?.name || "Sales Representative"
+    );
+    if (updated) {
+      setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
       setSelectedLead((prev) => (prev && prev.id === leadId ? updated : prev));
     }
   };
 
   const handleDeleteLead = async (leadId: string) => {
     // Immediately update state for instantaneous UI response
-    setLeads((prev) => prev.filter((l) => l.id !== leadId));
+    setLeads((prev) => prev.filter((l: Lead) => l.id !== leadId));
     setSelectedLead((prev) => (prev && prev.id === leadId ? null : prev));
     await deleteLead(leadId);
   };
@@ -291,6 +304,7 @@ export default function Home() {
         onUpdateStage={handleUpdateStage}
         onAddNote={handleAddNote}
         onDeleteLead={handleDeleteLead}
+        onUpdateDealValue={handleUpdateDealValue}
       />
 
       {/* Add New Lead Modal */}
