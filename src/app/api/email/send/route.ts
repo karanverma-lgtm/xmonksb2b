@@ -12,6 +12,52 @@ interface EmailRecipient {
   [key: string]: any;
 }
 
+function createTransporter(
+  userEmail: string,
+  appPassword: string,
+  host: string,
+  port: number,
+  secure: boolean,
+  usePreset = false
+) {
+  const cleanedPassword = appPassword.replace(/\s+/g, "");
+  const isGoogle =
+    usePreset ||
+    host.includes("gmail") ||
+    userEmail.endsWith("@gmail.com") ||
+    userEmail.endsWith("@xmonks.com");
+
+  if (isGoogle) {
+    return nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: userEmail,
+        pass: cleanedPassword,
+      },
+      tls: {
+        rejectUnauthorized: false,
+        servername: "smtp.gmail.com",
+      },
+      connectionTimeout: 15000,
+    });
+  }
+
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    requireTLS: port === 587,
+    auth: {
+      user: userEmail,
+      pass: cleanedPassword,
+    },
+    tls: {
+      rejectUnauthorized: false,
+    },
+    connectionTimeout: 15000,
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -39,7 +85,7 @@ export async function POST(req: NextRequest) {
       process.env.gmail_apps_password ||
       process.env.GMAIL_APPS_PASSWORD;
     const host = smtpConfig?.host || "smtp.gmail.com";
-    const port = Number(smtpConfig?.port) || 465;
+    const port = Number(smtpConfig?.port) || 587;
     const secure = smtpConfig?.secure !== undefined ? Boolean(smtpConfig?.secure) : port === 465;
     const senderName = smtpConfig?.senderName || "xMonks B2B Sales";
 
@@ -54,20 +100,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const cleanedPassword = appPassword.replace(/\s+/g, "");
-
-    const transporter = nodemailer.createTransport({
-      host,
-      port,
-      secure,
-      auth: {
-        user: userEmail,
-        pass: cleanedPassword,
-      },
-      connectionTimeout: 15000,
-    });
-
     const results: Array<{ recipient: string; success: boolean; messageId?: string; error?: string }> = [];
+
+    // Create primary transporter
+    let transporter = createTransporter(userEmail, appPassword, host, port, secure);
 
     for (const item of recipients as EmailRecipient[]) {
       const recipientEmail = item.email || item.contactEmail;
@@ -103,14 +139,14 @@ export async function POST(req: NextRequest) {
         .replace(/\{\{\s*designation\s*\}\}/gi, designation)
         .replace(/\{\{\s*industry\s*\}\}/gi, industry);
 
-      try {
-        const mailOptions = {
-          from: `"${senderName}" <${userEmail}>`,
-          to: recipientEmail,
-          subject: personalizedSubject,
-          html: personalizedHtml,
-        };
+      const mailOptions = {
+        from: `"${senderName}" <${userEmail}>`,
+        to: recipientEmail,
+        subject: personalizedSubject,
+        html: personalizedHtml,
+      };
 
+      try {
         const info = await transporter.sendMail(mailOptions);
         results.push({
           recipient: recipientEmail,
@@ -118,7 +154,46 @@ export async function POST(req: NextRequest) {
           messageId: info.messageId,
         });
       } catch (sendErr: any) {
-        console.error(`Error sending email to ${recipientEmail}:`, sendErr);
+        console.warn(`Initial send to ${recipientEmail} failed:`, sendErr?.message);
+
+        // Check if error is Google 451 temporary rejection or serverless timeout
+        const isTemporaryError =
+          sendErr?.message?.includes("451") ||
+          sendErr?.message?.includes("temporarily rejected") ||
+          sendErr?.code === "ETIMEDOUT" ||
+          sendErr?.code === "ECONNECTION";
+
+        if (isTemporaryError) {
+          console.log(`Retrying send to ${recipientEmail} with Gmail fallback preset after 1.5s delay...`);
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+
+          try {
+            const fallbackTransporter = createTransporter(
+              userEmail,
+              appPassword,
+              "smtp.gmail.com",
+              587,
+              false,
+              true
+            );
+            const info = await fallbackTransporter.sendMail(mailOptions);
+            results.push({
+              recipient: recipientEmail,
+              success: true,
+              messageId: info.messageId,
+            });
+            continue;
+          } catch (retryErr: any) {
+            console.error(`Retry send to ${recipientEmail} failed:`, retryErr);
+            results.push({
+              recipient: recipientEmail,
+              success: false,
+              error: retryErr?.message || sendErr?.message || "Failed to dispatch email",
+            });
+            continue;
+          }
+        }
+
         results.push({
           recipient: recipientEmail,
           success: false,
