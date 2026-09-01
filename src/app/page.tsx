@@ -10,7 +10,7 @@ import {
   updateDealValue,
   deleteLead,
 } from "@/lib/leadsService";
-import { Navbar } from "@/components/Navbar";
+import { Navbar, NavTab } from "@/components/Navbar";
 import { DashboardStats } from "@/components/DashboardStats";
 import { FilterBar } from "@/components/FilterBar";
 import { KanbanBoard } from "@/components/KanbanBoard";
@@ -19,6 +19,8 @@ import { LeadDetailModal } from "@/components/LeadDetailModal";
 import { AddLeadModal } from "@/components/AddLeadModal";
 import { BulkUploadModal } from "@/components/BulkUploadModal";
 import { AnalyticsCharts } from "@/components/AnalyticsCharts";
+import { EmailCampaignTab } from "@/components/EmailCampaignTab";
+import { DeveloperTab } from "@/components/DeveloperTab";
 import { LoginForm } from "@/components/LoginForm";
 import { UserAccount } from "@/constants/users";
 
@@ -29,7 +31,7 @@ export default function Home() {
 
   const [leads, setLeads] = useState<Lead[]>([]);
   const [isFirebaseSyncing, setIsFirebaseSyncing] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<"kanban" | "table" | "analytics">("kanban");
+  const [activeTab, setActiveTab] = useState<NavTab>("kanban");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState<boolean>(false);
@@ -265,25 +267,27 @@ export default function Home() {
 
       {/* Main Container */}
       <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* KPI Dashboard Summary Bar (Reflects Filtered Leads) */}
-        <DashboardStats leads={filteredLeads} />
-
-        {/* Global Filter Bar (From Date, To Date, Weightage %, Stage, Search) */}
-        <FilterBar
-          searchTerm={searchTerm}
-          setSearchTerm={setSearchTerm}
-          fromDate={fromDate}
-          setFromDate={setFromDate}
-          toDate={toDate}
-          setToDate={setToDate}
-          selectedWeightage={selectedWeightage}
-          setSelectedWeightage={setSelectedWeightage}
-          selectedStage={selectedStage}
-          setSelectedStage={setSelectedStage}
-          onResetFilters={handleResetFilters}
-          filteredCount={filteredLeads.length}
-          totalCount={userScopedLeads.length}
-        />
+        {/* KPI Dashboard Summary Bar & Filter Bar for Lead Management tabs */}
+        {(activeTab === "kanban" || activeTab === "table" || activeTab === "analytics") && (
+          <>
+            <DashboardStats leads={filteredLeads} />
+            <FilterBar
+              searchTerm={searchTerm}
+              setSearchTerm={setSearchTerm}
+              fromDate={fromDate}
+              setFromDate={setFromDate}
+              toDate={toDate}
+              setToDate={setToDate}
+              selectedWeightage={selectedWeightage}
+              setSelectedWeightage={setSelectedWeightage}
+              selectedStage={selectedStage}
+              setSelectedStage={setSelectedStage}
+              onResetFilters={handleResetFilters}
+              filteredCount={filteredLeads.length}
+              totalCount={userScopedLeads.length}
+            />
+          </>
+        )}
 
         {/* Tab Views */}
         {activeTab === "kanban" && (
@@ -310,6 +314,15 @@ export default function Home() {
             onSelectLead={(lead) => setSelectedLead(lead)}
           />
         )}
+
+        {activeTab === "email" && (
+          <EmailCampaignTab
+            leads={userScopedLeads}
+            onNavigateToDeveloper={() => setActiveTab("developer")}
+          />
+        )}
+
+        {activeTab === "developer" && <DeveloperTab />}
       </main>
 
       {/* Lead Detail & Customer Journey Modal */}
