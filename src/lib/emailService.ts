@@ -1,3 +1,14 @@
+import { db } from "./firebase";
+import {
+  collection,
+  doc,
+  setDoc,
+  deleteDoc,
+  onSnapshot,
+  query,
+  orderBy,
+  getDocs,
+} from "firebase/firestore";
 import { PREBUILT_TEMPLATES, EmailTemplate } from "@/constants/emailTemplates";
 
 export interface SMTPConfig {
@@ -17,12 +28,19 @@ export interface EmailLogEntry {
   timestamp: string;
   error?: string;
   messageId?: string;
+  createdAt?: number;
 }
+
+const TEMPLATES_COLLECTION = "b2b_email_templates";
+const SMTP_COLLECTION = "b2b_smtp_config";
+const LOGS_COLLECTION = "b2b_email_logs";
 
 const SMTP_STORAGE_KEY = "xmonks_b2b_smtp_config";
 const CUSTOM_TEMPLATES_KEY = "xmonks_b2b_email_templates";
 const DELETED_TEMPLATES_KEY = "xmonks_b2b_deleted_templates";
 const EMAIL_LOGS_KEY = "xmonks_b2b_email_logs";
+
+// --- LOCAL STORAGE BACKUP HELPERS ---
 
 export function getDeletedTemplateIds(): string[] {
   if (typeof window === "undefined") return [];
@@ -35,56 +53,60 @@ export function getDeletedTemplateIds(): string[] {
   return [];
 }
 
-// Default SMTP configuration (falling back to user defaults)
 export function getStoredSMTPConfig(): SMTPConfig {
-  if (typeof window === "undefined") {
-    return {
-      userEmail: process.env.gmail_id || "ruby.dayal@xmonks.com",
-      appPassword: process.env.gmail_apps_password || "ombg ustr bodg bxnp",
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      senderName: "xMonks B2B Sales",
-    };
-  }
+  const defaultConfig: SMTPConfig = {
+    userEmail: process.env.gmail_id || "ruby.dayal@xmonks.com",
+    appPassword: process.env.gmail_apps_password || "ombg ustr bodg bxnp",
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false,
+    senderName: "xMonks B2B Sales",
+  };
+
+  if (typeof window === "undefined") return defaultConfig;
 
   try {
     const raw = localStorage.getItem(SMTP_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       return {
-        userEmail: parsed.userEmail || "ruby.dayal@xmonks.com",
-        appPassword: parsed.appPassword || "ombg ustr bodg bxnp",
-        host: parsed.host || "smtp.gmail.com",
-        port: Number(parsed.port) || 465,
-        secure: parsed.secure !== undefined ? Boolean(parsed.secure) : true,
-        senderName: parsed.senderName || "xMonks B2B Sales",
+        userEmail: parsed.userEmail || defaultConfig.userEmail,
+        appPassword: parsed.appPassword || defaultConfig.appPassword,
+        host: parsed.host || defaultConfig.host,
+        port: Number(parsed.port) || 587,
+        secure: parsed.secure !== undefined ? Boolean(parsed.secure) : false,
+        senderName: parsed.senderName || defaultConfig.senderName,
       };
     }
   } catch (e) {
     console.warn("Error reading stored SMTP config", e);
   }
 
-  return {
-    userEmail: "ruby.dayal@xmonks.com",
-    appPassword: "ombg ustr bodg bxnp",
-    host: "smtp.gmail.com",
-    port: 465,
-    secure: true,
-    senderName: "xMonks B2B Sales",
-  };
+  return defaultConfig;
 }
 
-export function saveSMTPConfig(config: SMTPConfig): void {
+export function saveLocalSMTPConfig(config: SMTPConfig): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(SMTP_STORAGE_KEY, JSON.stringify(config));
   } catch (e) {
-    console.warn("Failed to save SMTP config", e);
+    console.warn("Failed to save SMTP config locally", e);
   }
 }
 
-// Templates helper
+export function saveSMTPConfig(config: SMTPConfig): void {
+  saveLocalSMTPConfig(config);
+  if (typeof window === "undefined") return;
+  try {
+    const docRef = doc(db, SMTP_COLLECTION, "default");
+    setDoc(docRef, config, { merge: true }).catch((err) =>
+      console.warn("Firestore save SMTP config warning:", err)
+    );
+  } catch (e) {
+    console.warn("Firestore save SMTP config error:", e);
+  }
+}
+
 export function getAllTemplates(): EmailTemplate[] {
   if (typeof window === "undefined") return PREBUILT_TEMPLATES;
   try {
@@ -93,56 +115,102 @@ export function getAllTemplates(): EmailTemplate[] {
     let combined = [...PREBUILT_TEMPLATES];
     if (raw) {
       const custom: EmailTemplate[] = JSON.parse(raw);
-      combined = [...combined, ...custom];
+      // Merge unique templates by ID
+      const customUnique = custom.filter(
+        (c) => !combined.some((t) => t.id === c.id)
+      );
+      combined = [...customUnique, ...combined];
     }
     return combined.filter((t) => !deletedIds.includes(t.id));
   } catch (e) {
-    console.warn("Error reading custom templates", e);
+    console.warn("Error reading local templates", e);
   }
   return PREBUILT_TEMPLATES;
 }
 
-export function saveCustomTemplate(template: Omit<EmailTemplate, "id"> & { id?: string }): EmailTemplate {
-  const allTemplates = getAllTemplates();
+export function saveLocalTemplates(templates: EmailTemplate[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(CUSTOM_TEMPLATES_KEY, JSON.stringify(templates));
+  } catch (e) {
+    console.warn("Failed to save templates to localStorage", e);
+  }
+}
+
+// Seed prebuilt templates into Firestore if collection is empty
+async function seedPrebuiltTemplates() {
+  try {
+    for (const tpl of PREBUILT_TEMPLATES) {
+      const docRef = doc(db, TEMPLATES_COLLECTION, tpl.id);
+      await setDoc(docRef, tpl, { merge: true });
+    }
+  } catch (e) {
+    console.warn("Error seeding prebuilt templates into Firestore:", e);
+  }
+}
+
+// Save Template to both Firestore and LocalStorage
+export function saveCustomTemplate(
+  template: Omit<EmailTemplate, "id"> & { id?: string }
+): EmailTemplate {
   const templateId = template.id || `custom-${Date.now()}`;
   const newTemplate: EmailTemplate = {
     ...template,
     id: templateId,
   };
 
+  // 1. Update local storage
+  const current = getAllTemplates();
+  const existingIdx = current.findIndex((t) => t.id === templateId);
+  if (existingIdx >= 0) {
+    current[existingIdx] = newTemplate;
+  } else {
+    current.unshift(newTemplate);
+  }
+  saveLocalTemplates(current);
+
+  // 2. Sync to Firestore Real-Time DB
   if (typeof window !== "undefined") {
     try {
-      const customOnly = allTemplates.filter((t) => t.id.startsWith("custom-"));
-      const existingIdx = customOnly.findIndex((t) => t.id === templateId);
-      if (existingIdx >= 0) {
-        customOnly[existingIdx] = newTemplate;
-      } else {
-        customOnly.unshift(newTemplate);
-      }
-      localStorage.setItem(CUSTOM_TEMPLATES_KEY, JSON.stringify(customOnly));
+      const docRef = doc(db, TEMPLATES_COLLECTION, templateId);
+      setDoc(docRef, newTemplate, { merge: true }).catch((err) =>
+        console.warn("Firestore save template warning:", err)
+      );
     } catch (e) {
-      console.warn("Error saving custom template", e);
+      console.warn("Firestore save template error:", e);
     }
   }
+
   return newTemplate;
 }
 
+// Delete Template from both Firestore and LocalStorage
 export function deleteTemplate(templateId: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    const raw = localStorage.getItem(CUSTOM_TEMPLATES_KEY);
-    if (raw) {
-      const custom: EmailTemplate[] = JSON.parse(raw);
-      const filtered = custom.filter((t) => t.id !== templateId);
-      localStorage.setItem(CUSTOM_TEMPLATES_KEY, JSON.stringify(filtered));
+  // 1. Local storage update
+  const current = getAllTemplates();
+  const filtered = current.filter((t) => t.id !== templateId);
+  saveLocalTemplates(filtered);
+
+  const deletedIds = getDeletedTemplateIds();
+  if (!deletedIds.includes(templateId)) {
+    deletedIds.push(templateId);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(DELETED_TEMPLATES_KEY, JSON.stringify(deletedIds));
+      } catch (e) {}
     }
-    const deletedIds = getDeletedTemplateIds();
-    if (!deletedIds.includes(templateId)) {
-      deletedIds.push(templateId);
-      localStorage.setItem(DELETED_TEMPLATES_KEY, JSON.stringify(deletedIds));
+  }
+
+  // 2. Firestore deletion
+  if (typeof window !== "undefined") {
+    try {
+      const docRef = doc(db, TEMPLATES_COLLECTION, templateId);
+      deleteDoc(docRef).catch((err) =>
+        console.warn("Firestore delete template warning:", err)
+      );
+    } catch (e) {
+      console.warn("Firestore delete template error:", e);
     }
-  } catch (e) {
-    console.warn("Error deleting template", e);
   }
 }
 
@@ -150,37 +218,194 @@ export function deleteCustomTemplate(templateId: string): void {
   deleteTemplate(templateId);
 }
 
-// Email Dispatch Logs helper
+// --- REAL-TIME FIRESTORE SUBSCRIPTIONS ---
+
+// Real-Time Listener for Global Email Templates
+export function subscribeToTemplates(
+  onData: (templates: EmailTemplate[], isFirebaseSyncing: boolean) => void
+): () => void {
+  if (typeof window === "undefined") return () => {};
+
+  let unsubscribed = false;
+
+  try {
+    const ref = collection(db, TEMPLATES_COLLECTION);
+    const unsubscribe = onSnapshot(
+      ref,
+      (snapshot) => {
+        if (unsubscribed) return;
+        if (snapshot.empty) {
+          seedPrebuiltTemplates();
+          onData(getAllTemplates(), true);
+        } else {
+          const firestoreTemplates: EmailTemplate[] = snapshot.docs.map((d) => ({
+            id: d.id,
+            ...(d.data() as Omit<EmailTemplate, "id">),
+          }));
+
+          const deletedIds = getDeletedTemplateIds();
+          const prebuiltMissing = PREBUILT_TEMPLATES.filter(
+            (pt) => !firestoreTemplates.some((ft) => ft.id === pt.id) && !deletedIds.includes(pt.id)
+          );
+
+          const combined = [...firestoreTemplates, ...prebuiltMissing];
+          saveLocalTemplates(combined);
+          onData(combined, true);
+        }
+      },
+      (error) => {
+        console.warn("Firestore templates subscription fallback to local:", error);
+        if (!unsubscribed) {
+          onData(getAllTemplates(), false);
+        }
+      }
+    );
+
+    return () => {
+      unsubscribed = true;
+      unsubscribe();
+    };
+  } catch (error) {
+    console.warn("Failed to initialize templates Firestore listener:", error);
+    onData(getAllTemplates(), false);
+    return () => {};
+  }
+}
+
+// Real-Time Listener for Global SMTP Config
+export function subscribeToSMTPConfig(
+  onData: (config: SMTPConfig, isFirebaseSyncing: boolean) => void
+): () => void {
+  if (typeof window === "undefined") return () => {};
+
+  let unsubscribed = false;
+
+  try {
+    const docRef = doc(db, SMTP_COLLECTION, "default");
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snap) => {
+        if (unsubscribed) return;
+        if (snap.exists()) {
+          const data = snap.data() as SMTPConfig;
+          saveLocalSMTPConfig(data);
+          onData(data, true);
+        } else {
+          onData(getStoredSMTPConfig(), true);
+        }
+      },
+      (error) => {
+        console.warn("Firestore SMTP listener fallback to local:", error);
+        if (!unsubscribed) {
+          onData(getStoredSMTPConfig(), false);
+        }
+      }
+    );
+
+    return () => {
+      unsubscribed = true;
+      unsubscribe();
+    };
+  } catch (error) {
+    onData(getStoredSMTPConfig(), false);
+    return () => {};
+  }
+}
+
+// Real-Time Listener for Global Email Dispatch Logs
+export function subscribeToEmailLogs(
+  onData: (logs: EmailLogEntry[], isFirebaseSyncing: boolean) => void
+): () => void {
+  if (typeof window === "undefined") return () => {};
+
+  let unsubscribed = false;
+
+  try {
+    const ref = collection(db, LOGS_COLLECTION);
+    const q = query(ref, orderBy("createdAt", "desc"));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        if (unsubscribed) return;
+        const firestoreLogs: EmailLogEntry[] = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as Omit<EmailLogEntry, "id">),
+        }));
+        saveLocalLogs(firestoreLogs);
+        onData(firestoreLogs, true);
+      },
+      (error) => {
+        console.warn("Firestore logs listener fallback to local:", error);
+        if (!unsubscribed) {
+          onData(getEmailLogs(), false);
+        }
+      }
+    );
+
+    return () => {
+      unsubscribed = true;
+      unsubscribe();
+    };
+  } catch (error) {
+    onData(getEmailLogs(), false);
+    return () => {};
+  }
+}
+
+// --- LOGS HELPERS ---
+
 export function getEmailLogs(): EmailLogEntry[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(EMAIL_LOGS_KEY);
-    if (raw) {
-      return JSON.parse(raw);
-    }
+    if (raw) return JSON.parse(raw);
   } catch (e) {
     console.warn("Error reading email logs", e);
   }
   return [];
 }
 
-export function addEmailLogs(entries: Omit<EmailLogEntry, "id" | "timestamp">[]): void {
+export function saveLocalLogs(logs: EmailLogEntry[]) {
   if (typeof window === "undefined") return;
   try {
-    const current = getEmailLogs();
-    const newEntries: EmailLogEntry[] = entries.map((entry) => ({
-      ...entry,
-      id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      timestamp: new Date().toLocaleString("en-IN", {
-        timeZone: "Asia/Kolkata",
-        dateStyle: "medium",
-        timeStyle: "medium",
-      }),
-    }));
-    const updated = [...newEntries, ...current].slice(0, 200); // Keep last 200 logs
-    localStorage.setItem(EMAIL_LOGS_KEY, JSON.stringify(updated));
+    localStorage.setItem(EMAIL_LOGS_KEY, JSON.stringify(logs));
   } catch (e) {
-    console.warn("Error saving email logs", e);
+    console.warn("Error saving logs locally", e);
+  }
+}
+
+export function addEmailLogs(
+  entries: Omit<EmailLogEntry, "id" | "timestamp">[]
+): void {
+  const now = Date.now();
+  const formattedTime = new Date(now).toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    dateStyle: "medium",
+    timeStyle: "medium",
+  });
+
+  const newEntries: EmailLogEntry[] = entries.map((entry) => ({
+    ...entry,
+    id: `log-${now}-${Math.random().toString(36).substr(2, 5)}`,
+    timestamp: formattedTime,
+    createdAt: now,
+  }));
+
+  // 1. Update local storage
+  const current = getEmailLogs();
+  const updated = [...newEntries, ...current].slice(0, 200);
+  saveLocalLogs(updated);
+
+  // 2. Sync each log entry to Firestore
+  if (typeof window !== "undefined") {
+    for (const item of newEntries) {
+      try {
+        const docRef = doc(db, LOGS_COLLECTION, item.id);
+        setDoc(docRef, item).catch((err) =>
+          console.warn("Firestore log write warning:", err)
+        );
+      } catch (e) {}
+    }
   }
 }
 
@@ -188,9 +413,7 @@ export function clearEmailLogs(): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.removeItem(EMAIL_LOGS_KEY);
-  } catch (e) {
-    console.warn("Error clearing email logs", e);
-  }
+  } catch (e) {}
 }
 
 // Call Server API to verify SMTP Connection

@@ -22,6 +22,7 @@ import {
   getStoredSMTPConfig,
   saveSMTPConfig,
   testSMTPConnection,
+  subscribeToSMTPConfig,
   SMTPConfig,
 } from "@/lib/emailService";
 
@@ -30,8 +31,8 @@ export const DeveloperTab: React.FC = () => {
     userEmail: "",
     appPassword: "",
     host: "smtp.gmail.com",
-    port: 465,
-    secure: true,
+    port: 587,
+    secure: false,
     senderName: "xMonks B2B Sales",
   });
 
@@ -44,8 +45,10 @@ export const DeveloperTab: React.FC = () => {
   const [isSaved, setIsSaved] = useState<boolean>(false);
 
   useEffect(() => {
-    const stored = getStoredSMTPConfig();
-    setConfig(stored);
+    const unsub = subscribeToSMTPConfig((updatedConfig) => {
+      setConfig(updatedConfig);
+    });
+    return () => unsub();
   }, []);
 
   const handleInputChange = (field: keyof SMTPConfig, value: any) => {

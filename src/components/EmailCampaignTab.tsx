@@ -38,6 +38,8 @@ import {
   getEmailLogs,
   clearEmailLogs,
   getStoredSMTPConfig,
+  subscribeToTemplates,
+  subscribeToEmailLogs,
   EmailLogEntry,
 } from "@/lib/emailService";
 
@@ -104,37 +106,49 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
   const [logs, setLogs] = useState<EmailLogEntry[]>([]);
   const [logSearchTerm, setLogSearchTerm] = useState<string>("");
 
-  // Load templates and logs on mount
+  // Subscribe to Real-Time Templates & Email Logs via Firebase Firestore
   useEffect(() => {
-    refreshTemplates();
-    refreshLogs();
+    const unsubTemplates = subscribeToTemplates((updatedTemplates) => {
+      setTemplates(updatedTemplates);
+      if (updatedTemplates.length > 0) {
+        setSelectedTemplateId((prev) => {
+          if (!prev || !updatedTemplates.some((t) => t.id === prev)) {
+            loadTemplateIntoEditor(updatedTemplates[0]);
+            return updatedTemplates[0].id;
+          }
+          return prev;
+        });
+
+        const initialTpl = updatedTemplates[0];
+        setSelectedSingleTemplateId((prev) => {
+          if (!prev || !updatedTemplates.some((t) => t.id === prev)) {
+            setSingleSubject(initialTpl.subject);
+            setSingleHtmlContent(initialTpl.htmlContent);
+            return initialTpl.id;
+          }
+          return prev;
+        });
+
+        setSelectedBulkTemplateId((prev) => {
+          if (!prev || !updatedTemplates.some((t) => t.id === prev)) {
+            setBulkSubject(initialTpl.subject);
+            setBulkHtmlContent(initialTpl.htmlContent);
+            return initialTpl.id;
+          }
+          return prev;
+        });
+      }
+    });
+
+    const unsubLogs = subscribeToEmailLogs((updatedLogs) => {
+      setLogs(updatedLogs);
+    });
+
+    return () => {
+      unsubTemplates();
+      unsubLogs();
+    };
   }, []);
-
-  const refreshTemplates = () => {
-    const list = getAllTemplates();
-    setTemplates(list);
-    if (list.length > 0) {
-      if (!selectedTemplateId) {
-        setSelectedTemplateId(list[0].id);
-        loadTemplateIntoEditor(list[0]);
-      }
-      const initialTpl = list[0];
-      if (!selectedSingleTemplateId) {
-        setSelectedSingleTemplateId(initialTpl.id);
-        setSingleSubject(initialTpl.subject);
-        setSingleHtmlContent(initialTpl.htmlContent);
-      }
-      if (!selectedBulkTemplateId) {
-        setSelectedBulkTemplateId(initialTpl.id);
-        setBulkSubject(initialTpl.subject);
-        setBulkHtmlContent(initialTpl.htmlContent);
-      }
-    }
-  };
-
-  const refreshLogs = () => {
-    setLogs(getEmailLogs());
-  };
 
   // Sync editor fields when selectedTemplateId changes
   useEffect(() => {
@@ -173,7 +187,6 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
       htmlContent: templateHtml,
       description: "Custom user-created HTML template",
     });
-    refreshTemplates();
     setSelectedTemplateId(saved.id);
     setTemplateSavedMsg("Template saved successfully!");
     setTimeout(() => setTemplateSavedMsg(""), 3000);
@@ -260,7 +273,6 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
           type: "success",
           text: `Email successfully delivered to ${singleRecipientEmail}!`,
         });
-        refreshLogs();
       } else {
         setSingleStatusMsg({
           type: "error",
@@ -396,7 +408,6 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
           type: "success",
           text: `Bulk Email Campaign Completed! Successfully dispatched ${res.successCount} of ${res.totalCount} emails.`,
         });
-        refreshLogs();
       } else {
         setBulkStatusMsg({
           type: "error",
@@ -515,7 +526,6 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
         <button
           onClick={() => {
             setActiveSubTab("logs");
-            refreshLogs();
           }}
           className={`flex items-center space-x-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all ${
             activeSubTab === "logs"
@@ -1235,7 +1245,6 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
               <button
                 onClick={() => {
                   clearEmailLogs();
-                  refreshLogs();
                 }}
                 className="px-3 py-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 rounded-xl transition"
               >
