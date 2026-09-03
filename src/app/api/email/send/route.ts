@@ -9,7 +9,7 @@ interface EmailRecipient {
   designation?: string;
   industry?: string;
   dealValue?: number | string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 function createTransporter(
@@ -103,10 +103,10 @@ export async function POST(req: NextRequest) {
     const results: Array<{ recipient: string; success: boolean; messageId?: string; error?: string }> = [];
 
     // Create primary transporter
-    let transporter = createTransporter(userEmail, appPassword, host, port, secure);
+    const transporter = createTransporter(userEmail, appPassword, host, port, secure);
 
     for (const item of recipients as EmailRecipient[]) {
-      const recipientEmail = item.email || item.contactEmail;
+      const recipientEmail = (item.email || item.contactEmail) as string | undefined;
       if (!recipientEmail || !recipientEmail.includes("@")) {
         results.push({
           recipient: recipientEmail || "Invalid",
@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
       const dealValue = item.dealValue ? String(item.dealValue) : "";
 
       // Perform dynamic placeholder replacement
-      let personalizedHtml = htmlContent
+      const personalizedHtml = htmlContent
         .replace(/\{\{\s*contactName\s*\}\}/gi, recipientName)
         .replace(/\{\{\s*name\s*\}\}/gi, recipientName)
         .replace(/\{\{\s*companyName\s*\}\}/gi, companyName)
@@ -132,7 +132,7 @@ export async function POST(req: NextRequest) {
         .replace(/\{\{\s*dealValue\s*\}\}/gi, dealValue)
         .replace(/\{\{\s*email\s*\}\}/gi, recipientEmail);
 
-      let personalizedSubject = subject
+      const personalizedSubject = subject
         .replace(/\{\{\s*contactName\s*\}\}/gi, recipientName)
         .replace(/\{\{\s*name\s*\}\}/gi, recipientName)
         .replace(/\{\{\s*companyName\s*\}\}/gi, companyName)
@@ -153,15 +153,16 @@ export async function POST(req: NextRequest) {
           success: true,
           messageId: info.messageId,
         });
-      } catch (sendErr: any) {
-        console.warn(`Initial send to ${recipientEmail} failed:`, sendErr?.message);
+      } catch (sendErr: unknown) {
+        const errObj = sendErr as { message?: string; code?: string };
+        console.warn(`Initial send to ${recipientEmail} failed:`, errObj?.message);
 
         // Check if error is Google 451 temporary rejection or serverless timeout
         const isTemporaryError =
-          sendErr?.message?.includes("451") ||
-          sendErr?.message?.includes("temporarily rejected") ||
-          sendErr?.code === "ETIMEDOUT" ||
-          sendErr?.code === "ECONNECTION";
+          errObj?.message?.includes("451") ||
+          errObj?.message?.includes("temporarily rejected") ||
+          errObj?.code === "ETIMEDOUT" ||
+          errObj?.code === "ECONNECTION";
 
         if (isTemporaryError) {
           console.log(`Retrying send to ${recipientEmail} with Gmail fallback preset after 1.5s delay...`);
@@ -183,12 +184,13 @@ export async function POST(req: NextRequest) {
               messageId: info.messageId,
             });
             continue;
-          } catch (retryErr: any) {
+          } catch (retryErr: unknown) {
+            const retryObj = retryErr as { message?: string };
             console.error(`Retry send to ${recipientEmail} failed:`, retryErr);
             results.push({
               recipient: recipientEmail,
               success: false,
-              error: retryErr?.message || sendErr?.message || "Failed to dispatch email",
+              error: retryObj?.message || errObj?.message || "Failed to dispatch email",
             });
             continue;
           }
@@ -197,7 +199,7 @@ export async function POST(req: NextRequest) {
         results.push({
           recipient: recipientEmail,
           success: false,
-          error: sendErr?.message || "Failed to dispatch email",
+          error: errObj?.message || "Failed to dispatch email",
         });
       }
     }
@@ -212,10 +214,11 @@ export async function POST(req: NextRequest) {
       failureCount,
       results,
     });
-  } catch (error: any) {
-    console.error("Bulk email route error:", error);
+  } catch (error: unknown) {
+    const errMessage = error instanceof Error ? error.message : "Internal server error dispatching emails.";
+    console.error("Bulk email route error:", errMessage);
     return NextResponse.json(
-      { success: false, error: error?.message || "Internal server error dispatching emails." },
+      { success: false, error: errMessage },
       { status: 500 }
     );
   }

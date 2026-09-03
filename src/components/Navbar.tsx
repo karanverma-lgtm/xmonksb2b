@@ -162,7 +162,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
 
             {/* Quick Weighted Stats Pill */}
-            <div className="hidden 2xl:flex items-center space-x-1.5 px-2.5 py-1 bg-slate-100 dark:bg-slate-900 rounded-xl text-[11px] border border-slate-200 dark:border-slate-800 whitespace-nowrap">
+            <div className="hidden 2xl:flex items-center space-x-2 px-2.5 py-1 bg-slate-100 dark:bg-slate-900 rounded-xl text-[11px] border border-slate-200 dark:border-slate-800 whitespace-nowrap">
+              <span className="text-slate-500 dark:text-slate-400 font-medium">Leads:</span>
+              <span className="font-extrabold text-slate-700 dark:text-slate-300 text-xs">
+                {totalLeadsCount}
+              </span>
+              <span className="text-slate-300 dark:text-slate-700">|</span>
               <span className="text-slate-500 dark:text-slate-400 font-medium">Weighted:</span>
               <span className="font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">
                 {formattedWeightedVal}

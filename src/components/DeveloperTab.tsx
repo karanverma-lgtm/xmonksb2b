@@ -19,7 +19,6 @@ import {
   ExternalLink,
 } from "lucide-react";
 import {
-  getStoredSMTPConfig,
   saveSMTPConfig,
   testSMTPConnection,
   subscribeToSMTPConfig,
@@ -51,7 +50,7 @@ export const DeveloperTab: React.FC = () => {
     return () => unsub();
   }, []);
 
-  const handleInputChange = (field: keyof SMTPConfig, value: any) => {
+  const handleInputChange = <K extends keyof SMTPConfig>(field: K, value: SMTPConfig[K]) => {
     setConfig((prev) => ({ ...prev, [field]: value }));
     setTestResult({ status: "idle", message: "" });
     setIsSaved(false);
@@ -81,10 +80,10 @@ export const DeveloperTab: React.FC = () => {
           message: res.error || "Failed to authenticate with SMTP server.",
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setTestResult({
         status: "error",
-        message: err?.message || "Network error testing SMTP connection.",
+        message: err instanceof Error ? err.message : "Network error testing SMTP connection.",
       });
     } finally {
       setIsTesting(false);

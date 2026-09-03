@@ -8,7 +8,6 @@ import {
   query,
   orderBy,
   getDocs,
-  getDoc,
   writeBatch,
 } from "firebase/firestore";
 
@@ -74,7 +73,7 @@ export async function saveCSVUploadArchive(
   const fullContent = data.rawContent || "";
   const isLarge = fullContent.length > MAX_DOC_RAW_CHARS;
 
-  let chunks: string[] = [];
+  const chunks: string[] = [];
   if (isLarge) {
     for (let i = 0; i < fullContent.length; i += MAX_DOC_RAW_CHARS) {
       chunks.push(fullContent.slice(i, i + MAX_DOC_RAW_CHARS));
@@ -177,7 +176,7 @@ export function subscribeToCSVUploads(
       unsubscribed = true;
       unsubscribe();
     };
-  } catch (error) {
+  } catch {
     onData(getLocalCSVUploads());
     return () => {};
   }

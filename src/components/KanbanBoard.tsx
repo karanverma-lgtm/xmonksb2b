@@ -61,7 +61,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   ) => {
     e.stopPropagation();
     const currentIndex = STAGE_ORDER.indexOf(lead.stage);
-    let targetIndex = direction === "next" ? currentIndex + 1 : currentIndex - 1;
+    const targetIndex = direction === "next" ? currentIndex + 1 : currentIndex - 1;
 
     if (targetIndex < 0 || targetIndex >= STAGE_ORDER.length) return;
     const nextStage = STAGE_ORDER[targetIndex];

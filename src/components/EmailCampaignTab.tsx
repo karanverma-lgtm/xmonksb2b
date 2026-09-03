@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Mail,
   FileCode,
@@ -15,12 +15,9 @@ import {
   Plus,
   Trash2,
   Edit3,
-  Copy,
   Eye,
   History,
   Loader2,
-  Building2,
-  User,
   Search,
   CheckSquare,
   Square,
@@ -33,9 +30,7 @@ import {
   getAllTemplates,
   saveCustomTemplate,
   deleteTemplate,
-  deleteCustomTemplate,
   sendEmailCampaign,
-  getEmailLogs,
   clearEmailLogs,
   getStoredSMTPConfig,
   subscribeToTemplates,
@@ -113,37 +108,31 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
   const [logs, setLogs] = useState<EmailLogEntry[]>([]);
   const [logSearchTerm, setLogSearchTerm] = useState<string>("");
 
+  const loadTemplateIntoEditor = useCallback((tpl: EmailTemplate) => {
+    setTemplateName(tpl.name);
+    setTemplateSubject(tpl.subject);
+    setTemplateCategory(tpl.category);
+    setTemplateHtml(tpl.htmlContent);
+  }, []);
+
   // Subscribe to Real-Time Templates, Campaigns & Email Logs via Firebase Firestore
   useEffect(() => {
+    let initialized = false;
     const unsubTemplates = subscribeToTemplates((updatedTemplates) => {
       setTemplates(updatedTemplates);
-      if (updatedTemplates.length > 0) {
-        setSelectedTemplateId((prev) => {
-          if (!prev || !updatedTemplates.some((t) => t.id === prev)) {
-            loadTemplateIntoEditor(updatedTemplates[0]);
-            return updatedTemplates[0].id;
-          }
-          return prev;
-        });
-
+      if (updatedTemplates.length > 0 && !initialized) {
+        initialized = true;
         const initialTpl = updatedTemplates[0];
-        setSelectedSingleTemplateId((prev) => {
-          if (!prev || !updatedTemplates.some((t) => t.id === prev)) {
-            setSingleSubject(initialTpl.subject);
-            setSingleHtmlContent(initialTpl.htmlContent);
-            return initialTpl.id;
-          }
-          return prev;
-        });
+        setSelectedTemplateId(initialTpl.id);
+        loadTemplateIntoEditor(initialTpl);
 
-        setSelectedBulkTemplateId((prev) => {
-          if (!prev || !updatedTemplates.some((t) => t.id === prev)) {
-            setBulkSubject(initialTpl.subject);
-            setBulkHtmlContent(initialTpl.htmlContent);
-            return initialTpl.id;
-          }
-          return prev;
-        });
+        setSelectedSingleTemplateId(initialTpl.id);
+        setSingleSubject(initialTpl.subject);
+        setSingleHtmlContent(initialTpl.htmlContent);
+
+        setSelectedBulkTemplateId(initialTpl.id);
+        setBulkSubject(initialTpl.subject);
+        setBulkHtmlContent(initialTpl.htmlContent);
       }
     });
 
@@ -160,22 +149,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
       unsubCampaigns();
       unsubLogs();
     };
-  }, []);
-
-  // Sync editor fields when selectedTemplateId changes
-  useEffect(() => {
-    const found = templates.find((t) => t.id === selectedTemplateId);
-    if (found) {
-      loadTemplateIntoEditor(found);
-    }
-  }, [selectedTemplateId, templates]);
-
-  const loadTemplateIntoEditor = (tpl: EmailTemplate) => {
-    setTemplateName(tpl.name);
-    setTemplateSubject(tpl.subject);
-    setTemplateCategory(tpl.category);
-    setTemplateHtml(tpl.htmlContent);
-  };
+  }, [loadTemplateIntoEditor]);
 
   const handleCreateNewTemplate = () => {
     setSelectedTemplateId("");
@@ -318,10 +292,10 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
           text: res.error || res.results?.[0]?.error || "Failed to send email. Verify SMTP settings.",
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setSingleStatusMsg({
         type: "error",
-        text: err?.message || "Failed to send email.",
+        text: err instanceof Error ? err.message : "Failed to send email.",
       });
     } finally {
       setIsSendingSingle(false);
@@ -443,7 +417,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
       setBulkProgress({ current: targetRecipients.length, total: targetRecipients.length });
 
       const recipientDetails = targetRecipients.map((tr) => {
-        const matched = res.results?.find((r: any) => r.recipient === tr.email);
+        const matched = res.results?.find((r: { recipient: string; success: boolean; error?: string }) => r.recipient === tr.email);
         return {
           ...tr,
           status: matched ? (matched.success ? ("success" as const) : ("failed" as const)) : ("failed" as const),
@@ -479,10 +453,10 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
           text: res.error || "Bulk campaign dispatch failed. Check Developer SMTP settings.",
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setBulkStatusMsg({
         type: "error",
-        text: err?.message || "Failed to dispatch bulk emails.",
+        text: err instanceof Error ? err.message : "Failed to dispatch bulk emails.",
       });
     } finally {
       setIsSendingBulk(false);
@@ -652,7 +626,10 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
               {templates.map((tpl) => (
                 <div
                   key={tpl.id}
-                  onClick={() => setSelectedTemplateId(tpl.id)}
+                  onClick={() => {
+                    setSelectedTemplateId(tpl.id);
+                    loadTemplateIntoEditor(tpl);
+                  }}
                   className={`p-3.5 rounded-2xl border cursor-pointer transition ${
                     selectedTemplateId === tpl.id
                       ? "bg-indigo-50/80 dark:bg-indigo-950/40 border-indigo-500 text-indigo-950 dark:text-indigo-100"

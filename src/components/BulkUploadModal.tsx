@@ -11,7 +11,6 @@ import {
   Download,
   CheckCircle2,
   AlertTriangle,
-  Building2,
   Sparkles,
 } from "lucide-react";
 
@@ -58,7 +57,7 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
   const [parsedLeads, setParsedLeads] = useState<ParsedCSVLead[]>([]);
   const [error, setError] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [assignToCurrentAccount, setAssignToCurrentAccount] = useState<boolean>(true);
+  const assignToCurrentAccount = true;
 
   if (!isOpen) return null;
 
@@ -86,7 +85,7 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
   };
 
   // Parse CSV Text
-  const parseCSVText = (text: string, forceAssignUser?: string) => {
+  const parseCSVText = (text: string) => {
     const lines = text.split(/\r\n|\n/).filter((line) => line.trim().length > 0);
     if (lines.length <= 1) {
       setError("CSV file is empty or missing data rows.");

@@ -2,17 +2,11 @@
 
 import React, { useState } from "react";
 import { Lead, LeadStage } from "@/types/lead";
-import { STAGES, STAGE_ORDER } from "@/constants/stages";
+import { STAGES } from "@/constants/stages";
 import {
-  Search,
-  Filter,
   Building2,
   Mail,
   Phone,
-  IndianRupee,
-  TrendingUp,
-  History,
-  Eye,
   ArrowUpDown,
   Trash2,
   MapPin,
@@ -23,14 +17,13 @@ import { formatINR } from "@/lib/formatters";
 interface LeadTableProps {
   leads: Lead[];
   onSelectLead: (lead: Lead) => void;
-  onUpdateStage: (leadId: string, newStage: LeadStage, notes?: string) => void;
+  onUpdateStage?: (leadId: string, newStage: LeadStage, notes?: string) => void;
   onDeleteLead?: (leadId: string) => void;
 }
 
 export const LeadTable: React.FC<LeadTableProps> = ({
   leads,
   onSelectLead,
-  onUpdateStage,
   onDeleteLead,
 }) => {
   const [sortBy, setSortBy] = useState<"dealValue" | "weightage" | "updatedAt">("updatedAt");

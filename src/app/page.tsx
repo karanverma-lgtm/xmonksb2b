@@ -28,11 +28,35 @@ import {
   subscribeToUserPreferences,
   saveUserPreferencesToFirestore,
 } from "@/lib/preferencesService";
+import { useRef, useSyncExternalStore } from "react";
+
+const emptySubscribe = () => () => {};
 
 export default function Home() {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
-  const [isAuthChecked, setIsAuthChecked] = useState<boolean>(false);
+  const isClient = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  );
+
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return localStorage.getItem("xmonks_b2b_authenticated") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const storedUser = localStorage.getItem("xmonks_b2b_user");
+      return storedUser ? JSON.parse(storedUser) : null;
+    } catch {
+      return null;
+    }
+  });
 
   const [leads, setLeads] = useState<Lead[]>([]);
   const [isFirebaseSyncing, setIsFirebaseSyncing] = useState<boolean>(true);
@@ -40,24 +64,6 @@ export default function Home() {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState<boolean>(false);
-
-  // Check auth session on mount
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("xmonks_b2b_authenticated");
-      const storedUser = localStorage.getItem("xmonks_b2b_user");
-      if (stored === "true") {
-        setIsAuthenticated(true);
-        if (storedUser) {
-          setCurrentUser(JSON.parse(storedUser));
-        }
-      }
-    } catch (e) {
-      console.warn("Could not read auth state", e);
-    } finally {
-      setIsAuthChecked(true);
-    }
-  }, []);
 
   const handleLoginSuccess = (user: UserAccount) => {
     try {
@@ -103,6 +109,17 @@ export default function Home() {
     return () => unsub();
   }, [currentUser]);
 
+  // Debounce search sync to Firestore
+  const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+    };
+  }, []);
+
   // Handlers to synchronize UI state to Firestore
   const handleTabChange = (tab: NavTab) => {
     setActiveTab(tab);
@@ -114,7 +131,12 @@ export default function Home() {
   const handleSearchChange = (term: string) => {
     setSearchTerm(term);
     if (currentUser) {
-      saveUserPreferencesToFirestore(currentUser.username, { searchTerm: term });
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+      searchDebounceRef.current = setTimeout(() => {
+        saveUserPreferencesToFirestore(currentUser.username, { searchTerm: term });
+      }, 400);
     }
   };
 
@@ -311,7 +333,7 @@ export default function Home() {
     await deleteLead(leadId);
   };
 
-  if (!isAuthChecked) {
+  if (!isClient) {
     return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-xs">Loading Portal...</div>;
   }
 

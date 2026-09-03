@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Lead } from "@/types/lead";
-import { IndianRupee, TrendingUp, CheckCircle, Target, Award } from "lucide-react";
+import { IndianRupee, TrendingUp, Target, Award } from "lucide-react";
 
 import { formatINR } from "@/lib/formatters";
 

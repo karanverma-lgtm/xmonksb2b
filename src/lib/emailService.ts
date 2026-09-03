@@ -238,7 +238,7 @@ export function deleteTemplate(templateId: string): void {
     if (typeof window !== "undefined") {
       try {
         localStorage.setItem(DELETED_TEMPLATES_KEY, JSON.stringify(deletedIds));
-      } catch (e) {}
+      } catch {}
     }
   }
 
@@ -481,7 +481,7 @@ export function subscribeToSMTPConfig(
       unsubscribed = true;
       unsubscribe();
     };
-  } catch (error) {
+  } catch {
     onData(getStoredSMTPConfig(), false);
     return () => {};
   }
@@ -521,7 +521,7 @@ export function subscribeToCampaigns(
       unsubscribed = true;
       unsubscribe();
     };
-  } catch (error) {
+  } catch {
     onData(getStoredCampaigns(), false);
     return () => {};
   }
@@ -561,7 +561,7 @@ export function subscribeToEmailLogs(
       unsubscribed = true;
       unsubscribe();
     };
-  } catch (error) {
+  } catch {
     onData(getEmailLogs(), false);
     return () => {};
   }
@@ -619,7 +619,7 @@ export function addEmailLogs(
         setDoc(docRef, item).catch((err) =>
           console.warn("Firestore log write warning:", err)
         );
-      } catch (e) {}
+      } catch {}
     }
   }
 }
@@ -628,7 +628,7 @@ export async function clearEmailLogs(): Promise<void> {
   if (typeof window === "undefined") return;
   try {
     localStorage.removeItem(EMAIL_LOGS_KEY);
-  } catch (e) {}
+  } catch {}
 
   try {
     const ref = collection(db, LOGS_COLLECTION);
@@ -683,7 +683,7 @@ export async function sendEmailCampaign(payload: {
   const data = await response.json();
 
   if (data.results && Array.isArray(data.results)) {
-    const logsToSave = data.results.map((r: any) => ({
+    const logsToSave = data.results.map((r: { recipient: string; success: boolean; error?: string; messageId?: string }) => ({
       recipient: r.recipient,
       subject: payload.subject,
       status: r.success ? ("success" as const) : ("failed" as const),

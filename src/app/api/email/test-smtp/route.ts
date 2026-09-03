@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
     try {
       const transporter = createTransporter(userEmail, appPassword, host, port, secure);
       await transporter.verify();
-    } catch (primaryErr: any) {
+    } catch (primaryErr: unknown) {
       console.warn("Primary SMTP verification failed, attempting Gmail service preset fallback:", primaryErr);
       const fallbackTransporter = createTransporter(userEmail, appPassword, "smtp.gmail.com", 587, false, true);
       await fallbackTransporter.verify();
@@ -77,12 +77,13 @@ export async function POST(req: NextRequest) {
       success: true,
       message: `SMTP Connection verified successfully for ${userEmail}!`,
     });
-  } catch (error: any) {
-    console.error("SMTP verification error:", error);
+  } catch (error: unknown) {
+    const errMessage = error instanceof Error ? error.message : "Failed to connect to SMTP server. Check credentials.";
+    console.error("SMTP verification error:", errMessage);
     return NextResponse.json(
       {
         success: false,
-        error: error?.message || "Failed to connect to SMTP server. Check credentials.",
+        error: errMessage,
       },
       { status: 500 }
     );

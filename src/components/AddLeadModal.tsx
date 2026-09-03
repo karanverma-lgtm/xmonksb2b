@@ -44,7 +44,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
   const [dealValue, setDealValue] = useState("50000");
   const [stage, setStage] = useState<LeadStage>("interest");
   const [expectedCloseDate, setExpectedCloseDate] = useState("2026-10-31");
-  const [owner, setOwner] = useState(currentUser?.name || "Ruby");
+  const owner = currentUser?.name || "Ruby";
   const [journeyNotes, setJourneyNotes] = useState("");
 
   if (!isOpen) return null;
@@ -289,22 +289,40 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
             </div>
           </div>
 
-          {/* Initial Stage */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Initial Stage (Sets Weightage)
-            </label>
-            <select
-              value={stage}
-              onChange={(e) => setStage(e.target.value as LeadStage)}
-              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-            >
-              {STAGE_ORDER.map((stageKey) => (
-                <option key={stageKey} value={stageKey}>
-                  {STAGES[stageKey].label} ({STAGES[stageKey].weightage}% weightage)
-                </option>
-              ))}
-            </select>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Initial Stage */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Initial Stage (Sets Weightage)
+              </label>
+              <select
+                value={stage}
+                onChange={(e) => setStage(e.target.value as LeadStage)}
+                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              >
+                {STAGE_ORDER.map((stageKey) => (
+                  <option key={stageKey} value={stageKey}>
+                    {STAGES[stageKey].label} ({STAGES[stageKey].weightage}% weightage)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Expected Close Date */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Expected Close Date
+              </label>
+              <div className="relative">
+                <Calendar className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                <input
+                  type="date"
+                  value={expectedCloseDate}
+                  onChange={(e) => setExpectedCloseDate(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+              </div>
+            </div>
           </div>
 
           {/* Initial Journey Note */}

@@ -30,7 +30,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
       } else {
         setErrorMessage("Invalid username or password. Please try again.");
       }
-    } catch (err) {
+    } catch {
       setErrorMessage("Authentication error. Please try again.");
     } finally {
       setIsLoading(false);

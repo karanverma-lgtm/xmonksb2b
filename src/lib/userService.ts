@@ -119,7 +119,7 @@ export function subscribeToUsers(
       unsubscribed = true;
       unsubscribe();
     };
-  } catch (error) {
+  } catch {
     onData(getCachedUsers());
     return () => {};
   }

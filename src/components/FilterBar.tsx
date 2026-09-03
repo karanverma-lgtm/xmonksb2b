@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Filter, Calendar, Percent, RotateCcw, Search, Sparkles } from "lucide-react";
+import { Filter, Calendar, Percent, RotateCcw, Search } from "lucide-react";
 import { STAGES, STAGE_ORDER } from "@/constants/stages";
 
 interface FilterBarProps {

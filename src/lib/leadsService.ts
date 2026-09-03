@@ -2,7 +2,6 @@ import { db } from "./firebase";
 import {
   collection,
   doc,
-  getDocs,
   setDoc,
   updateDoc,
   deleteDoc,
@@ -13,7 +12,6 @@ import {
 } from "firebase/firestore";
 import { Lead, LeadStage, JourneyLog } from "@/types/lead";
 import { STAGES } from "@/constants/stages";
-import { INITIAL_DEMO_LEADS } from "@/constants/demoLeads";
 import { formatINR } from "./formatters";
 
 const COLLECTION_NAME = "b2b_leads";

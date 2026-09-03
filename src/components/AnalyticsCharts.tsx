@@ -108,7 +108,7 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
                   tick={{ fontSize: 11, fill: "#64748b" }}
                 />
                 <Tooltip
-                  formatter={(val: any) => [formatCurrency(Number(val) || 0), ""]}
+                  formatter={(val: unknown) => [formatCurrency(Number(val) || 0), ""]}
                   contentStyle={{
                     backgroundColor: "#0f172a",
                     borderColor: "#334155",

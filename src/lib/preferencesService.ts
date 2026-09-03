@@ -1,5 +1,5 @@
 import { db } from "./firebase";
-import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
+import { doc, setDoc, onSnapshot } from "firebase/firestore";
 
 export interface UserPreferences {
   activeTab?: string;
@@ -101,7 +101,7 @@ export function subscribeToUserPreferences(
       unsubscribed = true;
       unsubscribe();
     };
-  } catch (error) {
+  } catch {
     const local = getLocalPreferences(cleanUser);
     if (local) onData(local);
     return () => {};
