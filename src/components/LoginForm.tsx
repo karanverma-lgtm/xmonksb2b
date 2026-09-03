@@ -3,7 +3,9 @@
 import React, { useState } from "react";
 import { Building2, Lock, User, Eye, EyeOff, ShieldCheck, ArrowRight } from "lucide-react";
 
-import { authenticateUser, UserAccount } from "@/constants/users";
+import { UserAccount } from "@/constants/users";
+import { authenticateUserFromFirestore } from "@/lib/userService";
+import { Loader2 } from "lucide-react";
 
 interface LoginFormProps {
   onLoginSuccess: (user: UserAccount) => void;
@@ -14,15 +16,24 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const user = authenticateUser(username, password);
-    if (user) {
-      setErrorMessage("");
-      onLoginSuccess(user);
-    } else {
-      setErrorMessage("Invalid username or password. Please try again.");
+    setIsLoading(true);
+    setErrorMessage("");
+
+    try {
+      const user = await authenticateUserFromFirestore(username, password);
+      if (user) {
+        onLoginSuccess(user);
+      } else {
+        setErrorMessage("Invalid username or password. Please try again.");
+      }
+    } catch (err) {
+      setErrorMessage("Authentication error. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -103,10 +114,20 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
           {/* Sign In CTA */}
           <button
             type="submit"
-            className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-sm rounded-xl shadow-lg shadow-indigo-500/25 flex items-center justify-center space-x-2 transition-all hover:scale-[1.01] active:scale-[0.99]"
+            disabled={isLoading}
+            className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-lg shadow-indigo-500/25 flex items-center justify-center space-x-2 transition-all hover:scale-[1.01] active:scale-[0.99]"
           >
-            <span>Authenticate & Access Portal</span>
-            <ArrowRight className="w-4 h-4" />
+            {isLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Verifying credentials...</span>
+              </>
+            ) : (
+              <>
+                <span>Authenticate & Access Portal</span>
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )}
           </button>
         </form>
 

@@ -64,6 +64,7 @@ const TEMPLATES_COLLECTION = "b2b_email_templates";
 const SMTP_COLLECTION = "b2b_smtp_config";
 const LOGS_COLLECTION = "b2b_email_logs";
 const CAMPAIGNS_COLLECTION = "b2b_email_campaigns";
+const DELETED_TEMPLATES_COLLECTION = "b2b_deleted_templates";
 
 const SMTP_STORAGE_KEY = "xmonks_b2b_smtp_config";
 const CUSTOM_TEMPLATES_KEY = "xmonks_b2b_email_templates";
@@ -82,6 +83,15 @@ export function getDeletedTemplateIds(): string[] {
     console.warn("Error reading deleted templates list", e);
   }
   return [];
+}
+
+export function saveDeletedTemplateIds(ids: string[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(DELETED_TEMPLATES_KEY, JSON.stringify(ids));
+  } catch (e) {
+    console.warn("Error saving deleted templates list", e);
+  }
 }
 
 export function getStoredSMTPConfig(): SMTPConfig {
@@ -232,12 +242,17 @@ export function deleteTemplate(templateId: string): void {
     }
   }
 
-  // 2. Firestore deletion
+  // 2. Firestore deletion and deleted template tracker
   if (typeof window !== "undefined") {
     try {
       const docRef = doc(db, TEMPLATES_COLLECTION, templateId);
       deleteDoc(docRef).catch((err) =>
         console.warn("Firestore delete template warning:", err)
+      );
+
+      const delRef = doc(db, DELETED_TEMPLATES_COLLECTION, templateId);
+      setDoc(delRef, { id: templateId, deletedAt: new Date().toISOString() }).catch((err) =>
+        console.warn("Firestore save deleted template warning:", err)
       );
     } catch (e) {
       console.warn("Firestore delete template error:", e);
@@ -362,29 +377,55 @@ export function subscribeToTemplates(
   let unsubscribed = false;
 
   try {
-    const ref = collection(db, TEMPLATES_COLLECTION);
-    const unsubscribe = onSnapshot(
-      ref,
+    const templatesRef = collection(db, TEMPLATES_COLLECTION);
+    const deletedRef = collection(db, DELETED_TEMPLATES_COLLECTION);
+
+    let latestFirestoreTemplates: EmailTemplate[] = [];
+    let latestDeletedIds: string[] = getDeletedTemplateIds();
+
+    const combineAndNotify = (isSyncing: boolean) => {
+      const prebuiltMissing = PREBUILT_TEMPLATES.filter(
+        (pt) =>
+          !latestFirestoreTemplates.some((ft) => ft.id === pt.id) &&
+          !latestDeletedIds.includes(pt.id)
+      );
+      const combined = [
+        ...latestFirestoreTemplates.filter((t) => !latestDeletedIds.includes(t.id)),
+        ...prebuiltMissing,
+      ];
+      saveLocalTemplates(combined);
+      onData(combined, isSyncing);
+    };
+
+    // 1. Listen to deleted templates tracker from Firestore
+    const unsubDeleted = onSnapshot(
+      deletedRef,
+      (snap) => {
+        if (unsubscribed) return;
+        latestDeletedIds = snap.docs.map((d) => d.id);
+        saveDeletedTemplateIds(latestDeletedIds);
+        combineAndNotify(true);
+      },
+      (error) => {
+        console.warn("Firestore deleted templates listener fallback:", error);
+      }
+    );
+
+    // 2. Listen to active templates from Firestore
+    const unsubTemplates = onSnapshot(
+      templatesRef,
       (snapshot) => {
         if (unsubscribed) return;
         if (snapshot.empty) {
           seedPrebuiltTemplates();
-          onData(getAllTemplates(), true);
+          latestFirestoreTemplates = getAllTemplates();
         } else {
-          const firestoreTemplates: EmailTemplate[] = snapshot.docs.map((d) => ({
+          latestFirestoreTemplates = snapshot.docs.map((d) => ({
             id: d.id,
             ...(d.data() as Omit<EmailTemplate, "id">),
           }));
-
-          const deletedIds = getDeletedTemplateIds();
-          const prebuiltMissing = PREBUILT_TEMPLATES.filter(
-            (pt) => !firestoreTemplates.some((ft) => ft.id === pt.id) && !deletedIds.includes(pt.id)
-          );
-
-          const combined = [...firestoreTemplates, ...prebuiltMissing];
-          saveLocalTemplates(combined);
-          onData(combined, true);
         }
+        combineAndNotify(true);
       },
       (error) => {
         console.warn("Firestore templates subscription fallback to local:", error);
@@ -396,7 +437,8 @@ export function subscribeToTemplates(
 
     return () => {
       unsubscribed = true;
-      unsubscribe();
+      unsubDeleted();
+      unsubTemplates();
     };
   } catch (error) {
     console.warn("Failed to initialize templates Firestore listener:", error);

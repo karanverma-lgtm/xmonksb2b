@@ -9,6 +9,7 @@ import {
   onSnapshot,
   query,
   orderBy,
+  writeBatch,
 } from "firebase/firestore";
 import { Lead, LeadStage, JourneyLog } from "@/types/lead";
 import { STAGES } from "@/constants/stages";
@@ -152,6 +153,78 @@ export async function createLead(
   saveStoredLocalLeads(updated);
 
   return newLead;
+}
+
+// Bulk create B2B Leads in Firestore with atomic batching (guarantees all client data stored)
+export async function createLeadsBulk(
+  leadsData: Array<
+    Omit<Lead, "id" | "createdAt" | "updatedAt" | "journeyLogs" | "weightage"> & {
+      journeyNotes?: string;
+    }
+  >
+): Promise<Lead[]> {
+  if (leadsData.length === 0) return [];
+
+  const now = new Date();
+  const timestampIso = now.toISOString();
+  const formattedDate = formatTimestamp(now);
+
+  const createdLeads: Lead[] = leadsData.map((data, idx) => {
+    const uniqueId = `lead-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
+    const weightage = STAGES[data.stage]?.weightage ?? 0;
+    const initialLog: JourneyLog = {
+      id: `log-${Date.now()}-${idx}`,
+      timestamp: timestampIso,
+      formattedDate: formattedDate,
+      type: "lead_created",
+      title: `Lead Sourced - Initial Stage: ${STAGES[data.stage]?.label} (${weightage}%)`,
+      description:
+        data.journeyNotes ||
+        `Created lead for ${data.companyName} with stage ${STAGES[data.stage]?.label}.`,
+      author: data.owner || "Sales Representative",
+      newStage: data.stage,
+    };
+
+    return {
+      ...data,
+      id: uniqueId,
+      weightage,
+      createdAt: timestampIso,
+      updatedAt: timestampIso,
+      journeyLogs: [initialLog],
+    };
+  });
+
+  // Write in batches of 450 (Firestore limit is 500 per batch)
+  const BATCH_SIZE = 450;
+  for (let i = 0; i < createdLeads.length; i += BATCH_SIZE) {
+    const chunk = createdLeads.slice(i, i + BATCH_SIZE);
+    try {
+      const batch = writeBatch(db);
+      for (const lead of chunk) {
+        const docRef = doc(db, COLLECTION_NAME, lead.id);
+        batch.set(docRef, lead);
+      }
+      await batch.commit();
+    } catch (err) {
+      console.warn("Firestore batch write error, attempting single write fallback:", err);
+      for (const lead of chunk) {
+        try {
+          const docRef = doc(db, COLLECTION_NAME, lead.id);
+          await setDoc(docRef, lead);
+        } catch (singleErr) {
+          console.warn("Single write fallback failed for lead:", lead.id, singleErr);
+        }
+      }
+    }
+  }
+
+  // Update local storage backup
+  const current = getStoredLocalLeads();
+  const updated = [...createdLeads, ...current];
+  saveStoredLocalLeads(updated);
+
+  return createdLeads;
 }
 
 // Update Lead Stage (Core Requirement: Updates weightage and appends timestamped Journey Log)

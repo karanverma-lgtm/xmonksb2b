@@ -45,6 +45,8 @@ Titan Financial Services,Priya Sharma,Chief Risk Officer,psharma@titanfin.com,+9
 Quantum Medical Systems,Dr. Vikram Sethi,Head of R&D,v.sethi@quantummed.org,+91 99000 88776,Delhi,Healthcare & Biotech,950000,discussion,2026-09-30,Admin User,Technical compliance review call scheduled.
 `;
 
+import { saveCSVUploadArchive } from "@/lib/uploadService";
+
 export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
   isOpen,
   onClose,
@@ -52,6 +54,7 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
   onBulkImport,
 }) => {
   const [file, setFile] = useState<File | null>(null);
+  const [rawCsvText, setRawCsvText] = useState<string>("");
   const [parsedLeads, setParsedLeads] = useState<ParsedCSVLead[]>([]);
   const [error, setError] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -187,6 +190,7 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
     const reader = new FileReader();
     reader.onload = (evt) => {
       const content = evt.target?.result as string;
+      setRawCsvText(content || "");
       parseCSVText(content);
     };
     reader.readAsText(selected);
@@ -196,10 +200,25 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
     if (parsedLeads.length === 0) return;
     setIsProcessing(true);
     try {
+      // 1. Archive raw CSV file to Firestore b2b_csv_uploads
+      if (file && rawCsvText) {
+        await saveCSVUploadArchive({
+          fileName: file.name,
+          fileSize: file.size,
+          rowCount: parsedLeads.length,
+          uploadedBy: currentUser?.name || "Ruby",
+          rawContent: rawCsvText,
+          importedCount: parsedLeads.length,
+          sampleRows: parsedLeads.slice(0, 3).map((l) => `${l.companyName} (${l.contactName})`),
+        });
+      }
+
+      // 2. Import parsed leads into Firestore b2b_leads
       await onBulkImport(parsedLeads);
       setIsProcessing(false);
       setParsedLeads([]);
       setFile(null);
+      setRawCsvText("");
       onClose();
     } catch (err) {
       console.error(err);

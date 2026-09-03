@@ -5,6 +5,7 @@ import { Lead, LeadStage } from "@/types/lead";
 import {
   subscribeToLeads,
   createLead,
+  createLeadsBulk,
   updateLeadStage,
   addJourneyNote,
   updateDealValue,
@@ -23,6 +24,10 @@ import { EmailCampaignTab } from "@/components/EmailCampaignTab";
 import { DeveloperTab } from "@/components/DeveloperTab";
 import { LoginForm } from "@/components/LoginForm";
 import { UserAccount } from "@/constants/users";
+import {
+  subscribeToUserPreferences,
+  saveUserPreferencesToFirestore,
+} from "@/lib/preferencesService";
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -82,6 +87,64 @@ export default function Home() {
   const [toDate, setToDate] = useState("");
   const [selectedWeightage, setSelectedWeightage] = useState("all");
   const [selectedStage, setSelectedStage] = useState("all");
+
+  // Load & subscribe to user UI view & filter preferences from Firestore
+  useEffect(() => {
+    if (!currentUser) return;
+    const unsub = subscribeToUserPreferences(currentUser.username, (prefs) => {
+      if (prefs.activeTab) setActiveTab(prefs.activeTab as NavTab);
+      if (prefs.searchTerm !== undefined) setSearchTerm(prefs.searchTerm);
+      if (prefs.fromDate !== undefined) setFromDate(prefs.fromDate);
+      if (prefs.toDate !== undefined) setToDate(prefs.toDate);
+      if (prefs.selectedStage !== undefined) setSelectedStage(prefs.selectedStage);
+      if (prefs.selectedWeightage !== undefined) setSelectedWeightage(prefs.selectedWeightage);
+    });
+
+    return () => unsub();
+  }, [currentUser]);
+
+  // Handlers to synchronize UI state to Firestore
+  const handleTabChange = (tab: NavTab) => {
+    setActiveTab(tab);
+    if (currentUser) {
+      saveUserPreferencesToFirestore(currentUser.username, { activeTab: tab });
+    }
+  };
+
+  const handleSearchChange = (term: string) => {
+    setSearchTerm(term);
+    if (currentUser) {
+      saveUserPreferencesToFirestore(currentUser.username, { searchTerm: term });
+    }
+  };
+
+  const handleFromDateChange = (val: string) => {
+    setFromDate(val);
+    if (currentUser) {
+      saveUserPreferencesToFirestore(currentUser.username, { fromDate: val });
+    }
+  };
+
+  const handleToDateChange = (val: string) => {
+    setToDate(val);
+    if (currentUser) {
+      saveUserPreferencesToFirestore(currentUser.username, { toDate: val });
+    }
+  };
+
+  const handleStageChange = (val: string) => {
+    setSelectedStage(val);
+    if (currentUser) {
+      saveUserPreferencesToFirestore(currentUser.username, { selectedStage: val });
+    }
+  };
+
+  const handleWeightageChange = (val: string) => {
+    setSelectedWeightage(val);
+    if (currentUser) {
+      saveUserPreferencesToFirestore(currentUser.username, { selectedWeightage: val });
+    }
+  };
 
   // Subscribe to Firestore Realtime Data
   useEffect(() => {
@@ -167,6 +230,15 @@ export default function Home() {
     setToDate("");
     setSelectedWeightage("all");
     setSelectedStage("all");
+    if (currentUser) {
+      saveUserPreferencesToFirestore(currentUser.username, {
+        searchTerm: "",
+        fromDate: "",
+        toDate: "",
+        selectedWeightage: "all",
+        selectedStage: "all",
+      });
+    }
   };
 
   // Calculate total weighted pipeline across filtered leads
@@ -187,19 +259,16 @@ export default function Home() {
       currentUser?.username.toLowerCase() === "admin" ||
       currentUser?.role.toLowerCase().includes("admin");
 
-    const createdList: Lead[] = [];
-    for (const item of importedLeads) {
-      const finalItem = {
-        ...item,
-        owner: !isAdmin
-          ? item.owner && item.owner.trim() !== ""
-            ? item.owner
-            : activeUserName
-          : item.owner || activeUserName,
-      };
-      const created = await createLead(finalItem);
-      createdList.push(created);
-    }
+    const preparedList = importedLeads.map((item) => ({
+      ...item,
+      owner: !isAdmin
+        ? item.owner && item.owner.trim() !== ""
+          ? item.owner
+          : activeUserName
+        : item.owner || activeUserName,
+    }));
+
+    const createdList = await createLeadsBulk(preparedList);
     setLeads((prev) => [...createdList, ...prev]);
   };
 
@@ -255,7 +324,7 @@ export default function Home() {
       {/* Top Navigation */}
       <Navbar
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        setActiveTab={handleTabChange}
         onOpenAddModal={() => setIsAddModalOpen(true)}
         onOpenBulkModal={() => setIsBulkModalOpen(true)}
         onLogout={handleLogout}
@@ -273,15 +342,15 @@ export default function Home() {
             <DashboardStats leads={filteredLeads} />
             <FilterBar
               searchTerm={searchTerm}
-              setSearchTerm={setSearchTerm}
+              setSearchTerm={handleSearchChange}
               fromDate={fromDate}
-              setFromDate={setFromDate}
+              setFromDate={handleFromDateChange}
               toDate={toDate}
-              setToDate={setToDate}
+              setToDate={handleToDateChange}
               selectedWeightage={selectedWeightage}
-              setSelectedWeightage={setSelectedWeightage}
+              setSelectedWeightage={handleWeightageChange}
               selectedStage={selectedStage}
-              setSelectedStage={setSelectedStage}
+              setSelectedStage={handleStageChange}
               onResetFilters={handleResetFilters}
               filteredCount={filteredLeads.length}
               totalCount={userScopedLeads.length}
@@ -318,7 +387,7 @@ export default function Home() {
         {activeTab === "email" && (
           <EmailCampaignTab
             leads={userScopedLeads}
-            onNavigateToDeveloper={() => setActiveTab("developer")}
+            onNavigateToDeveloper={() => handleTabChange("developer")}
           />
         )}
 
