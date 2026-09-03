@@ -10,7 +10,7 @@ export interface JourneyLog {
   id: string;
   timestamp: string; // ISO string format
   formattedDate: string; // Human readable formatted date & time
-  type: "stage_change" | "note" | "lead_created" | "value_update" | "contact_update";
+  type: "stage_change" | "note" | "lead_created" | "value_update" | "contact_update" | "program_update";
   title: string;
   description: string;
   previousStage?: LeadStage;
@@ -27,6 +27,7 @@ export interface Lead {
   contactPhone?: string;
   city?: string;
   industry: string;
+  program?: string; // e.g. Executive Coaching, Leadership Development, etc.
   dealValue: number; // In INR
   stage: LeadStage;
   weightage: number; // Percentage e.g. 10, 25, 50, 75, 100

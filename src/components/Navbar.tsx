@@ -93,7 +93,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               }`}
             >
               <TableIcon className="w-3.5 h-3.5" />
-              <span>Directory</span>
+              <span>Clients</span>
             </button>
 
             <button
@@ -241,7 +241,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           }`}
         >
           <TableIcon className="w-3.5 h-3.5" />
-          <span>Directory</span>
+          <span>Clients</span>
         </button>
 
         <button

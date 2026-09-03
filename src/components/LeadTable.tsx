@@ -10,24 +10,35 @@ import {
   ArrowUpDown,
   Trash2,
   MapPin,
+  GraduationCap,
+  Pencil,
+  Check,
+  X,
+  Plus,
 } from "lucide-react";
-
 import { formatINR } from "@/lib/formatters";
+import { PRESET_PROGRAMS, getProgramBadgeStyle } from "@/constants/programs";
 
 interface LeadTableProps {
   leads: Lead[];
   onSelectLead: (lead: Lead) => void;
   onUpdateStage?: (leadId: string, newStage: LeadStage, notes?: string) => void;
   onDeleteLead?: (leadId: string) => void;
+  onUpdateProgram?: (leadId: string, newProgram: string) => void;
 }
 
 export const LeadTable: React.FC<LeadTableProps> = ({
   leads,
   onSelectLead,
   onDeleteLead,
+  onUpdateProgram,
 }) => {
   const [sortBy, setSortBy] = useState<"dealValue" | "weightage" | "updatedAt">("updatedAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+
+  // Inline program editing state
+  const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
+  const [selectedProgramInput, setSelectedProgramInput] = useState<string>("");
 
   // Sort leads
   const sortedLeads = [...leads].sort((a, b) => {
@@ -53,14 +64,29 @@ export const LeadTable: React.FC<LeadTableProps> = ({
     }
   };
 
+  const handleStartEditProgram = (lead: Lead) => {
+    setEditingLeadId(lead.id);
+    setSelectedProgramInput(lead.program || PRESET_PROGRAMS[0].name);
+  };
+
+  const handleSaveProgram = (leadId: string) => {
+    if (onUpdateProgram && selectedProgramInput.trim()) {
+      onUpdateProgram(leadId, selectedProgramInput.trim());
+    }
+    setEditingLeadId(null);
+  };
+
   const formatCurrency = (val: number) => formatINR(val);
 
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden">
       {/* Table Header */}
       <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-        <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-          Filtered B2B Directory ({sortedLeads.length} leads)
+        <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center space-x-2">
+          <span>Client Roster & Pitched Offerings</span>
+          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 font-semibold">
+            {sortedLeads.length} clients
+          </span>
         </h3>
       </div>
 
@@ -69,7 +95,8 @@ export const LeadTable: React.FC<LeadTableProps> = ({
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-50/70 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              <th className="py-3 px-4">Company & Industry</th>
+              <th className="py-3 px-4">Client / Company</th>
+              <th className="py-3 px-4">Pitched Program</th>
               <th className="py-3 px-4">Primary Contact</th>
               <th className="py-3 px-4">Stage & Weightage</th>
               <th className="py-3 px-4 cursor-pointer" onClick={() => toggleSort("dealValue")}>
@@ -80,7 +107,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({
               </th>
               <th className="py-3 px-4 cursor-pointer" onClick={() => toggleSort("weightage")}>
                 <div className="flex items-center space-x-1">
-                  <span>Weighted Revenue</span>
+                  <span>Weighted Rev.</span>
                   <ArrowUpDown className="w-3 h-3 text-slate-400" />
                 </div>
               </th>
@@ -91,8 +118,8 @@ export const LeadTable: React.FC<LeadTableProps> = ({
           <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-sm">
             {sortedLeads.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-8 text-center text-slate-400 text-sm">
-                  No matching B2B leads found.
+                <td colSpan={8} className="py-8 text-center text-slate-400 text-sm">
+                  No matching B2B clients found.
                 </td>
               </tr>
             ) : (
@@ -100,6 +127,8 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                 const stageInfo = STAGES[lead.stage];
                 const weightedVal = lead.dealValue * (lead.weightage / 100);
                 const latestLog = lead.journeyLogs?.[0];
+                const badgeStyle = getProgramBadgeStyle(lead.program);
+                const isEditing = editingLeadId === lead.id;
 
                 return (
                   <tr
@@ -109,7 +138,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                     {/* Company */}
                     <td className="py-3.5 px-4">
                       <div className="flex items-center space-x-3">
-                        <div className="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">
+                        <div className="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex-shrink-0">
                           <Building2 className="w-4 h-4" />
                         </div>
                         <div>
@@ -128,6 +157,71 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                           <div className="text-xs text-slate-500">{lead.industry}</div>
                         </div>
                       </div>
+                    </td>
+
+                    {/* Pitched Program Column (Interactive & Editable) */}
+                    <td className="py-3.5 px-4 min-w-[210px]">
+                      {isEditing ? (
+                        <div className="flex items-center space-x-1.5">
+                          <select
+                            value={selectedProgramInput}
+                            onChange={(e) => setSelectedProgramInput(e.target.value)}
+                            className="text-xs font-semibold px-2 py-1 bg-white dark:bg-slate-950 border border-indigo-500 rounded-lg focus:outline-none max-w-[180px]"
+                            autoFocus
+                          >
+                            {PRESET_PROGRAMS.map((p) => (
+                              <option key={p.id} value={p.name}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveProgram(lead.id)}
+                            className="p-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded transition"
+                            title="Save Pitched Program"
+                          >
+                            <Check className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingLeadId(null)}
+                            className="p-1 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded transition"
+                            title="Cancel"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : lead.program ? (
+                        <div className="inline-flex items-center space-x-1.5 group">
+                          <span
+                            className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${badgeStyle.badgeBg} ${badgeStyle.badgeText} ${badgeStyle.borderColor}`}
+                            title={`Pitched Program: ${lead.program}`}
+                          >
+                            <GraduationCap className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate max-w-[180px]">{lead.program}</span>
+                          </span>
+                          {onUpdateProgram && (
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditProgram(lead)}
+                              className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
+                              title="Edit Pitched Program"
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleStartEditProgram(lead)}
+                          className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 hover:bg-indigo-50 dark:bg-slate-800/60 dark:hover:bg-indigo-950/60 hover:text-indigo-600 dark:hover:text-indigo-300 border border-dashed border-slate-300 dark:border-slate-700 transition"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>Assign Program</span>
+                        </button>
+                      )}
                     </td>
 
                     {/* Contact */}
@@ -177,7 +271,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                     </td>
 
                     {/* Last Log */}
-                    <td className="py-3.5 px-4 text-xs text-slate-500 max-w-[220px]">
+                    <td className="py-3.5 px-4 text-xs text-slate-500 max-w-[200px]">
                       {latestLog ? (
                         <div>
                           <div className="font-semibold text-slate-700 dark:text-slate-300 truncate">
@@ -199,7 +293,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                           onClick={() => onSelectLead(lead)}
                           className="px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900 font-medium text-xs transition"
                         >
-                          View Logs
+                          View Details
                         </button>
                         {onDeleteLead && (
                           <button

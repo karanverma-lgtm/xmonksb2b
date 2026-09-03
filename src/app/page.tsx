@@ -9,6 +9,7 @@ import {
   updateLeadStage,
   addJourneyNote,
   updateDealValue,
+  updateLeadProgram,
   deleteLead,
 } from "@/lib/leadsService";
 import { Navbar, NavTab } from "@/components/Navbar";
@@ -326,6 +327,18 @@ export default function Home() {
     }
   };
 
+  const handleUpdateProgram = async (leadId: string, newProgram: string) => {
+    const updated = await updateLeadProgram(
+      leadId,
+      newProgram,
+      currentUser?.name || "Sales Representative"
+    );
+    if (updated) {
+      setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
+      setSelectedLead((prev) => (prev && prev.id === leadId ? updated : prev));
+    }
+  };
+
   const handleDeleteLead = async (leadId: string) => {
     // Immediately update state for instantaneous UI response
     setLeads((prev) => prev.filter((l: Lead) => l.id !== leadId));
@@ -396,6 +409,7 @@ export default function Home() {
             onSelectLead={(lead) => setSelectedLead(lead)}
             onUpdateStage={handleUpdateStage}
             onDeleteLead={handleDeleteLead}
+            onUpdateProgram={handleUpdateProgram}
           />
         )}
 
@@ -424,6 +438,7 @@ export default function Home() {
         onAddNote={handleAddNote}
         onDeleteLead={handleDeleteLead}
         onUpdateDealValue={handleUpdateDealValue}
+        onUpdateProgram={handleUpdateProgram}
       />
 
       {/* Add New Lead Modal */}

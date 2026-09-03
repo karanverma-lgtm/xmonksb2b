@@ -20,10 +20,12 @@ import {
   MapPin,
   Pencil,
   Check,
+  GraduationCap,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
 import { formatINR } from "@/lib/formatters";
+import { PRESET_PROGRAMS, getProgramBadgeStyle } from "@/constants/programs";
 
 interface LeadDetailModalProps {
   lead: Lead | null;
@@ -32,6 +34,7 @@ interface LeadDetailModalProps {
   onAddNote: (leadId: string, noteText: string) => void;
   onDeleteLead?: (leadId: string) => void;
   onUpdateDealValue?: (leadId: string, newDealValue: number) => void;
+  onUpdateProgram?: (leadId: string, newProgram: string) => void;
 }
 
 export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
@@ -41,11 +44,16 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   onAddNote,
   onDeleteLead,
   onUpdateDealValue,
+  onUpdateProgram,
 }) => {
   const [newNoteText, setNewNoteText] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isEditingValue, setIsEditingValue] = useState(false);
   const [editedValue, setEditedValue] = useState("");
+  const [isEditingProgram, setIsEditingProgram] = useState(false);
+  const [editedProgram, setEditedProgram] = useState("");
+  const [isCustomProgram, setIsCustomProgram] = useState(false);
+  const [customProgramInput, setCustomProgramInput] = useState("");
   const [stageNotePrompt, setStageNotePrompt] = useState<{
     show: boolean;
     targetStage?: LeadStage;
@@ -56,6 +64,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
 
   const currentStageInfo = STAGES[lead.stage];
   const weightedValue = lead.dealValue * (lead.weightage / 100);
+  const badgeStyle = getProgramBadgeStyle(lead.program);
 
   const handleStageClick = (stageId: LeadStage) => {
     if (stageId === lead.stage) return;
@@ -111,6 +120,14 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                 >
                   {currentStageInfo.label} ({lead.weightage}%)
                 </span>
+                {lead.program && (
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center space-x-1 ${badgeStyle.badgeBg} ${badgeStyle.badgeText} ${badgeStyle.borderColor}`}
+                  >
+                    <GraduationCap className="w-3.5 h-3.5" />
+                    <span>{lead.program}</span>
+                  </span>
+                )}
               </div>
 
               <div className="flex items-center space-x-4 text-xs text-slate-500 dark:text-slate-400 mt-1 flex-wrap gap-y-1">
@@ -206,6 +223,105 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
 
         {/* Modal Scrollable Content */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1">
+          {/* Pitched Program Highlight Banner & Quick Editor */}
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-50/80 via-purple-50/50 to-slate-50 dark:from-slate-900 dark:via-indigo-950/30 dark:to-slate-900 border border-indigo-200/80 dark:border-indigo-900/50 flex items-center justify-between flex-wrap gap-3 shadow-sm">
+            <div className="flex items-center space-x-3 flex-1 min-w-[280px]">
+              <div className="p-2.5 rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-500/20 flex-shrink-0">
+                <GraduationCap className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                  Target Offering / Pitched Program
+                </div>
+                {isEditingProgram ? (
+                  <div className="mt-1 space-y-2">
+                    <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                      {!isCustomProgram ? (
+                        <select
+                          value={editedProgram}
+                          onChange={(e) => setEditedProgram(e.target.value)}
+                          className="px-3 py-1.5 bg-white dark:bg-slate-950 border border-indigo-500 rounded-xl text-xs font-bold text-slate-800 dark:text-white focus:outline-none max-w-sm"
+                        >
+                          {PRESET_PROGRAMS.map((p) => (
+                            <option key={p.id} value={p.name}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={customProgramInput}
+                          onChange={(e) => setCustomProgramInput(e.target.value)}
+                          placeholder="Enter custom program offering..."
+                          className="px-3 py-1.5 bg-white dark:bg-slate-950 border border-purple-500 rounded-xl text-xs font-bold text-slate-800 dark:text-white focus:outline-none w-64"
+                        />
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => setIsCustomProgram(!isCustomProgram)}
+                        className="text-[11px] font-bold px-2 py-1 rounded bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-300"
+                      >
+                        {isCustomProgram ? "Use Presets" : "Custom"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const valToSave = isCustomProgram
+                            ? customProgramInput.trim() || editedProgram
+                            : editedProgram;
+                          if (onUpdateProgram && valToSave.trim()) {
+                            onUpdateProgram(lead.id, valToSave.trim());
+                          }
+                          setIsEditingProgram(false);
+                        }}
+                        className="p-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition shadow"
+                        title="Save Pitched Program"
+                      >
+                        <Check className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingProgram(false)}
+                        className="p-1.5 text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition"
+                        title="Cancel"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center space-x-2 mt-0.5 flex-wrap gap-y-1">
+                    <span className="text-base font-black text-slate-900 dark:text-white">
+                      {lead.program || "No program assigned yet"}
+                    </span>
+                    <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${badgeStyle.badgeBg} ${badgeStyle.badgeText} ${badgeStyle.borderColor}`}>
+                      {lead.program ? "Active Pitch Offering" : "Pending Pitch"}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {onUpdateProgram && !isEditingProgram && (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditedProgram(lead.program || PRESET_PROGRAMS[0].name);
+                  setCustomProgramInput(lead.program || "");
+                  setIsCustomProgram(false);
+                  setIsEditingProgram(true);
+                }}
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-950 transition shadow-sm"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                <span>{lead.program ? "Change Program" : "Assign Program"}</span>
+              </button>
+            )}
+          </div>
+
           {/* Key Deal Metrics Bar */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800">
             <div>

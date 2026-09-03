@@ -19,6 +19,7 @@ import {
   Trash2,
   MapPin,
   Phone,
+  GraduationCap,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
@@ -195,8 +196,18 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                           )}
                         </div>
 
+                        {/* Pitched Program Badge */}
+                        {lead.program && (
+                          <div className="mt-2">
+                            <span className="inline-flex items-center space-x-1 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50/90 dark:bg-indigo-950/70 px-2 py-0.5 rounded-md border border-indigo-200/60 dark:border-indigo-800/60 max-w-full">
+                              <GraduationCap className="w-3 h-3 text-indigo-500 flex-shrink-0" />
+                              <span className="truncate">{lead.program}</span>
+                            </span>
+                          </div>
+                        )}
+
                         {/* Deal Value & Weightage breakdown */}
-                        <div className="mt-3 p-2 rounded-lg bg-slate-50 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                        <div className="mt-2.5 p-2 rounded-lg bg-slate-50 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800 flex items-center justify-between">
                           <div>
                             <div className="text-[10px] text-slate-400 uppercase font-semibold">
                               Deal Value

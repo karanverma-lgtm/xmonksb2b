@@ -24,6 +24,7 @@ interface ParsedCSVLead {
   contactPhone?: string;
   city?: string;
   industry: string;
+  program?: string;
   dealValue: number;
   stage: LeadStage;
   expectedCloseDate: string;
@@ -159,6 +160,7 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
           contactPhone,
           city,
           industry,
+          program: "Executive Coaching & Leadership Presence",
           dealValue,
           stage,
           expectedCloseDate,

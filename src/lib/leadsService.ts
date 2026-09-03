@@ -386,6 +386,59 @@ export async function updateDealValue(
   return updatedLead;
 }
 
+// Update Pitched Program with timestamped Journey Log
+export async function updateLeadProgram(
+  leadId: string,
+  newProgram: string,
+  author: string = "Sales Representative"
+): Promise<Lead | null> {
+  const localLeads = getStoredLocalLeads();
+  const target = localLeads.find((l) => l.id === leadId);
+  if (!target) return null;
+
+  const previousProgram = target.program || "Not Assigned";
+  const trimmedNew = newProgram.trim();
+  if (previousProgram === trimmedNew) return target;
+
+  const now = new Date();
+  const timestampIso = now.toISOString();
+  const formattedDate = formatTimestamp(now);
+
+  const programLog: JourneyLog = {
+    id: "log-" + Date.now() + "-" + Math.floor(Math.random() * 1000),
+    timestamp: timestampIso,
+    formattedDate: formattedDate,
+    type: "program_update",
+    title: `Pitched Program: ${trimmedNew || "Unassigned"}`,
+    description: `Changed pitched program from "${previousProgram}" to "${trimmedNew || "Unassigned"}".`,
+    author: author,
+  };
+
+  const updatedLead: Lead = {
+    ...target,
+    program: trimmedNew,
+    updatedAt: timestampIso,
+    journeyLogs: [programLog, ...target.journeyLogs],
+  };
+
+  // Firestore Update
+  try {
+    const docRef = doc(db, COLLECTION_NAME, leadId);
+    await updateDoc(docRef, {
+      program: trimmedNew,
+      updatedAt: timestampIso,
+      journeyLogs: updatedLead.journeyLogs,
+    });
+  } catch (err) {
+    console.warn("Firestore program update skipped, updating local state", err);
+  }
+
+  const updatedLeads = localLeads.map((l) => (l.id === leadId ? updatedLead : l));
+  saveStoredLocalLeads(updatedLeads);
+
+  return updatedLead;
+}
+
 // Delete Lead
 export async function deleteLead(leadId: string): Promise<boolean> {
   try {
