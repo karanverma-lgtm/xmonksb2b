@@ -31,14 +31,45 @@ export interface EmailLogEntry {
   createdAt?: number;
 }
 
+export interface EmailCampaignRecipient {
+  email: string;
+  contactName?: string;
+  companyName?: string;
+  designation?: string;
+  industry?: string;
+  dealValue?: number | string;
+  status?: "success" | "failed";
+  error?: string;
+  messageId?: string;
+}
+
+export interface EmailCampaign {
+  id: string;
+  name: string;
+  subject: string;
+  templateId?: string;
+  templateName?: string;
+  htmlContent: string;
+  source: "csv" | "crm" | "single";
+  recipientCount: number;
+  successCount: number;
+  failedCount: number;
+  status: "completed" | "failed" | "partial";
+  createdAt: string;
+  createdAtMs: number;
+  recipients: EmailCampaignRecipient[];
+}
+
 const TEMPLATES_COLLECTION = "b2b_email_templates";
 const SMTP_COLLECTION = "b2b_smtp_config";
 const LOGS_COLLECTION = "b2b_email_logs";
+const CAMPAIGNS_COLLECTION = "b2b_email_campaigns";
 
 const SMTP_STORAGE_KEY = "xmonks_b2b_smtp_config";
 const CUSTOM_TEMPLATES_KEY = "xmonks_b2b_email_templates";
 const DELETED_TEMPLATES_KEY = "xmonks_b2b_deleted_templates";
 const EMAIL_LOGS_KEY = "xmonks_b2b_email_logs";
+const CAMPAIGNS_STORAGE_KEY = "xmonks_b2b_email_campaigns";
 
 // --- LOCAL STORAGE BACKUP HELPERS ---
 
@@ -218,6 +249,108 @@ export function deleteCustomTemplate(templateId: string): void {
   deleteTemplate(templateId);
 }
 
+// --- CAMPAIGN STORAGE & FIREBASE HELPERS ---
+
+export function getStoredCampaigns(): EmailCampaign[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(CAMPAIGNS_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    console.warn("Error reading stored campaigns", e);
+  }
+  return [];
+}
+
+export function saveLocalCampaigns(campaigns: EmailCampaign[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(CAMPAIGNS_STORAGE_KEY, JSON.stringify(campaigns));
+  } catch (e) {
+    console.warn("Failed to save campaigns locally", e);
+  }
+}
+
+export function saveCampaignRecord(
+  campaignData: Omit<EmailCampaign, "id" | "createdAt" | "createdAtMs"> & {
+    id?: string;
+    createdAt?: string;
+    createdAtMs?: number;
+  }
+): EmailCampaign {
+  const now = Date.now();
+  const id = campaignData.id || `campaign-${now}-${Math.random().toString(36).substring(2, 7)}`;
+  const createdAtMs = campaignData.createdAtMs || now;
+  const createdAt =
+    campaignData.createdAt ||
+    new Date(createdAtMs).toLocaleString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+
+  const campaignRecord: EmailCampaign = {
+    ...campaignData,
+    id,
+    createdAt,
+    createdAtMs,
+  };
+
+  // 1. Update Local Storage
+  const current = getStoredCampaigns();
+  const filtered = current.filter((c) => c.id !== id);
+  const updated = [campaignRecord, ...filtered].slice(0, 100);
+  saveLocalCampaigns(updated);
+
+  // 2. Sync to Firestore
+  if (typeof window !== "undefined") {
+    try {
+      const docRef = doc(db, CAMPAIGNS_COLLECTION, id);
+      setDoc(docRef, campaignRecord, { merge: true }).catch((err) =>
+        console.warn("Firestore save campaign warning:", err)
+      );
+    } catch (e) {
+      console.warn("Firestore save campaign error:", e);
+    }
+  }
+
+  return campaignRecord;
+}
+
+export function deleteCampaignRecord(campaignId: string): void {
+  // Local storage update
+  const current = getStoredCampaigns();
+  const filtered = current.filter((c) => c.id !== campaignId);
+  saveLocalCampaigns(filtered);
+
+  // Firestore deletion
+  if (typeof window !== "undefined") {
+    try {
+      const docRef = doc(db, CAMPAIGNS_COLLECTION, campaignId);
+      deleteDoc(docRef).catch((err) =>
+        console.warn("Firestore delete campaign warning:", err)
+      );
+    } catch (e) {
+      console.warn("Firestore delete campaign error:", e);
+    }
+  }
+}
+
+export async function clearAllCampaigns(): Promise<void> {
+  saveLocalCampaigns([]);
+  if (typeof window !== "undefined") {
+    try {
+      const ref = collection(db, CAMPAIGNS_COLLECTION);
+      const snap = await getDocs(ref);
+      for (const d of snap.docs) {
+        await deleteDoc(doc(db, CAMPAIGNS_COLLECTION, d.id)).catch(() => {});
+      }
+    } catch (e) {
+      console.warn("Error clearing campaigns in Firestore", e);
+    }
+  }
+}
+
 // --- REAL-TIME FIRESTORE SUBSCRIPTIONS ---
 
 // Real-Time Listener for Global Email Templates
@@ -308,6 +441,46 @@ export function subscribeToSMTPConfig(
     };
   } catch (error) {
     onData(getStoredSMTPConfig(), false);
+    return () => {};
+  }
+}
+
+// Real-Time Listener for Global Email Campaigns
+export function subscribeToCampaigns(
+  onData: (campaigns: EmailCampaign[], isFirebaseSyncing: boolean) => void
+): () => void {
+  if (typeof window === "undefined") return () => {};
+
+  let unsubscribed = false;
+
+  try {
+    const ref = collection(db, CAMPAIGNS_COLLECTION);
+    const q = query(ref, orderBy("createdAtMs", "desc"));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        if (unsubscribed) return;
+        const firestoreCampaigns: EmailCampaign[] = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as Omit<EmailCampaign, "id">),
+        }));
+        saveLocalCampaigns(firestoreCampaigns);
+        onData(firestoreCampaigns, true);
+      },
+      (error) => {
+        console.warn("Firestore campaigns listener fallback to local:", error);
+        if (!unsubscribed) {
+          onData(getStoredCampaigns(), false);
+        }
+      }
+    );
+
+    return () => {
+      unsubscribed = true;
+      unsubscribe();
+    };
+  } catch (error) {
+    onData(getStoredCampaigns(), false);
     return () => {};
   }
 }
@@ -409,11 +582,21 @@ export function addEmailLogs(
   }
 }
 
-export function clearEmailLogs(): void {
+export async function clearEmailLogs(): Promise<void> {
   if (typeof window === "undefined") return;
   try {
     localStorage.removeItem(EMAIL_LOGS_KEY);
   } catch (e) {}
+
+  try {
+    const ref = collection(db, LOGS_COLLECTION);
+    const snap = await getDocs(ref);
+    for (const d of snap.docs) {
+      await deleteDoc(doc(db, LOGS_COLLECTION, d.id)).catch(() => {});
+    }
+  } catch (e) {
+    console.warn("Error clearing email logs from Firestore:", e);
+  }
 }
 
 // Call Server API to verify SMTP Connection
@@ -470,3 +653,4 @@ export async function sendEmailCampaign(payload: {
 
   return data;
 }
+

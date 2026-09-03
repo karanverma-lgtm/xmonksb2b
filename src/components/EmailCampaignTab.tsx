@@ -40,7 +40,12 @@ import {
   getStoredSMTPConfig,
   subscribeToTemplates,
   subscribeToEmailLogs,
+  subscribeToCampaigns,
+  saveCampaignRecord,
+  deleteCampaignRecord,
+  clearAllCampaigns,
   EmailLogEntry,
+  EmailCampaign,
 } from "@/lib/emailService";
 
 interface EmailCampaignTabProps {
@@ -67,7 +72,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
   leads,
   onNavigateToDeveloper,
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<"templates" | "single" | "bulk" | "logs">("templates");
+  const [activeSubTab, setActiveSubTab] = useState<"templates" | "single" | "bulk" | "campaigns" | "logs">("templates");
 
   // Template State
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
@@ -102,11 +107,13 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
   const [bulkStatusMsg, setBulkStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [csvFileName, setCsvFileName] = useState<string>("");
 
-  // Logs State
+  // Campaigns & Logs State
+  const [campaigns, setCampaigns] = useState<EmailCampaign[]>([]);
+  const [campaignSearchTerm, setCampaignSearchTerm] = useState<string>("");
   const [logs, setLogs] = useState<EmailLogEntry[]>([]);
   const [logSearchTerm, setLogSearchTerm] = useState<string>("");
 
-  // Subscribe to Real-Time Templates & Email Logs via Firebase Firestore
+  // Subscribe to Real-Time Templates, Campaigns & Email Logs via Firebase Firestore
   useEffect(() => {
     const unsubTemplates = subscribeToTemplates((updatedTemplates) => {
       setTemplates(updatedTemplates);
@@ -140,12 +147,17 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
       }
     });
 
+    const unsubCampaigns = subscribeToCampaigns((updatedCampaigns) => {
+      setCampaigns(updatedCampaigns);
+    });
+
     const unsubLogs = subscribeToEmailLogs((updatedLogs) => {
       setLogs(updatedLogs);
     });
 
     return () => {
       unsubTemplates();
+      unsubCampaigns();
       unsubLogs();
     };
   }, []);
@@ -268,10 +280,37 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
         htmlContent: singleHtmlContent,
       });
 
+      const successCount = res.successCount || (res.success ? 1 : 0);
+      const failedCount = 1 - successCount;
+
+      saveCampaignRecord({
+        name: `Single Email: ${singleContactName || singleRecipientEmail}`,
+        subject: singleSubject,
+        templateId: selectedSingleTemplateId,
+        templateName: templates.find((t) => t.id === selectedSingleTemplateId)?.name,
+        htmlContent: singleHtmlContent,
+        source: "single",
+        recipientCount: 1,
+        successCount,
+        failedCount,
+        status: successCount > 0 ? "completed" : "failed",
+        recipients: [
+          {
+            email: singleRecipientEmail,
+            contactName: singleContactName,
+            companyName: singleCompanyName,
+            designation: singleDesignation,
+            industry: singleIndustry,
+            status: successCount > 0 ? "success" : "failed",
+            error: res.error || res.results?.[0]?.error,
+          },
+        ],
+      });
+
       if (res.success && res.successCount > 0) {
         setSingleStatusMsg({
           type: "success",
-          text: `Email successfully delivered to ${singleRecipientEmail}!`,
+          text: `Email successfully delivered to ${singleRecipientEmail}! Saved to Firebase.`,
         });
       } else {
         setSingleStatusMsg({
@@ -403,10 +442,36 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
 
       setBulkProgress({ current: targetRecipients.length, total: targetRecipients.length });
 
+      const recipientDetails = targetRecipients.map((tr) => {
+        const matched = res.results?.find((r: any) => r.recipient === tr.email);
+        return {
+          ...tr,
+          status: matched ? (matched.success ? ("success" as const) : ("failed" as const)) : ("failed" as const),
+          error: matched?.error,
+        };
+      });
+
+      const succCount = res.successCount || 0;
+      const totCount = res.totalCount || targetRecipients.length;
+
+      saveCampaignRecord({
+        name: `Bulk Campaign: ${bulkSubject} (${targetRecipients.length} recipients)`,
+        subject: bulkSubject,
+        templateId: selectedBulkTemplateId,
+        templateName: templates.find((t) => t.id === selectedBulkTemplateId)?.name,
+        htmlContent: bulkHtmlContent,
+        source: bulkSource === "csv" ? "csv" : "crm",
+        recipientCount: targetRecipients.length,
+        successCount: succCount,
+        failedCount: totCount - succCount,
+        status: succCount === targetRecipients.length ? "completed" : succCount > 0 ? "partial" : "failed",
+        recipients: recipientDetails,
+      });
+
       if (res.successCount > 0) {
         setBulkStatusMsg({
           type: "success",
-          text: `Bulk Email Campaign Completed! Successfully dispatched ${res.successCount} of ${res.totalCount} emails.`,
+          text: `Bulk Email Campaign Completed! Dispatched ${res.successCount} of ${res.totalCount} emails. Saved to Firebase.`,
         });
       } else {
         setBulkStatusMsg({
@@ -424,6 +489,19 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
     }
   };
 
+  // Filter campaigns for campaigns tab
+  const filteredCampaigns = useMemo(() => {
+    if (!campaignSearchTerm.trim()) return campaigns;
+    const term = campaignSearchTerm.toLowerCase();
+    return campaigns.filter(
+      (c) =>
+        c.name.toLowerCase().includes(term) ||
+        c.subject.toLowerCase().includes(term) ||
+        c.source.toLowerCase().includes(term) ||
+        c.recipients.some((r) => r.email.toLowerCase().includes(term))
+    );
+  }, [campaigns, campaignSearchTerm]);
+
   // Filter logs for logs tab
   const filteredLogs = useMemo(() => {
     if (!logSearchTerm.trim()) return logs;
@@ -436,12 +514,12 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
     );
   }, [logs, logSearchTerm]);
 
-  const smtpConfig = getStoredSMTPConfig();
+  const smtpConfig = useMemo(() => getStoredSMTPConfig(), []);
 
   return (
-    <div className="space-y-6 max-w-[1600px] mx-auto">
-      {/* Top Banner */}
-      <div className="p-6 rounded-3xl bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-950 text-white shadow-xl border border-purple-500/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="space-y-6 animate-fadeIn">
+      {/* Top Header Banner */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-gradient-to-r from-purple-900/90 via-slate-900 to-indigo-900/90 rounded-3xl border border-purple-500/20 text-white shadow-xl">
         <div className="flex items-center space-x-4">
           <div className="p-3.5 bg-purple-500/20 rounded-2xl border border-purple-400/30 text-purple-300">
             <Mail className="w-8 h-8" />
@@ -478,7 +556,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
       </div>
 
       {/* Navigation Sub-Tabs */}
-      <div className="flex items-center space-x-2 p-1.5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+      <div className="flex flex-wrap items-center gap-2 p-1.5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
         <button
           onClick={() => setActiveSubTab("templates")}
           className={`flex items-center space-x-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all ${
@@ -525,6 +603,20 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
 
         <button
           onClick={() => {
+            setActiveSubTab("campaigns");
+          }}
+          className={`flex items-center space-x-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all ${
+            activeSubTab === "campaigns"
+              ? "bg-purple-600 text-white shadow-md shadow-purple-500/20"
+              : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+          }`}
+        >
+          <Sparkles className="w-4 h-4 text-amber-400" />
+          <span>Firebase Campaigns ({campaigns.length})</span>
+        </button>
+
+        <button
+          onClick={() => {
             setActiveSubTab("logs");
           }}
           className={`flex items-center space-x-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all ${
@@ -534,7 +626,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
           }`}
         >
           <History className="w-4 h-4" />
-          <span>Dispatch History ({logs.length})</span>
+          <span>Dispatch Logs ({logs.length})</span>
         </button>
       </div>
 
@@ -1216,7 +1308,189 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
         </div>
       )}
 
-      {/* TAB 4: DISPATCH LOGS HISTORY */}
+      {/* TAB 4: FIREBASE CAMPAIGNS HISTORY */}
+      {activeSubTab === "campaigns" && (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4 gap-4">
+            <div>
+              <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center space-x-2">
+                <Sparkles className="w-5 h-5 text-amber-500" />
+                <span>Saved Firebase Campaigns</span>
+              </h3>
+              <p className="text-xs text-slate-500">
+                All single and bulk email campaign records synchronized in real-time with Firebase Firestore.
+              </p>
+            </div>
+
+            <div className="flex items-center space-x-3">
+              <div className="relative w-64">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  value={campaignSearchTerm}
+                  onChange={(e) => setCampaignSearchTerm(e.target.value)}
+                  placeholder="Filter campaigns by name or subject..."
+                  className="w-full pl-9 pr-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                />
+              </div>
+
+              {campaigns.length > 0 && (
+                <button
+                  onClick={async () => {
+                    if (confirm("Are you sure you want to delete all stored campaigns from Firebase?")) {
+                      await clearAllCampaigns();
+                    }
+                  }}
+                  className="px-3.5 py-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 rounded-xl transition"
+                >
+                  Clear All Campaigns
+                </button>
+              )}
+            </div>
+          </div>
+
+          {filteredCampaigns.length === 0 ? (
+            <div className="p-12 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl space-y-3">
+              <Mail className="w-12 h-12 text-slate-400 mx-auto opacity-50" />
+              <p className="text-sm font-semibold text-slate-600 dark:text-slate-400">
+                No campaign records found in Firebase.
+              </p>
+              <p className="text-xs text-slate-400 max-w-md mx-auto">
+                Dispatch a single email or bulk CSV campaign from the tabs above to see real-time campaign analytics and history stored directly in Firestore.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4">
+              {filteredCampaigns.map((camp) => (
+                <div
+                  key={camp.id}
+                  className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 hover:border-purple-500/40 transition space-y-3"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800/60 pb-3">
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <span className="font-extrabold text-sm text-slate-900 dark:text-white">
+                          {camp.name}
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                            camp.status === "completed"
+                              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                              : camp.status === "partial"
+                              ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                              : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
+                          }`}
+                        >
+                          {camp.status}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                          Source: {camp.source}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Subject: <span className="font-semibold text-slate-700 dark:text-slate-300">{camp.subject}</span>
+                      </p>
+                    </div>
+
+                    <div className="flex items-center space-x-4">
+                      <div className="text-right">
+                        <span className="text-[10px] text-slate-400 block font-mono">Dispatched</span>
+                        <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+                          {camp.createdAt}
+                        </span>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          if (confirm("Delete this campaign record from Firebase?")) {
+                            deleteCampaignRecord(camp.id);
+                          }
+                        }}
+                        className="p-2 text-rose-500 hover:bg-rose-500/10 rounded-xl transition"
+                        title="Delete Campaign"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Campaign Stats Bar */}
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                      <span className="text-[10px] text-slate-400 uppercase font-extrabold block">Total Target</span>
+                      <span className="text-base font-black text-slate-800 dark:text-slate-200">
+                        {camp.recipientCount}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20">
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-extrabold block">
+                        Delivered
+                      </span>
+                      <span className="text-base font-black text-emerald-600 dark:text-emerald-400">
+                        {camp.successCount}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-rose-500/5 dark:bg-rose-500/10 border border-rose-500/20">
+                      <span className="text-[10px] text-rose-600 dark:text-rose-400 uppercase font-extrabold block">
+                        Failed
+                      </span>
+                      <span className="text-base font-black text-rose-600 dark:text-rose-400">
+                        {camp.failedCount}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Recipient breakdown list */}
+                  {camp.recipients && camp.recipients.length > 0 && (
+                    <details className="group">
+                      <summary className="cursor-pointer text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline py-1 flex items-center justify-between">
+                        <span>View Recipient Breakdowns ({camp.recipients.length})</span>
+                        <span className="text-[10px] text-slate-400 group-open:rotate-180 transition-transform">▼</span>
+                      </summary>
+                      <div className="mt-2 max-h-48 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-slate-50 dark:bg-slate-950 text-slate-400 border-b border-slate-200 dark:border-slate-800">
+                            <tr>
+                              <th className="p-2">Email</th>
+                              <th className="p-2">Name / Company</th>
+                              <th className="p-2">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-mono text-[11px]">
+                            {camp.recipients.map((r, idx) => (
+                              <tr key={idx}>
+                                <td className="p-2 text-slate-800 dark:text-slate-200 font-semibold">{r.email}</td>
+                                <td className="p-2 text-slate-500 font-sans">
+                                  {r.contactName || r.companyName || "N/A"}
+                                </td>
+                                <td className="p-2">
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                      r.status === "success"
+                                        ? "text-emerald-500"
+                                        : "text-rose-500"
+                                    }`}
+                                  >
+                                    {r.status === "success" ? "Sent" : r.error || "Failed"}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </details>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 5: DISPATCH LOGS HISTORY */}
       {activeSubTab === "logs" && (
         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
@@ -1243,8 +1517,10 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
               </div>
 
               <button
-                onClick={() => {
-                  clearEmailLogs();
+                onClick={async () => {
+                  if (confirm("Clear all email logs from Firebase?")) {
+                    await clearEmailLogs();
+                  }
                 }}
                 className="px-3 py-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 rounded-xl transition"
               >
