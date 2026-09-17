@@ -25,9 +25,11 @@ interface ParsedCSVLead {
   city?: string;
   industry: string;
   program?: string;
+  leadSource?: string;
   dealValue: number;
   stage: LeadStage;
   expectedCloseDate: string;
+  closureMonth?: string;
   owner: string;
   journeyNotes?: string;
 }
@@ -41,8 +43,8 @@ interface BulkUploadModalProps {
 
 const SAMPLE_CSV_CONTENT = `Company Name,Contact Name,Designation,Contact Email,Contact Phone,City,Industry,Deal Value,Stage,Expected Close Date,Owner,Notes
 Zenith Cloud Tech,Aarav Patel,VP of Infrastructure,aarav@zenithcloud.in,+91 98111 22334,Bengaluru,SaaS & Software,1500000,interest,2026-10-31,Ruby,Inbound web demo request for enterprise cloud suite.
-Titan Financial Services,Priya Sharma,Chief Risk Officer,psharma@titanfin.com,+91 98765 12345,Mumbai,Fintech & Banking,2500000,proposal,2026-11-15,Ruby,Customized B2B banking integration proposal shared.
-Quantum Medical Systems,Dr. Vikram Sethi,Head of R&D,v.sethi@quantummed.org,+91 99000 88776,Delhi,Healthcare & Biotech,950000,discussion,2026-09-30,Admin User,Technical compliance review call scheduled.
+Titan Financial Services,Priya Sharma,Chief Risk Officer,psharma@titanfin.com,+91 98765 12345,Mumbai,Fintech & Banking,2500000,discussion,2026-11-15,Ruby,Discussion with shareholders & team completed.
+Quantum Medical Systems,Dr. Vikram Sethi,Head of R&D,v.sethi@quantummed.org,+91 99000 88776,Delhi,Healthcare & Biotech,950000,proposal,2026-09-30,Admin User,Commercial proposal and quotation shared.
 `;
 
 import { saveCSVUploadArchive } from "@/lib/uploadService";
@@ -77,8 +79,8 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
   // Helper to map stage text to valid LeadStage key
   const parseStageKey = (rawStage: string): LeadStage => {
     const s = (rawStage || "").toLowerCase().trim();
-    if (s.includes("proposal")) return "proposal";
-    if (s.includes("discuss") || s.includes("team")) return "discussion";
+    if (s.includes("shareholder") || s.includes("discuss") || s.includes("team")) return "discussion";
+    if (s.includes("commercial") || s.includes("proposal")) return "proposal";
     if (s.includes("negotiat") || s.includes("pric")) return "negotiation";
     if (s.includes("closure") || s.includes("won")) return "closure";
     if (s.includes("lost")) return "closed_lost";
@@ -94,7 +96,10 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
     }
 
     const leads: ParsedCSVLead[] = [];
-    const activeUserName = currentUser?.name || "Ruby";
+    const activeUserName = currentUser?.name || "Amit";
+    const isAdmin =
+      currentUser?.username.toLowerCase() === "admin" ||
+      currentUser?.role.toLowerCase().includes("admin");
 
     // Skip header line
     for (let i = 1; i < lines.length; i++) {
@@ -146,10 +151,10 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
           journeyNotes = cols[11] || "Bulk imported from CSV file.";
         }
 
-        // Owner determination
-        let owner = ownerCol;
-        if (assignToCurrentAccount || !owner || owner.length === 0) {
-          owner = activeUserName;
+        // Owner determination: Regular users always own their imported leads
+        let owner = activeUserName;
+        if (isAdmin && ownerCol && ownerCol.trim().length > 0) {
+          owner = ownerCol.trim();
         }
 
         leads.push({
@@ -160,10 +165,12 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
           contactPhone,
           city,
           industry,
-          program: "Executive Coaching & Leadership Presence",
+          program: "Executive Coaching",
+          leadSource: "Event Based",
           dealValue,
           stage,
           expectedCloseDate,
+          closureMonth: expectedCloseDate ? expectedCloseDate.substring(0, 7) : undefined,
           owner,
           journeyNotes,
         });

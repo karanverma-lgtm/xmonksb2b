@@ -20,10 +20,12 @@ import {
   MapPin,
   Phone,
   GraduationCap,
+  Compass,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
-import { formatINR } from "@/lib/formatters";
+import { formatINR, formatClosureMonth } from "@/lib/formatters";
+import { getLeadSourceBadgeStyle } from "@/constants/leadSources";
 
 interface KanbanBoardProps {
   leads: Lead[];
@@ -145,7 +147,8 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                   </div>
                 ) : (
                   stageLeads.map((lead) => {
-                    const leadWeightedValue = lead.dealValue * (lead.weightage / 100);
+                    const stageWeight = STAGES[lead.stage]?.weightage ?? lead.weightage;
+                    const leadWeightedValue = lead.dealValue * (stageWeight / 100);
                     const latestLog = lead.journeyLogs?.[0];
 
                     return (
@@ -166,8 +169,16 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
 
                         {/* Company & Contact */}
                         <div className="flex items-center justify-between space-x-2">
-                          <h5 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors flex items-center space-x-1.5 min-w-0">
-                            <Building2 className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                          <h5 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors flex items-center space-x-2 min-w-0">
+                            {lead.companyLogo ? (
+                              <img
+                                src={lead.companyLogo}
+                                alt=""
+                                className="w-4 h-4 rounded object-contain flex-shrink-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                              />
+                            ) : (
+                              <Building2 className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                            )}
                             <span className="truncate">{lead.companyName}</span>
                           </h5>
                           {lead.city && (
@@ -196,15 +207,37 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                           )}
                         </div>
 
-                        {/* Pitched Program Badge */}
-                        {lead.program && (
-                          <div className="mt-2">
+                        {/* Badges: Pitched Program, Target Closure Month, Approach Note */}
+                        <div className="mt-2 flex flex-wrap gap-1.5 items-center">
+                          {lead.program && (
                             <span className="inline-flex items-center space-x-1 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50/90 dark:bg-indigo-950/70 px-2 py-0.5 rounded-md border border-indigo-200/60 dark:border-indigo-800/60 max-w-full">
                               <GraduationCap className="w-3 h-3 text-indigo-500 flex-shrink-0" />
                               <span className="truncate">{lead.program}</span>
                             </span>
-                          </div>
-                        )}
+                          )}
+
+                          {lead.leadSource && (
+                            <span className={`inline-flex items-center space-x-1 text-[10px] font-bold px-2 py-0.5 rounded-md border ${getLeadSourceBadgeStyle(lead.leadSource).badgeBg} ${getLeadSourceBadgeStyle(lead.leadSource).badgeText} ${getLeadSourceBadgeStyle(lead.leadSource).borderColor}`}>
+                              <Compass className="w-3 h-3 flex-shrink-0" />
+                              <span className="truncate">{lead.leadSource}</span>
+                            </span>
+                          )}
+
+                          {lead.closureMonth && (
+                            <span className="inline-flex items-center space-x-1.5 text-[10px] font-bold text-blue-800 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/70 px-2 py-0.5 rounded-md border border-blue-200/70 dark:border-blue-800/70">
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#EA4335] flex-shrink-0" />
+                              <Calendar className="w-3 h-3 text-[#4285F4] flex-shrink-0" />
+                              <span>Target: {formatClosureMonth(lead.closureMonth, "short")}</span>
+                            </span>
+                          )}
+
+                          {lead.approachNote && (
+                            <span className="inline-flex items-center space-x-1 text-[10px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded-md border border-rose-200/60 dark:border-rose-800/60">
+                              <FileText className="w-3 h-3 text-rose-500 flex-shrink-0" />
+                              <span>Approach Note</span>
+                            </span>
+                          )}
+                        </div>
 
                         {/* Deal Value & Weightage breakdown */}
                         <div className="mt-2.5 p-2 rounded-lg bg-slate-50 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800 flex items-center justify-between">
@@ -218,7 +251,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                           </div>
                           <div className="text-right">
                             <div className="text-[10px] text-indigo-500 uppercase font-semibold">
-                              {lead.weightage}% Weighted
+                              {stageWeight}% Weighted
                             </div>
                             <div className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
                               {formatCurrency(leadWeightedValue)}

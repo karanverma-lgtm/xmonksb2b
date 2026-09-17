@@ -5,19 +5,22 @@ import { Lead } from "@/types/lead";
 import { IndianRupee, TrendingUp, Target, Award } from "lucide-react";
 
 import { formatINR } from "@/lib/formatters";
+import { STAGES } from "@/constants/stages";
 
 interface DashboardStatsProps {
   leads: Lead[];
 }
 
 export const DashboardStats: React.FC<DashboardStatsProps> = ({ leads }) => {
+  const getWeight = (l: Lead) => STAGES[l.stage]?.weightage ?? l.weightage ?? 0;
+
   // 1. Total Unweighted Pipeline Value (excluding Closed Lost)
   const activeLeads = leads.filter((l) => l.stage !== "closed_lost");
   const totalPipeline = activeLeads.reduce((acc, curr) => acc + (curr.dealValue || 0), 0);
 
   // 2. Weighted Forecasted Value = sum(dealValue * (weightage / 100))
   const weightedPipeline = activeLeads.reduce(
-    (acc, curr) => acc + (curr.dealValue || 0) * ((curr.weightage || 0) / 100),
+    (acc, curr) => acc + (curr.dealValue || 0) * (getWeight(curr) / 100),
     0
   );
 
@@ -29,7 +32,7 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({ leads }) => {
   const avgWeightage =
     activeLeads.length > 0
       ? Math.round(
-          activeLeads.reduce((acc, curr) => acc + (curr.weightage || 0), 0) / activeLeads.length
+          activeLeads.reduce((acc, curr) => acc + getWeight(curr), 0) / activeLeads.length
         )
       : 0;
 

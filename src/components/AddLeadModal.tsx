@@ -16,9 +16,16 @@ import {
   ArrowRight,
   ArrowLeft,
   Award,
+  Compass,
+  Camera,
+  Image as ImageIcon,
+  Loader2,
 } from "lucide-react";
-import { UserAccount } from "@/constants/users";
+import { UserAccount, VALID_USERS } from "@/constants/users";
 import { PRESET_PROGRAMS, getProgramBadgeStyle } from "@/constants/programs";
+import { LEAD_SOURCES, getLeadSourceBadgeStyle } from "@/constants/leadSources";
+import { optimizeCompanyLogo } from "@/lib/companyLogoService";
+import { GoogleCalendarDatePicker } from "./GoogleCalendarDatePicker";
 
 interface AddLeadModalProps {
   isOpen: boolean;
@@ -26,6 +33,7 @@ interface AddLeadModalProps {
   currentUser?: UserAccount | null;
   onSubmit: (leadData: {
     companyName: string;
+    companyLogo?: string;
     contactName: string;
     designation?: string;
     contactEmail: string;
@@ -33,9 +41,11 @@ interface AddLeadModalProps {
     city?: string;
     industry: string;
     program?: string;
+    leadSource?: string;
     dealValue: number;
     stage: LeadStage;
     expectedCloseDate: string;
+    closureMonth?: string;
     owner: string;
     journeyNotes?: string;
   }) => void;
@@ -49,6 +59,10 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
 }) => {
   const [modalTab, setModalTab] = useState<"general" | "programs">("general");
   const [companyName, setCompanyName] = useState("");
+  const [companyLogo, setCompanyLogo] = useState<string>("");
+  const [isProcessingLogo, setIsProcessingLogo] = useState(false);
+  const addLogoInputRef = React.useRef<HTMLInputElement | null>(null);
+
   const [contactName, setContactName] = useState("");
   const [designation, setDesignation] = useState("");
   const [contactEmail, setContactEmail] = useState("");
@@ -56,14 +70,42 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
   const [city, setCity] = useState("");
   const [industry, setIndustry] = useState("SaaS & Software");
   const [customIndustry, setCustomIndustry] = useState("");
+  const [leadSource, setLeadSource] = useState("Event Based");
   const [dealValue, setDealValue] = useState("500000");
   const [stage, setStage] = useState<LeadStage>("interest");
   const [expectedCloseDate, setExpectedCloseDate] = useState("2026-10-31");
-  const owner = currentUser?.name || "Ruby";
+  const [closureMonth, setClosureMonth] = useState("2026-10-31");
+  const [owner, setOwner] = useState(currentUser?.name || "Amit");
   const [journeyNotes, setJourneyNotes] = useState("");
 
-  // Program pitched state
-  const [program, setProgram] = useState<string>("Executive Coaching & Leadership Presence");
+  const handleLogoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return;
+
+    setIsProcessingLogo(true);
+    try {
+      const { dataUrl } = await optimizeCompanyLogo(file);
+      setCompanyLogo(dataUrl);
+    } catch (err) {
+      console.warn("Failed to process logo image:", err);
+    } finally {
+      setIsProcessingLogo(false);
+    }
+  };
+
+  const isAdmin =
+    currentUser?.username.toLowerCase() === "admin" ||
+    currentUser?.role.toLowerCase().includes("admin");
+
+  React.useEffect(() => {
+    if (currentUser?.name) {
+      setOwner(currentUser.name);
+    }
+  }, [currentUser]);
+
+  // Program pitched state (Executive Coaching, L&D Transformation, TASC Inhouse, Assessments)
+  const [program, setProgram] = useState<string>("Executive Coaching");
   const [isCustomProgram, setIsCustomProgram] = useState<boolean>(false);
   const [customProgram, setCustomProgram] = useState<string>("");
 
@@ -89,6 +131,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
 
     onSubmit({
       companyName,
+      companyLogo: companyLogo || undefined,
       contactName,
       designation: designation.trim() || undefined,
       contactEmail,
@@ -96,15 +139,18 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
       city,
       industry: finalIndustry,
       program: finalProgram,
+      leadSource: leadSource.trim() || "Event Based",
       dealValue: parseFloat(dealValue) || 0,
       stage,
       expectedCloseDate,
+      closureMonth: closureMonth.trim() || undefined,
       owner,
-      journeyNotes: journeyNotes || `Initial B2B Prospecting Lead Created for ${companyName}. Pitched Program: ${finalProgram}.`,
+      journeyNotes: journeyNotes || `Initial B2B Prospecting Lead Created for ${companyName}. Pitched Program: ${finalProgram}. Lead Source: ${leadSource}.`,
     });
 
     // Reset form
     setCompanyName("");
+    setCompanyLogo("");
     setContactName("");
     setDesignation("");
     setContactEmail("");
@@ -112,15 +158,19 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
     setCity("");
     setIndustry("SaaS & Software");
     setCustomIndustry("");
-    setProgram("Executive Coaching & Leadership Presence");
+    setLeadSource("Event Based");
+    setProgram("Executive Coaching");
     setIsCustomProgram(false);
     setCustomProgram("");
+    setExpectedCloseDate("2026-10-31");
+    setClosureMonth("2026-10-31");
     setJourneyNotes("");
     setModalTab("general");
     onClose();
   };
 
   const badgeStyle = getProgramBadgeStyle(currentPitchedProgram);
+  const leadSourceBadge = getLeadSourceBadgeStyle(leadSource);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm overflow-y-auto">
@@ -185,20 +235,57 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
           {modalTab === "general" ? (
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Company Name */}
+                {/* Company Name & Logo */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Company Name *
-                  </label>
-                  <div className="relative">
-                    <Building2 className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Company Name *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => addLogoInputRef.current?.click()}
+                      className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline flex items-center space-x-1"
+                    >
+                      <Camera className="w-3 h-3" />
+                      <span>{companyLogo ? "Change Logo" : "Upload Logo"}</span>
+                    </button>
+                  </div>
+                  <input
+                    ref={addLogoInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/svg+xml,image/webp"
+                    className="hidden"
+                    onChange={handleLogoFileChange}
+                  />
+                  <div className="relative flex items-center">
+                    {companyLogo ? (
+                      <div className="relative mr-2 flex-shrink-0 w-9 h-9 rounded-lg border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-slate-800 p-0.5 overflow-hidden group">
+                        <img
+                          src={companyLogo}
+                          alt="Logo Preview"
+                          className="w-full h-full object-contain"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setCompanyLogo("")}
+                          className="absolute inset-0 bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition text-[10px]"
+                          title="Remove Logo"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <Building2 className="w-4 h-4 absolute left-3 top-3 text-slate-400 pointer-events-none" />
+                    )}
                     <input
                       type="text"
                       required
                       placeholder="e.g. Apex Global Tech"
                       value={companyName}
                       onChange={(e) => setCompanyName(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      className={`w-full ${
+                        companyLogo ? "pl-3" : "pl-9"
+                      } pr-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none`}
                     />
                   </div>
                 </div>
@@ -390,6 +477,44 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
                   </select>
                 </div>
 
+                {/* Lead Source Selector (Event Based, Self Created, Marketing, TASC Upselling) */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
+                    <span className="flex items-center space-x-1">
+                      <Compass className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>Lead Source *</span>
+                    </span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${leadSourceBadge.badgeBg} ${leadSourceBadge.badgeText} ${leadSourceBadge.borderColor}`}>
+                      {leadSource}
+                    </span>
+                  </label>
+                  <select
+                    value={leadSource}
+                    onChange={(e) => setLeadSource(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  >
+                    {LEAD_SOURCES.map((source) => (
+                      <option key={source.id} value={source.name}>
+                        {source.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Target Closure Date (Google Calendar Style) */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
+                    <span>Target Closure Date</span>
+                    <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold uppercase tracking-wider">
+                      Google Calendar
+                    </span>
+                  </label>
+                  <GoogleCalendarDatePicker
+                    value={closureMonth}
+                    onChange={(newVal) => setClosureMonth(newVal)}
+                  />
+                </div>
+
                 {/* Expected Close Date */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -404,6 +529,33 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
                       className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                     />
                   </div>
+                </div>
+
+                {/* Account Owner Selection */}
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Assigned Account Owner
+                  </label>
+                  {isAdmin ? (
+                    <select
+                      value={owner}
+                      onChange={(e) => setOwner(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-indigo-500 focus:outline-none text-indigo-600 dark:text-indigo-400"
+                    >
+                      {VALID_USERS.map((u) => (
+                        <option key={u.username} value={u.name}>
+                          {u.name} ({u.role})
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                      <span>{owner}</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                        My Lead
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 

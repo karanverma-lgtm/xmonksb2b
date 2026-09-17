@@ -12,27 +12,27 @@ export const STAGES: Record<LeadStage, StageInfo> = {
     headerBg: "from-blue-600/10 to-transparent",
     iconName: "Sparkles",
   },
-  proposal: {
-    id: "proposal",
-    label: "Share Proposal",
-    weightage: 25,
-    description: "Customized solution pitch & proposal submitted to prospect",
-    badgeBg: "bg-indigo-500/10 dark:bg-indigo-500/20",
-    badgeText: "text-indigo-600 dark:text-indigo-400 border-indigo-500/30",
-    borderColor: "border-indigo-500",
-    headerBg: "from-indigo-600/10 to-transparent",
-    iconName: "FileText",
-  },
   discussion: {
     id: "discussion",
-    label: "Discussion with Team",
-    weightage: 50,
-    description: "Internal stakeholder review, technical evaluation & demo",
+    label: "Discussion With Shareholders",
+    weightage: 25,
+    description: "Internal stakeholder review, discussion with shareholders & demo",
     badgeBg: "bg-purple-500/10 dark:bg-purple-500/20",
     badgeText: "text-purple-600 dark:text-purple-400 border-purple-500/30",
     borderColor: "border-purple-500",
     headerBg: "from-purple-600/10 to-transparent",
     iconName: "Users",
+  },
+  proposal: {
+    id: "proposal",
+    label: "Share Commercial",
+    weightage: 50,
+    description: "Commercial terms, customized solution pitch & proposal submitted",
+    badgeBg: "bg-indigo-500/10 dark:bg-indigo-500/20",
+    badgeText: "text-indigo-600 dark:text-indigo-400 border-indigo-500/30",
+    borderColor: "border-indigo-500",
+    headerBg: "from-indigo-600/10 to-transparent",
+    iconName: "FileText",
   },
   negotiation: {
     id: "negotiation",
@@ -71,8 +71,8 @@ export const STAGES: Record<LeadStage, StageInfo> = {
 
 export const STAGE_ORDER: LeadStage[] = [
   "interest",
-  "proposal",
   "discussion",
+  "proposal",
   "negotiation",
   "closure",
   "closed_lost",
@@ -80,8 +80,8 @@ export const STAGE_ORDER: LeadStage[] = [
 
 export const PIPELINE_STAGES: LeadStage[] = [
   "interest",
-  "proposal",
   "discussion",
+  "proposal",
   "negotiation",
   "closure",
 ];

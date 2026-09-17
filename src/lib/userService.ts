@@ -32,14 +32,14 @@ export function cacheUsersLocally(users: UserAccount[]): void {
   }
 }
 
-// Seed default users to Firestore if collection is empty
+// Seed default users to Firestore ensuring all VALID_USERS exist
 export async function seedInitialUsers(): Promise<void> {
   try {
-    const ref = collection(db, USERS_COLLECTION);
-    const snap = await getDocs(ref);
-    if (snap.empty) {
-      for (const u of VALID_USERS) {
-        await setDoc(doc(db, USERS_COLLECTION, u.username.toLowerCase()), u);
+    for (const u of VALID_USERS) {
+      const docRef = doc(db, USERS_COLLECTION, u.username.toLowerCase());
+      const snap = await getDoc(docRef);
+      if (!snap.exists()) {
+        await setDoc(docRef, u);
       }
     }
   } catch (e) {
@@ -47,12 +47,20 @@ export async function seedInitialUsers(): Promise<void> {
   }
 }
 
-// Authenticate user against Firestore (with local fallback)
+// Authenticate user against Firestore (with local fallback and auto-sync)
 export async function authenticateUserFromFirestore(
   usernameInput: string,
   passwordInput: string
 ): Promise<UserAccount | null> {
   const cleanUser = usernameInput.trim().toLowerCase();
+  const cleanPass = passwordInput.trim();
+
+  // Find static config match
+  const staticMatch = VALID_USERS.find(
+    (u) =>
+      u.username.toLowerCase() === cleanUser &&
+      (u.password === cleanPass || u.password.toLowerCase() === cleanPass.toLowerCase())
+  );
 
   try {
     const userDocRef = doc(db, USERS_COLLECTION, cleanUser);
@@ -60,23 +68,31 @@ export async function authenticateUserFromFirestore(
 
     if (docSnap.exists()) {
       const user = docSnap.data() as UserAccount;
-      if (user.password === passwordInput) {
+      if (user.password === cleanPass || user.password.toLowerCase() === cleanPass.toLowerCase()) {
         return user;
       }
       return null;
     }
 
-    // If Firestore collection hasn't been seeded yet, seed and check fallback
-    await seedInitialUsers();
-    const fallbackMatch = VALID_USERS.find(
-      (u) => u.username.toLowerCase() === cleanUser && u.password === passwordInput
-    );
-    return fallbackMatch || null;
+    // If not in Firestore but in static config, write to Firestore and log in
+    if (staticMatch) {
+      try {
+        await setDoc(userDocRef, staticMatch);
+      } catch (writeErr) {
+        console.warn("Failed to write user to Firestore:", writeErr);
+      }
+      return staticMatch;
+    }
+
+    return null;
   } catch (err) {
     console.warn("Firestore authentication check fallback to local cache:", err);
+    if (staticMatch) return staticMatch;
     const cached = getCachedUsers();
     const found = cached.find(
-      (u) => u.username.toLowerCase() === cleanUser && u.password === passwordInput
+      (u) =>
+        u.username.toLowerCase() === cleanUser &&
+        (u.password === cleanPass || u.password.toLowerCase() === cleanPass.toLowerCase())
     );
     return found || null;
   }

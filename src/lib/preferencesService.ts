@@ -8,6 +8,7 @@ export interface UserPreferences {
   toDate?: string;
   selectedStage?: string;
   selectedWeightage?: string;
+  selectedPartner?: string;
   updatedAt?: string;
 }
 

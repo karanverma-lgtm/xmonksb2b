@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { Lead, LeadStage } from "@/types/lead";
+import { Lead, LeadStage, ApproachNote } from "@/types/lead";
 import {
   subscribeToLeads,
   createLead,
@@ -11,6 +11,13 @@ import {
   updateDealValue,
   updateLeadProgram,
   deleteLead,
+  updateLeadOwner,
+  updateLeadClosureMonth,
+  attachLeadApproachNote,
+  removeLeadApproachNote,
+  updateLeadSource,
+  updateLeadCompanyLogo,
+  removeLeadCompanyLogo,
 } from "@/lib/leadsService";
 import { Navbar, NavTab } from "@/components/Navbar";
 import { DashboardStats } from "@/components/DashboardStats";
@@ -23,6 +30,7 @@ import { BulkUploadModal } from "@/components/BulkUploadModal";
 import { AnalyticsCharts } from "@/components/AnalyticsCharts";
 import { EmailCampaignTab } from "@/components/EmailCampaignTab";
 import { DeveloperTab } from "@/components/DeveloperTab";
+import { STAGES } from "@/constants/stages";
 import { LoginForm } from "@/components/LoginForm";
 import { UserAccount } from "@/constants/users";
 import {
@@ -88,12 +96,15 @@ export default function Home() {
     setIsAuthenticated(false);
   };
 
-  // Filter States (From Date, To Date, Weightage, Stage, Search)
+  // Filter States (From Date, To Date, Weightage, Stage, Search, Client Partner, Lead Source, Program)
   const [searchTerm, setSearchTerm] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [selectedWeightage, setSelectedWeightage] = useState("all");
   const [selectedStage, setSelectedStage] = useState("all");
+  const [selectedPartner, setSelectedPartner] = useState("all");
+  const [selectedLeadSource, setSelectedLeadSource] = useState("all");
+  const [selectedProgram, setSelectedProgram] = useState("all");
 
   // Load & subscribe to user UI view & filter preferences from Firestore
   useEffect(() => {
@@ -105,6 +116,7 @@ export default function Home() {
       if (prefs.toDate !== undefined) setToDate(prefs.toDate);
       if (prefs.selectedStage !== undefined) setSelectedStage(prefs.selectedStage);
       if (prefs.selectedWeightage !== undefined) setSelectedWeightage(prefs.selectedWeightage);
+      if (prefs.selectedPartner !== undefined) setSelectedPartner(prefs.selectedPartner);
     });
 
     return () => unsub();
@@ -169,6 +181,21 @@ export default function Home() {
     }
   };
 
+  const handlePartnerChange = (val: string) => {
+    setSelectedPartner(val);
+    if (currentUser) {
+      saveUserPreferencesToFirestore(currentUser.username, { selectedPartner: val });
+    }
+  };
+
+  const handleLeadSourceChange = (val: string) => {
+    setSelectedLeadSource(val);
+  };
+
+  const handleProgramChange = (val: string) => {
+    setSelectedProgram(val);
+  };
+
   // Subscribe to Firestore Realtime Data
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -202,12 +229,11 @@ export default function Home() {
 
     return leads.filter((lead: Lead) => {
       const ownerStr = (lead.owner || "").toLowerCase().trim();
-      if (!ownerStr) return true; // Include unassigned leads for active user
       return (
         ownerStr === activeName ||
         ownerStr === activeUser ||
-        ownerStr.includes(activeName) ||
-        (activeName.length > 0 && activeName.includes(ownerStr))
+        (activeName.length > 0 && (ownerStr.includes(activeName) || activeName.includes(ownerStr))) ||
+        (activeUser.length > 0 && (ownerStr.includes(activeUser) || activeUser.includes(ownerStr)))
       );
     });
   }, [leads, currentUser]);
@@ -228,7 +254,8 @@ export default function Home() {
 
     // 2. Weightage filter
     if (selectedWeightage !== "all") {
-      if (lead.weightage !== Number(selectedWeightage)) return false;
+      const currentWeight = STAGES[lead.stage]?.weightage ?? lead.weightage;
+      if (currentWeight !== Number(selectedWeightage)) return false;
     }
 
     // 3. Stage filter
@@ -243,6 +270,33 @@ export default function Home() {
     // 5. To Date filter
     if (toDate && leadDateStr > toDate) return false;
 
+    // 6. Client Partner filter (for Admin to view specific individual's pipeline)
+    const isAdmin =
+      currentUser?.username.toLowerCase() === "admin" ||
+      currentUser?.role.toLowerCase().includes("admin");
+
+    if (isAdmin && selectedPartner !== "all") {
+      const partnerClean = selectedPartner.toLowerCase().trim();
+      const leadOwner = (lead.owner || "").toLowerCase().trim();
+      const match =
+        leadOwner === partnerClean ||
+        leadOwner.includes(partnerClean) ||
+        partnerClean.includes(leadOwner);
+      if (!match) return false;
+    }
+
+    // 7. Lead Source filter
+    if (selectedLeadSource !== "all") {
+      const src = (lead.leadSource || "").toLowerCase().trim();
+      if (src !== selectedLeadSource.toLowerCase().trim()) return false;
+    }
+
+    // 8. Pitched Program filter
+    if (selectedProgram !== "all") {
+      const prg = (lead.program || "").toLowerCase().trim();
+      if (prg !== selectedProgram.toLowerCase().trim()) return false;
+    }
+
     return true;
   });
 
@@ -253,6 +307,9 @@ export default function Home() {
     setToDate("");
     setSelectedWeightage("all");
     setSelectedStage("all");
+    setSelectedPartner("all");
+    setSelectedLeadSource("all");
+    setSelectedProgram("all");
     if (currentUser) {
       saveUserPreferencesToFirestore(currentUser.username, {
         searchTerm: "",
@@ -260,6 +317,7 @@ export default function Home() {
         toDate: "",
         selectedWeightage: "all",
         selectedStage: "all",
+        selectedPartner: "all",
       });
     }
   };
@@ -300,7 +358,12 @@ export default function Home() {
     newStage: LeadStage,
     notes?: string
   ) => {
-    const updated = await updateLeadStage(leadId, newStage, notes);
+    const updated = await updateLeadStage(
+      leadId,
+      newStage,
+      notes,
+      currentUser?.name || "Sales Representative"
+    );
     if (updated) {
       setLeads((prev) => prev.map((l) => (l.id === leadId ? updated : l)));
       setSelectedLead((prev) => (prev && prev.id === leadId ? updated : prev));
@@ -308,7 +371,11 @@ export default function Home() {
   };
 
   const handleAddNote = async (leadId: string, noteText: string) => {
-    const updated = await addJourneyNote(leadId, noteText);
+    const updated = await addJourneyNote(
+      leadId,
+      noteText,
+      currentUser?.name || "Sales Representative"
+    );
     if (updated) {
       setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
       setSelectedLead((prev) => (prev && prev.id === leadId ? updated : prev));
@@ -344,6 +411,88 @@ export default function Home() {
     setLeads((prev) => prev.filter((l: Lead) => l.id !== leadId));
     setSelectedLead((prev) => (prev && prev.id === leadId ? null : prev));
     await deleteLead(leadId);
+  };
+
+  const handleUpdateOwner = async (leadId: string, newOwner: string) => {
+    const updated = await updateLeadOwner(
+      leadId,
+      newOwner,
+      currentUser?.name || "Administrator"
+    );
+    if (updated) {
+      setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
+      setSelectedLead((prev) => (prev && prev.id === leadId ? updated : prev));
+    }
+  };
+
+  const handleUpdateClosureMonth = async (leadId: string, closureMonth: string) => {
+    const updated = await updateLeadClosureMonth(
+      leadId,
+      closureMonth,
+      currentUser?.name || "Client Partner"
+    );
+    if (updated) {
+      setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
+      setSelectedLead((prev) => (prev && prev.id === leadId ? updated : prev));
+    }
+  };
+
+  const handleAttachApproachNote = async (leadId: string, approachNote: ApproachNote) => {
+    const updated = await attachLeadApproachNote(
+      leadId,
+      approachNote,
+      currentUser?.name || "Client Partner"
+    );
+    if (updated) {
+      setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
+      setSelectedLead((prev) => (prev && prev.id === leadId ? updated : prev));
+    }
+  };
+
+  const handleRemoveApproachNote = async (leadId: string) => {
+    const updated = await removeLeadApproachNote(
+      leadId,
+      currentUser?.name || "Client Partner"
+    );
+    if (updated) {
+      setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
+      setSelectedLead((prev) => (prev && prev.id === leadId ? updated : prev));
+    }
+  };
+
+  const handleUpdateLeadSource = async (leadId: string, newSource: string) => {
+    const updated = await updateLeadSource(
+      leadId,
+      newSource,
+      currentUser?.name || "Client Partner"
+    );
+    if (updated) {
+      setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
+      setSelectedLead((prev) => (prev && prev.id === leadId ? updated : prev));
+    }
+  };
+
+  const handleUpdateCompanyLogo = async (leadId: string, logoUrl: string) => {
+    const updated = await updateLeadCompanyLogo(
+      leadId,
+      logoUrl,
+      currentUser?.name || "Client Partner"
+    );
+    if (updated) {
+      setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
+      setSelectedLead((prev) => (prev && prev.id === leadId ? updated : prev));
+    }
+  };
+
+  const handleRemoveCompanyLogo = async (leadId: string) => {
+    const updated = await removeLeadCompanyLogo(
+      leadId,
+      currentUser?.name || "Client Partner"
+    );
+    if (updated) {
+      setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
+      setSelectedLead((prev) => (prev && prev.id === leadId ? updated : prev));
+    }
   };
 
   if (!isClient) {
@@ -386,6 +535,18 @@ export default function Home() {
               setSelectedWeightage={handleWeightageChange}
               selectedStage={selectedStage}
               setSelectedStage={handleStageChange}
+              selectedPartner={selectedPartner}
+              setSelectedPartner={handlePartnerChange}
+              selectedLeadSource={selectedLeadSource}
+              setSelectedLeadSource={handleLeadSourceChange}
+              selectedProgram={selectedProgram}
+              setSelectedProgram={handleProgramChange}
+              isAdmin={
+                Boolean(
+                  currentUser?.username.toLowerCase() === "admin" ||
+                  currentUser?.role.toLowerCase().includes("admin")
+                )
+              }
               onResetFilters={handleResetFilters}
               filteredCount={filteredLeads.length}
               totalCount={userScopedLeads.length}
@@ -410,6 +571,7 @@ export default function Home() {
             onUpdateStage={handleUpdateStage}
             onDeleteLead={handleDeleteLead}
             onUpdateProgram={handleUpdateProgram}
+            onUpdateLeadSource={handleUpdateLeadSource}
           />
         )}
 
@@ -433,12 +595,20 @@ export default function Home() {
       {/* Lead Detail & Customer Journey Modal */}
       <LeadDetailModal
         lead={selectedLead}
+        currentUser={currentUser}
         onClose={() => setSelectedLead(null)}
         onUpdateStage={handleUpdateStage}
         onAddNote={handleAddNote}
         onDeleteLead={handleDeleteLead}
         onUpdateDealValue={handleUpdateDealValue}
         onUpdateProgram={handleUpdateProgram}
+        onUpdateLeadSource={handleUpdateLeadSource}
+        onUpdateOwner={handleUpdateOwner}
+        onUpdateClosureMonth={handleUpdateClosureMonth}
+        onAttachApproachNote={handleAttachApproachNote}
+        onRemoveApproachNote={handleRemoveApproachNote}
+        onUpdateCompanyLogo={handleUpdateCompanyLogo}
+        onRemoveCompanyLogo={handleRemoveCompanyLogo}
       />
 
       {/* Add New Lead Modal */}

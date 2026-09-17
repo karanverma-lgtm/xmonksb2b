@@ -1,11 +1,10 @@
 "use client";
 
 import React, { useState } from "react";
-import { Building2, Lock, User, Eye, EyeOff, ShieldCheck, ArrowRight } from "lucide-react";
+import { Building2, Lock, User, Eye, EyeOff, ShieldCheck, ArrowRight, Loader2 } from "lucide-react";
 
 import { UserAccount } from "@/constants/users";
 import { authenticateUserFromFirestore } from "@/lib/userService";
-import { Loader2 } from "lucide-react";
 
 interface LoginFormProps {
   onLoginSuccess: (user: UserAccount) => void;
@@ -55,7 +54,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
             xMonks B2B CRM Portal
           </h1>
           <p className="text-xs text-slate-400">
-            Enterprise Leads Prospecting & Journey Management
+            Sign in to access your sales pipeline
           </p>
         </div>
 
@@ -78,7 +77,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
               <input
                 type="text"
                 required
-                placeholder="Enter username"
+                placeholder="Enter your username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 bg-slate-950/80 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
@@ -96,7 +95,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
               <input
                 type={showPassword ? "text" : "password"}
                 required
-                placeholder="Enter password"
+                placeholder="Enter your password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pl-10 pr-10 py-3 bg-slate-950/80 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
@@ -131,11 +130,11 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
           </button>
         </form>
 
-        {/* Admin Auth Footer */}
-        <div className="pt-4 border-t border-slate-800/80 flex items-center justify-center text-xs text-slate-500">
+        {/* Security Footer */}
+        <div className="pt-2 flex items-center justify-center text-[11px] text-slate-500">
           <div className="flex items-center space-x-1.5">
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span>Admin Authentication Required</span>
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Secure Role-Based Access Control</span>
           </div>
         </div>
       </div>
