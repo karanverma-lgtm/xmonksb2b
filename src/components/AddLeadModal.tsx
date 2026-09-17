@@ -259,11 +259,11 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
                   />
                   <div className="relative flex items-center">
                     {companyLogo ? (
-                      <div className="relative mr-2 flex-shrink-0 w-9 h-9 rounded-lg border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-slate-800 p-0.5 overflow-hidden group">
+                      <div className="relative mr-2 flex-shrink-0 w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 overflow-hidden group shadow-xs border border-slate-200 dark:border-slate-700">
                         <img
                           src={companyLogo}
                           alt="Logo Preview"
-                          className="w-full h-full object-contain"
+                          className="w-full h-full object-cover"
                         />
                         <button
                           type="button"

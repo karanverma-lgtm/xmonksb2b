@@ -288,11 +288,11 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
               />
               
               {lead.companyLogo ? (
-                <div className="relative w-14 h-14 rounded-2xl overflow-hidden border-2 border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-800 shadow-md flex items-center justify-center p-1">
+                <div className="relative w-14 h-14 rounded-2xl overflow-hidden shadow-md flex items-center justify-center bg-slate-100 dark:bg-slate-800">
                   <img
                     src={lead.companyLogo}
                     alt={`${lead.companyName} Logo`}
-                    className="w-full h-full object-contain"
+                    className="w-full h-full object-cover"
                   />
                   {/* Hover upload overlay */}
                   <button

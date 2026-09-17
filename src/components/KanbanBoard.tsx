@@ -174,7 +174,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                               <img
                                 src={lead.companyLogo}
                                 alt=""
-                                className="w-4 h-4 rounded object-contain flex-shrink-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                                className="w-5 h-5 rounded-md object-cover flex-shrink-0 bg-slate-100 dark:bg-slate-800 shadow-xs"
                               />
                             ) : (
                               <Building2 className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />

@@ -168,12 +168,12 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                         {lead.companyLogo ? (
                           <div
                             onClick={() => onSelectLead(lead)}
-                            className="w-8 h-8 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-0.5 flex items-center justify-center flex-shrink-0 cursor-pointer shadow-xs"
+                            className="w-9 h-9 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center flex-shrink-0 cursor-pointer shadow-xs border border-slate-200/80 dark:border-slate-700/80"
                           >
                             <img
                               src={lead.companyLogo}
                               alt={lead.companyName}
-                              className="w-full h-full object-contain"
+                              className="w-full h-full object-cover"
                             />
                           </div>
                         ) : (
