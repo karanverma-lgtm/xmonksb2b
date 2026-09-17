@@ -158,11 +158,14 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                         className="group relative bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm hover:shadow-md hover:border-indigo-500/40 dark:hover:border-indigo-500/40 transition-all cursor-pointer"
                       >
                         {/* Top Industry & Tag */}
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-md border border-indigo-100 dark:border-indigo-900/50">
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span
+                            className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-md border border-indigo-100 dark:border-indigo-900/50 truncate min-w-0"
+                            title={lead.industry}
+                          >
                             {lead.industry}
                           </span>
-                          <span className="text-[10px] text-slate-400 font-mono">
+                          <span className="text-[10px] text-slate-400 font-mono flex-shrink-0">
                             ID: #{lead.id.slice(-4)}
                           </span>
                         </div>
