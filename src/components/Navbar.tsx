@@ -14,6 +14,7 @@ import {
   FileSpreadsheet,
   Mail,
   Code2,
+  Download,
 } from "lucide-react";
 
 import { formatINR } from "@/lib/formatters";
@@ -26,6 +27,7 @@ interface NavbarProps {
   setActiveTab: (tab: NavTab) => void;
   onOpenAddModal: () => void;
   onOpenBulkModal: () => void;
+  onExportLeads?: () => void;
   onLogout?: () => void;
   currentUser?: UserAccount | null;
   isFirebaseSyncing: boolean;
@@ -38,6 +40,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   setActiveTab,
   onOpenAddModal,
   onOpenBulkModal,
+  onExportLeads,
   onLogout,
   currentUser,
   isFirebaseSyncing,
@@ -183,6 +186,18 @@ export const Navbar: React.FC<NavbarProps> = ({
               <FileSpreadsheet className="w-3.5 h-3.5 text-purple-500" />
               <span>Import CSV</span>
             </button>
+
+            {/* Admin Export All Leads Button */}
+            {(currentUser?.username.toLowerCase() === "admin" || currentUser?.role.toLowerCase().includes("admin")) && onExportLeads && (
+              <button
+                onClick={onExportLeads}
+                className="hidden md:flex items-center space-x-1 px-2.5 py-1.5 bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-600 dark:text-emerald-400 font-bold text-xs rounded-xl border border-emerald-500/20 transition-all whitespace-nowrap"
+                title="Admin: Export all client records to CSV spreadsheet"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Export Leads</span>
+              </button>
+            )}
 
             {/* Add Lead Primary CTA Button */}
             <button

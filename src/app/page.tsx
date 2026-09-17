@@ -19,6 +19,7 @@ import {
   updateLeadCompanyLogo,
   removeLeadCompanyLogo,
 } from "@/lib/leadsService";
+import { exportLeadsToCSV } from "@/lib/exportService";
 import { Navbar, NavTab } from "@/components/Navbar";
 import { DashboardStats } from "@/components/DashboardStats";
 import { FilterBar } from "@/components/FilterBar";
@@ -495,6 +496,16 @@ export default function Home() {
     }
   };
 
+  const isAdmin = Boolean(
+    currentUser?.username.toLowerCase() === "admin" ||
+    currentUser?.role.toLowerCase().includes("admin")
+  );
+
+  const handleExportLeads = () => {
+    // Export all active leads in the system for admin
+    exportLeadsToCSV(leads, "xMonks_B2B_All_Clients_Export");
+  };
+
   if (!isClient) {
     return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-xs">Loading Portal...</div>;
   }
@@ -511,6 +522,7 @@ export default function Home() {
         setActiveTab={handleTabChange}
         onOpenAddModal={() => setIsAddModalOpen(true)}
         onOpenBulkModal={() => setIsBulkModalOpen(true)}
+        onExportLeads={handleExportLeads}
         onLogout={handleLogout}
         currentUser={currentUser}
         isFirebaseSyncing={isFirebaseSyncing}
@@ -541,12 +553,7 @@ export default function Home() {
               setSelectedLeadSource={handleLeadSourceChange}
               selectedProgram={selectedProgram}
               setSelectedProgram={handleProgramChange}
-              isAdmin={
-                Boolean(
-                  currentUser?.username.toLowerCase() === "admin" ||
-                  currentUser?.role.toLowerCase().includes("admin")
-                )
-              }
+              isAdmin={isAdmin}
               onResetFilters={handleResetFilters}
               filteredCount={filteredLeads.length}
               totalCount={userScopedLeads.length}
@@ -572,6 +579,8 @@ export default function Home() {
             onDeleteLead={handleDeleteLead}
             onUpdateProgram={handleUpdateProgram}
             onUpdateLeadSource={handleUpdateLeadSource}
+            isAdmin={isAdmin}
+            onExportLeads={handleExportLeads}
           />
         )}
 

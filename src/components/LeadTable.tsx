@@ -18,6 +18,7 @@ import {
   Calendar,
   FileText,
   Compass,
+  Download,
 } from "lucide-react";
 import { formatINR, formatClosureMonth } from "@/lib/formatters";
 import { PRESET_PROGRAMS, getProgramBadgeStyle } from "@/constants/programs";
@@ -30,6 +31,8 @@ interface LeadTableProps {
   onDeleteLead?: (leadId: string) => void;
   onUpdateProgram?: (leadId: string, newProgram: string) => void;
   onUpdateLeadSource?: (leadId: string, newSource: string) => void;
+  isAdmin?: boolean;
+  onExportLeads?: () => void;
 }
 
 export const LeadTable: React.FC<LeadTableProps> = ({
@@ -38,6 +41,8 @@ export const LeadTable: React.FC<LeadTableProps> = ({
   onDeleteLead,
   onUpdateProgram,
   onUpdateLeadSource,
+  isAdmin,
+  onExportLeads,
 }) => {
   const [sortBy, setSortBy] = useState<"dealValue" | "weightage" | "updatedAt">("updatedAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
@@ -110,6 +115,19 @@ export const LeadTable: React.FC<LeadTableProps> = ({
             {sortedLeads.length} clients
           </span>
         </h3>
+
+        {/* Admin Export Trigger */}
+        {isAdmin && onExportLeads && (
+          <button
+            type="button"
+            onClick={onExportLeads}
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 transition-all shadow-xs"
+            title="Export full roster to CSV"
+          >
+            <Download className="w-3.5 h-3.5 text-emerald-500" />
+            <span>Export Roster CSV</span>
+          </button>
+        )}
       </div>
 
       {/* Table */}
