@@ -32,6 +32,7 @@ import {
   Compass,
   Camera,
   Image as ImageIcon,
+  Link2,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
@@ -89,8 +90,11 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   const [isCustomProgram, setIsCustomProgram] = useState(false);
   const [customProgramInput, setCustomProgramInput] = useState("");
 
-  // Logo Upload State
+  // Logo Upload & URL State
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [showLogoOptions, setShowLogoOptions] = useState(false);
+  const [isEnteringLogoUrl, setIsEnteringLogoUrl] = useState(false);
+  const [logoUrlInput, setLogoUrlInput] = useState("");
   const [logoUploadError, setLogoUploadError] = useState<string | null>(null);
   const [logoUploadSuccess, setLogoUploadSuccess] = useState<string | null>(null);
   const logoInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -137,6 +141,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
 
     setLogoUploadError(null);
     setIsUploadingLogo(true);
+    setShowLogoOptions(false);
 
     try {
       const logoUrl = await uploadCompanyLogoToFirebase(lead.id, file);
@@ -153,11 +158,26 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
     }
   };
 
+  const handleSaveLogoUrl = () => {
+    if (!lead || !logoUrlInput.trim()) return;
+    const url = logoUrlInput.trim();
+    if (onUpdateCompanyLogo) {
+      onUpdateCompanyLogo(lead.id, url);
+    }
+    setLogoUploadSuccess("Logo URL applied!");
+    setTimeout(() => setLogoUploadSuccess(null), 3000);
+    setLogoUrlInput("");
+    setIsEnteringLogoUrl(false);
+    setShowLogoOptions(false);
+  };
+
   const handleRemoveLogo = () => {
     if (!lead) return;
     if (onRemoveCompanyLogo) {
       onRemoveCompanyLogo(lead.id);
     }
+    setShowLogoOptions(false);
+    setIsEnteringLogoUrl(false);
   };
 
   if (!lead) return null;
@@ -354,17 +374,97 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
               <div className="flex items-center space-x-3 flex-wrap gap-y-1">
                 <h2 className="text-2xl font-black text-slate-900 dark:text-white flex items-center space-x-2">
                   <span>{lead.companyName}</span>
-                  {!lead.companyLogo && (
+                  {/* Logo Options Trigger (Upload or URL) */}
+                  <div className="relative">
                     <button
                       type="button"
-                      onClick={() => logoInputRef.current?.click()}
+                      onClick={() => {
+                        setShowLogoOptions(!showLogoOptions);
+                        setIsEnteringLogoUrl(false);
+                      }}
                       disabled={isUploadingLogo}
                       className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center space-x-1 font-normal"
                     >
                       <Camera className="w-3 h-3" />
-                      <span>{isUploadingLogo ? "Uploading..." : "Add Logo"}</span>
+                      <span>
+                        {isUploadingLogo
+                          ? "Uploading..."
+                          : lead.companyLogo
+                          ? "Edit Logo"
+                          : "Add Logo"}
+                      </span>
                     </button>
-                  )}
+
+                    {/* Popover Menu with Both Options: Upload File or Image URL */}
+                    {showLogoOptions && (
+                      <div className="absolute left-0 top-6 z-50 w-64 p-3 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl space-y-2">
+                        <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                          Set Company Logo
+                        </div>
+
+                        {!isEnteringLogoUrl ? (
+                          <div className="space-y-1.5">
+                            <button
+                              type="button"
+                              onClick={() => logoInputRef.current?.click()}
+                              className="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
+                            >
+                              <UploadCloud className="w-3.5 h-3.5 text-indigo-500" />
+                              <span>Upload from Computer</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setIsEnteringLogoUrl(true)}
+                              className="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
+                            >
+                              <Link2 className="w-3.5 h-3.5 text-indigo-500" />
+                              <span>Use Image URL</span>
+                            </button>
+
+                            {lead.companyLogo && (
+                              <button
+                                type="button"
+                                onClick={handleRemoveLogo}
+                                className="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/60 transition"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Remove Logo</span>
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <input
+                              type="url"
+                              placeholder="https://example.com/logo.png"
+                              value={logoUrlInput}
+                              onChange={(e) => setLogoUrlInput(e.target.value)}
+                              className="w-full px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              autoFocus
+                            />
+                            <div className="flex items-center justify-end space-x-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setIsEnteringLogoUrl(false)}
+                                className="px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded"
+                              >
+                                Back
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleSaveLogoUrl}
+                                disabled={!logoUrlInput.trim()}
+                                className="px-2.5 py-1 text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded disabled:opacity-50"
+                              >
+                                Apply
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </h2>
                 {logoUploadError && (
                   <span className="text-xs text-rose-500 font-semibold">{logoUploadError}</span>
