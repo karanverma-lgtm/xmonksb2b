@@ -30,6 +30,28 @@ export function formatTimestamp(date: Date = new Date()): string {
   });
 }
 
+/**
+ * Recursively removes undefined values from objects/arrays so Firestore never rejects writes.
+ */
+export function sanitizeForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) return data;
+  if (Array.isArray(data)) {
+    return data
+      .filter((item) => item !== undefined)
+      .map((item) => sanitizeForFirestore(item)) as unknown as T;
+  }
+  if (typeof data === "object" && !(data instanceof Date)) {
+    const cleaned: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+      if (value !== undefined) {
+        cleaned[key] = sanitizeForFirestore(value);
+      }
+    }
+    return cleaned as T;
+  }
+  return data;
+}
+
 // Get initial leads from LocalStorage
 export function getStoredLocalLeads(): Lead[] {
   if (typeof window === "undefined") return [];
@@ -149,9 +171,10 @@ export async function createLead(
   // Attempt Firestore Write
   try {
     const docRef = doc(db, COLLECTION_NAME, newId);
-    await setDoc(docRef, newLead);
+    const cleanedLead = sanitizeForFirestore(newLead);
+    await setDoc(docRef, cleanedLead);
   } catch (err) {
-    console.warn("Firestore write skipped, updating local state", err);
+    console.error("Firestore write failed for lead:", err);
   }
 
   // Update local storage backup
@@ -210,7 +233,7 @@ export async function createLeadsBulk(
       const batch = writeBatch(db);
       for (const lead of chunk) {
         const docRef = doc(db, COLLECTION_NAME, lead.id);
-        batch.set(docRef, lead);
+        batch.set(docRef, sanitizeForFirestore(lead));
       }
       await batch.commit();
     } catch (err) {
@@ -218,9 +241,9 @@ export async function createLeadsBulk(
       for (const lead of chunk) {
         try {
           const docRef = doc(db, COLLECTION_NAME, lead.id);
-          await setDoc(docRef, lead);
+          await setDoc(docRef, sanitizeForFirestore(lead));
         } catch (singleErr) {
-          console.warn("Single write fallback failed for lead:", lead.id, singleErr);
+          console.error("Single write fallback failed for lead:", lead.id, singleErr);
         }
       }
     }

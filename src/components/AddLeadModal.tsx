@@ -116,7 +116,7 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
     if (currentUser?.name) {
       setOwner(currentUser.name);
     }
-  }, [currentUser]);
+  }, [currentUser, isOpen]);
 
   // Program pitched state (Executive Coaching, L&D Transformation, TASC Inhouse, Assessments)
   const [program, setProgram] = useState<string>("Executive Coaching");

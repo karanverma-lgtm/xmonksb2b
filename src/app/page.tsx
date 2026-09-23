@@ -336,7 +336,7 @@ export default function Home() {
   };
 
   const handleBulkImport = async (importedLeads: Parameters<typeof createLead>[0][]) => {
-    const activeUserName = currentUser?.name || "Ruby";
+    const activeUserName = currentUser?.name || "Unassigned";
     const isAdmin =
       currentUser?.username.toLowerCase() === "admin" ||
       currentUser?.role.toLowerCase().includes("admin");

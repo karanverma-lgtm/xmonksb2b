@@ -214,7 +214,7 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
           fileName: file.name,
           fileSize: file.size,
           rowCount: parsedLeads.length,
-          uploadedBy: currentUser?.name || "Ruby",
+          uploadedBy: currentUser?.name || "Administrator",
           rawContent: rawCsvText,
           importedCount: parsedLeads.length,
           sampleRows: parsedLeads.slice(0, 3).map((l) => `${l.companyName} (${l.contactName})`),
