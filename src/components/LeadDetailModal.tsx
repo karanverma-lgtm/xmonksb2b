@@ -261,7 +261,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
       if (onAttachApproachNote) {
         onAttachApproachNote(lead.id, uploaded);
       }
-      setUploadSuccess(`"${file.name}" uploaded successfully to Firebase!`);
+      setUploadSuccess(`"${file.name}" uploaded successfully to Cloudflare R2!`);
       setTimeout(() => setUploadSuccess(null), 4000);
     } catch (err: any) {
       setUploadError(err?.message || "Failed to upload PDF. Please check connection.");
@@ -273,8 +273,11 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
 
   const handleDownloadNote = () => {
     if (!lead.approachNote?.downloadUrl) return;
+    const downloadUrl = lead.approachNote.downloadUrl.includes("?")
+      ? `${lead.approachNote.downloadUrl}&download=1`
+      : `${lead.approachNote.downloadUrl}?download=1`;
     const a = document.createElement("a");
-    a.href = lead.approachNote.downloadUrl;
+    a.href = downloadUrl;
     a.download = lead.approachNote.fileName;
     a.target = "_blank";
     document.body.appendChild(a);
@@ -1031,7 +1034,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                     )}
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Client strategy document and presentation approach note stored in Firebase.
+                    Client strategy document and presentation approach note stored in Cloudflare R2.
                   </p>
                 </div>
               </div>
@@ -1055,7 +1058,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                   {isUploadingNote ? (
                     <>
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Uploading to Firebase...</span>
+                      <span>Uploading to Cloudflare R2...</span>
                     </>
                   ) : (
                     <>
@@ -1153,7 +1156,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                   Click to upload Approach Note PDF for this lead
                 </p>
                 <p className="text-[11px] text-slate-400 mt-1">
-                  Only .pdf files accepted • Stored securely in Firebase
+                  Only .pdf files accepted • Stored securely in Cloudflare R2
                 </p>
               </div>
             )}
@@ -1162,7 +1165,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
             {showDeleteNoteConfirm && (
               <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-between flex-wrap gap-2">
                 <span className="text-xs font-semibold text-rose-600 dark:text-rose-400">
-                  Remove attached approach note & delete file from Firebase?
+                  Remove attached approach note & delete file from Cloudflare R2?
                 </span>
                 <div className="flex items-center space-x-2">
                   <button

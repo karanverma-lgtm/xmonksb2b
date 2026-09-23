@@ -659,7 +659,7 @@ export async function updateLeadClosureMonth(
   return updatedLead;
 }
 
-// Attach Approach Note (PDF) to lead in Firebase & state
+// Attach Approach Note (PDF) to lead in Firestore & state
 export async function attachLeadApproachNote(
   leadId: string,
   approachNote: ApproachNote,
@@ -690,7 +690,7 @@ export async function attachLeadApproachNote(
     title: isReplace
       ? `Approach Note Replaced: ${approachNote.fileName}`
       : `Approach Note Uploaded: ${approachNote.fileName}`,
-    description: `Uploaded approach note PDF (${approachNote.fileSize}) to Firebase for client alignment.`,
+    description: `Uploaded approach note PDF (${approachNote.fileSize}) to Cloudflare R2 for client alignment.`,
     author: author || approachNote.uploadedBy || "Client Partner",
   };
 
@@ -704,11 +704,14 @@ export async function attachLeadApproachNote(
   // Firestore Update
   try {
     const docRef = doc(db, COLLECTION_NAME, leadId);
-    await updateDoc(docRef, {
-      approachNote: approachNote,
-      updatedAt: timestampIso,
-      journeyLogs: updatedLead.journeyLogs,
-    });
+    await updateDoc(
+      docRef,
+      sanitizeForFirestore({
+        approachNote: approachNote,
+        updatedAt: timestampIso,
+        journeyLogs: updatedLead.journeyLogs,
+      })
+    );
   } catch (err) {
     console.warn("Firestore approach note update skipped, updating local state", err);
   }

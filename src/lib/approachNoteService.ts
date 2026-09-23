@@ -1,39 +1,14 @@
 import { storage, db } from "./firebase";
-import {
-  ref,
-  uploadBytes,
-  getDownloadURL,
-  deleteObject,
-} from "firebase/storage";
-import {
-  doc,
-  setDoc,
-  getDoc,
-  deleteDoc,
-} from "firebase/firestore";
+import { ref, deleteObject } from "firebase/storage";
+import { doc, getDoc, deleteDoc } from "firebase/firestore";
 import { ApproachNote } from "@/types/lead";
-import { formatBytes } from "./formatters";
 
 const APPROACH_NOTES_COLLECTION = "b2b_approach_note_files";
 
 /**
- * Converts a File or Blob into a Base64 data URI
+ * Upload an Approach Note PDF for a specific lead to Cloudflare R2 bucket under b2bxmonks/
  */
-export function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = (error) => reject(error);
-  });
-}
-
-/**
- * Upload an Approach Note PDF for a specific lead to Firebase.
- * Primary method: Firebase Storage bucket.
- * Secondary fallback: Firestore document storage as base64 if Storage bucket rules/CORS are restricted.
- */
-export async function uploadApproachNoteToFirebase(
+export async function uploadApproachNoteToR2(
   leadId: string,
   file: File,
   uploadedBy: string
@@ -51,80 +26,56 @@ export async function uploadApproachNoteToFirebase(
     throw new Error("Only PDF format (.pdf) is allowed for Approach Notes.");
   }
 
-  const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const timestamp = Date.now();
-  const storagePath = `approach_notes/${leadId}/${timestamp}_${cleanFileName}`;
-  const fileSizeString = formatBytes(file.size);
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("leadId", leadId);
+  formData.append("uploadedBy", uploadedBy);
 
-  let downloadUrl = "";
-  let finalStoragePath = storagePath;
+  const res = await fetch("/api/approach-notes/upload", {
+    method: "POST",
+    body: formData,
+  });
 
-  // 1. Attempt upload to Firebase Storage
-  try {
-    const storageRef = ref(storage, storagePath);
-    const metadata = {
-      contentType: "application/pdf",
-      customMetadata: {
-        leadId,
-        uploadedBy,
-        uploadedAt: new Date().toISOString(),
-      },
-    };
-
-    const snapshot = await uploadBytes(storageRef, file, metadata);
-    downloadUrl = await getDownloadURL(snapshot.ref);
-  } catch (storageError) {
-    console.warn(
-      "Firebase Storage upload encountered an issue, storing PDF payload in Firestore as fallback:",
-      storageError
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => null);
+    throw new Error(
+      errorData?.error || "Failed to upload PDF file to Cloudflare R2."
     );
-
-    // Fallback: Encode as Base64 and store in Firestore collection
-    try {
-      const base64Content = await fileToBase64(file);
-      finalStoragePath = `firestore:${APPROACH_NOTES_COLLECTION}/${leadId}`;
-      downloadUrl = base64Content;
-
-      const noteDocRef = doc(db, APPROACH_NOTES_COLLECTION, leadId);
-      await setDoc(noteDocRef, {
-        leadId,
-        fileName: file.name,
-        fileSize: fileSizeString,
-        fileSizeBytes: file.size,
-        base64Content,
-        uploadedAt: new Date().toISOString(),
-        uploadedBy,
-      });
-    } catch (firestoreError) {
-      console.error("Firestore PDF fallback upload also failed:", firestoreError);
-      throw new Error(
-        "Failed to upload approach note to Firebase. Please check your network connection and file size."
-      );
-    }
   }
 
-  const approachNote: ApproachNote = {
-    fileName: file.name,
-    fileSize: fileSizeString,
-    fileSizeBytes: file.size,
-    uploadedAt: new Date().toISOString(),
-    uploadedBy,
-    downloadUrl,
-    storagePath: finalStoragePath,
-  };
-
-  return approachNote;
+  const data = await res.json();
+  return data.approachNote as ApproachNote;
 }
 
+// Backwards-compatible alias
+export const uploadApproachNoteToFirebase = uploadApproachNoteToR2;
+
 /**
- * Delete an Approach Note from Firebase (both Storage and Firestore fallback if present)
+ * Delete an Approach Note from Cloudflare R2 or legacy Firebase
  */
-export async function deleteApproachNoteFromFirebase(
+export async function deleteApproachNoteFromR2(
   leadId: string,
   storagePath?: string
 ): Promise<void> {
-  // If stored in Firebase Storage
-  if (storagePath && !storagePath.startsWith("firestore:")) {
+  if (!storagePath) return;
+
+  // 1. If stored in Cloudflare R2 (starts with b2bxmonks/)
+  if (storagePath.startsWith("b2bxmonks/")) {
+    try {
+      await fetch(
+        `/api/approach-notes/delete?key=${encodeURIComponent(storagePath)}`,
+        {
+          method: "DELETE",
+        }
+      );
+    } catch (err) {
+      console.warn("Could not delete from Cloudflare R2:", err);
+    }
+    return;
+  }
+
+  // 2. Legacy: If stored in Firebase Storage
+  if (!storagePath.startsWith("firestore:")) {
     try {
       const storageRef = ref(storage, storagePath);
       await deleteObject(storageRef);
@@ -133,7 +84,7 @@ export async function deleteApproachNoteFromFirebase(
     }
   }
 
-  // Also clean up any Firestore fallback document for this lead
+  // 3. Legacy: Clean up any Firestore fallback document for this lead
   try {
     const noteDocRef = doc(db, APPROACH_NOTES_COLLECTION, leadId);
     await deleteDoc(noteDocRef);
@@ -142,8 +93,11 @@ export async function deleteApproachNoteFromFirebase(
   }
 }
 
+// Backwards-compatible alias
+export const deleteApproachNoteFromFirebase = deleteApproachNoteFromR2;
+
 /**
- * Retrieve the active download / view URL for an Approach Note, resolving Firestore documents if necessary
+ * Retrieve the active download / view URL for an Approach Note, resolving legacy Firestore documents if necessary
  */
 export async function getApproachNoteContentUrl(
   leadId: string,
@@ -153,6 +107,14 @@ export async function getApproachNoteContentUrl(
     return approachNote.downloadUrl;
   }
 
+  // Cloudflare R2 storage path
+  if (approachNote.storagePath?.startsWith("b2bxmonks/")) {
+    return `/api/approach-notes/download?key=${encodeURIComponent(
+      approachNote.storagePath
+    )}`;
+  }
+
+  // Legacy Firestore base64 fallback
   if (approachNote.storagePath?.startsWith("firestore:")) {
     try {
       const noteDocRef = doc(db, APPROACH_NOTES_COLLECTION, leadId);
