@@ -4,6 +4,7 @@ import {
   GetObjectCommand,
   DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const accountId =
   process.env.R2_ACCOUNT_ID || "c608149ffe8bf5bb6d2ffe4e5afeedb7";
@@ -24,6 +25,25 @@ export const r2Client = new S3Client({
     secretAccessKey,
   },
 });
+
+/**
+ * Generate a Presigned PUT URL for direct browser-to-R2 upload (bypasses server payload limits)
+ */
+export async function getPresignedUploadUrl(
+  key: string,
+  contentType: string = "application/pdf",
+  expiresInSeconds: number = 3600
+): Promise<string> {
+  const command = new PutObjectCommand({
+    Bucket: R2_BUCKET,
+    Key: key,
+    ContentType: contentType,
+  });
+
+  return await getSignedUrl(r2Client, command, {
+    expiresIn: expiresInSeconds,
+  });
+}
 
 /**
  * Upload file buffer to Cloudflare R2 under b2bxmonks folder

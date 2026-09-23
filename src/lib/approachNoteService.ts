@@ -7,6 +7,7 @@ const APPROACH_NOTES_COLLECTION = "b2b_approach_note_files";
 
 /**
  * Upload an Approach Note PDF for a specific lead to Cloudflare R2 bucket under b2bxmonks/
+ * Uses Direct-to-R2 Presigned Upload (bypasses all 413 Payload Too Large / Vercel 4.5MB limits)
  */
 export async function uploadApproachNoteToR2(
   leadId: string,
@@ -26,6 +27,46 @@ export async function uploadApproachNoteToR2(
     throw new Error("Only PDF format (.pdf) is allowed for Approach Notes.");
   }
 
+  // Strategy 1: Direct-to-R2 Presigned Upload (Bypasses server payload limits like Vercel 4.5MB / Nginx 1MB)
+  try {
+    const presignRes = await fetch("/api/approach-notes/presign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fileName: file.name,
+        fileSizeBytes: file.size,
+        leadId,
+        uploadedBy,
+      }),
+    });
+
+    if (presignRes.ok) {
+      const presignData = await presignRes.json();
+      const { uploadUrl, success, ...metadata } = presignData;
+
+      // Direct upload from browser to Cloudflare R2
+      const r2Res = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/pdf",
+        },
+        body: file,
+      });
+
+      if (r2Res.ok) {
+        return metadata as ApproachNote;
+      }
+      console.warn(
+        "Direct R2 presigned upload failed with status:",
+        r2Res.status,
+        "falling back to server upload route"
+      );
+    }
+  } catch (presignErr) {
+    console.warn("Presigned direct upload error, attempting server fallback:", presignErr);
+  }
+
+  // Strategy 2: Fallback to server route /api/approach-notes/upload
   const formData = new FormData();
   formData.append("file", file);
   formData.append("leadId", leadId);
