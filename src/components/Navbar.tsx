@@ -16,12 +16,13 @@ import {
   Code2,
   Download,
   KeyRound,
+  SendHorizontal,
 } from "lucide-react";
 
 import { formatINR } from "@/lib/formatters";
 import { UserAccount } from "@/constants/users";
 
-export type NavTab = "kanban" | "table" | "analytics" | "email" | "developer";
+export type NavTab = "kanban" | "table" | "outreach" | "analytics" | "email" | "developer";
 
 interface NavbarProps {
   activeTab: NavTab;
@@ -100,6 +101,18 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <TableIcon className="w-3.5 h-3.5" />
               <span>Clients</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("outreach")}
+              className={`flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                activeTab === "outreach"
+                  ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm border border-blue-200/50 dark:border-blue-700/50"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+              }`}
+            >
+              <SendHorizontal className="w-3.5 h-3.5 text-blue-500" />
+              <span>Outreach</span>
             </button>
 
             <button
@@ -273,6 +286,18 @@ export const Navbar: React.FC<NavbarProps> = ({
         >
           <TableIcon className="w-3.5 h-3.5" />
           <span>Clients</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("outreach")}
+          className={`flex-1 py-1.5 text-xs font-semibold text-center flex items-center justify-center space-x-1 rounded-lg ${
+            activeTab === "outreach"
+              ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm"
+              : "text-slate-500"
+          }`}
+        >
+          <SendHorizontal className="w-3.5 h-3.5 text-blue-500" />
+          <span>Outreach</span>
         </button>
 
         <button

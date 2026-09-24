@@ -31,6 +31,17 @@ import { BulkUploadModal } from "@/components/BulkUploadModal";
 import { AnalyticsCharts } from "@/components/AnalyticsCharts";
 import { EmailCampaignTab } from "@/components/EmailCampaignTab";
 import { DeveloperTab } from "@/components/DeveloperTab";
+import { OutreachTab } from "@/components/OutreachTab";
+import { ColdClient, ColdClientStatus, OutreachChannel } from "@/types/outreach";
+import {
+  subscribeToColdClients,
+  addColdClient,
+  updateColdClient,
+  deleteColdClient,
+  logOutreachTouchpoint,
+  bulkAddColdClients,
+  convertColdClientToLead,
+} from "@/lib/outreachService";
 import { STAGES } from "@/constants/stages";
 import { LoginForm } from "@/components/LoginForm";
 import { ChangePasswordModal } from "@/components/ChangePasswordModal";
@@ -87,7 +98,7 @@ export default function Home() {
         const prefs = getLocalPreferences(u.username);
         if (
           prefs?.activeTab &&
-          ["kanban", "table", "analytics", "email", "developer"].includes(prefs.activeTab)
+          ["kanban", "table", "outreach", "analytics", "email", "developer"].includes(prefs.activeTab)
         ) {
           return prefs.activeTab as NavTab;
         }
@@ -96,6 +107,7 @@ export default function Home() {
     return "kanban";
   });
 
+  const [coldClients, setColdClients] = useState<ColdClient[]>([]);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState<boolean>(false);
@@ -232,7 +244,7 @@ export default function Home() {
   // Subscribe to Firestore Realtime Data
   useEffect(() => {
     if (!isAuthenticated) return;
-    const unsubscribe = subscribeToLeads((updatedLeads, isSyncing) => {
+    const unsubscribeLeads = subscribeToLeads((updatedLeads, isSyncing) => {
       setLeads(updatedLeads);
       setIsFirebaseSyncing(isSyncing);
 
@@ -244,7 +256,14 @@ export default function Home() {
       });
     });
 
-    return () => unsubscribe();
+    const unsubscribeCold = subscribeToColdClients((updatedClients) => {
+      setColdClients(updatedClients);
+    });
+
+    return () => {
+      unsubscribeLeads();
+      unsubscribeCold();
+    };
   }, [isAuthenticated]);
 
   // 1. Role-Based Access Control (RBAC):
@@ -270,6 +289,30 @@ export default function Home() {
       );
     });
   }, [leads, currentUser]);
+
+  // Scoped cold clients for outreach
+  const userScopedColdClients = useMemo(() => {
+    if (!currentUser) return [];
+    const isUserAdmin =
+      currentUser.username.toLowerCase() === "admin" ||
+      currentUser.role.toLowerCase().includes("admin");
+
+    if (isUserAdmin) return coldClients;
+
+    const activeName = (currentUser.name || "").toLowerCase().trim();
+    const activeUser = (currentUser.username || "").toLowerCase().trim();
+
+    return coldClients.filter((c: ColdClient) => {
+      const ownerStr = (c.owner || "").toLowerCase().trim();
+      return (
+        !ownerStr ||
+        ownerStr === activeName ||
+        ownerStr === activeUser ||
+        (activeName.length > 0 && (ownerStr.includes(activeName) || activeName.includes(ownerStr))) ||
+        (activeUser.length > 0 && (ownerStr.includes(activeUser) || activeUser.includes(ownerStr)))
+      );
+    });
+  }, [coldClients, currentUser]);
 
   // 2. Filter user-scoped leads based on user toolbar selections
   const filteredLeads = userScopedLeads.filter((lead: Lead) => {
@@ -538,6 +581,51 @@ export default function Home() {
     exportLeadsToCSV(leads, "xMonks_B2B_All_Clients_Export");
   };
 
+  // Cold Client / Outreach Handlers
+  const handleAddColdClient = async (
+    clientData: Omit<ColdClient, "id" | "createdAt" | "updatedAt" | "touchpoints"> & {
+      initialNote?: string;
+    }
+  ) => {
+    await addColdClient(clientData);
+  };
+
+  const handleBulkAddColdClients = async (
+    clientsData: Array<Omit<ColdClient, "id" | "createdAt" | "updatedAt" | "touchpoints">>
+  ) => {
+    await bulkAddColdClients(clientsData);
+  };
+
+  const handleUpdateColdClient = async (id: string, updates: Partial<ColdClient>) => {
+    await updateColdClient(id, updates);
+  };
+
+  const handleLogOutreachTouchpoint = async (
+    clientId: string,
+    touchpoint: {
+      channel: OutreachChannel | "note";
+      summary: string;
+      author: string;
+      nextStatus?: ColdClientStatus;
+      nextFollowUpDate?: string;
+    }
+  ) => {
+    await logOutreachTouchpoint(clientId, touchpoint);
+  };
+
+  const handleConvertToLead = async (
+    client: ColdClient,
+    dealValue: number,
+    author: string,
+    targetClosureMonth?: string
+  ) => {
+    await convertColdClientToLead(client, dealValue, author, targetClosureMonth);
+  };
+
+  const handleDeleteColdClient = async (id: string) => {
+    await deleteColdClient(id);
+  };
+
   if (!isClient) {
     return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-xs">Loading Portal...</div>;
   }
@@ -614,6 +702,22 @@ export default function Home() {
             onUpdateLeadSource={handleUpdateLeadSource}
             isAdmin={isAdmin}
             onExportLeads={handleExportLeads}
+          />
+        )}
+
+        {activeTab === "outreach" && (
+          <OutreachTab
+            coldClients={userScopedColdClients}
+            onAddColdClient={handleAddColdClient}
+            onBulkAddColdClients={handleBulkAddColdClients}
+            onUpdateColdClient={handleUpdateColdClient}
+            onLogTouchpoint={handleLogOutreachTouchpoint}
+            onConvertToLead={handleConvertToLead}
+            onDeleteColdClient={handleDeleteColdClient}
+            currentUser={currentUser}
+            onNavigateToEmailTab={(email, name, company) => {
+              handleTabChange("email");
+            }}
           />
         )}
 
