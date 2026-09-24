@@ -52,6 +52,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   totalWeightedPipeline,
 }) => {
   const formattedWeightedVal = formatINR(totalWeightedPipeline);
+  const isAdmin = Boolean(
+    currentUser?.username.toLowerCase() === "admin" ||
+    currentUser?.role.toLowerCase().includes("admin")
+  );
 
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-950/90 backdrop-blur-md">
@@ -139,17 +143,19 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>Emails</span>
             </button>
 
-            <button
-              onClick={() => setActiveTab("developer")}
-              className={`flex items-center space-x-1 xl:space-x-1.5 px-2 xl:px-2.5 py-1 xl:py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
-                activeTab === "developer"
-                  ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm border border-indigo-200/50 dark:border-indigo-700/50"
-                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
-              }`}
-            >
-              <Code2 className="w-3.5 h-3.5 text-indigo-500" />
-              <span>Developer</span>
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => setActiveTab("developer")}
+                className={`flex items-center space-x-1 xl:space-x-1.5 px-2 xl:px-2.5 py-1 xl:py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                  activeTab === "developer"
+                    ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm border border-indigo-200/50 dark:border-indigo-700/50"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+                }`}
+              >
+                <Code2 className="w-3.5 h-3.5 text-indigo-500" />
+                <span>Developer</span>
+              </button>
+            )}
           </div>
 
           {/* 3. Right Status Badges & Actions */}
@@ -326,17 +332,19 @@ export const Navbar: React.FC<NavbarProps> = ({
           <span>Emails</span>
         </button>
 
-        <button
-          onClick={() => setActiveTab("developer")}
-          className={`flex-1 py-1.5 text-xs font-semibold text-center flex items-center justify-center space-x-1 rounded-lg ${
-            activeTab === "developer"
-              ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
-              : "text-slate-500"
-          }`}
-        >
-          <Code2 className="w-3.5 h-3.5 text-indigo-500" />
-          <span>Dev</span>
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => setActiveTab("developer")}
+            className={`flex-1 py-1.5 text-xs font-semibold text-center flex items-center justify-center space-x-1 rounded-lg ${
+              activeTab === "developer"
+                ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                : "text-slate-500"
+            }`}
+          >
+            <Code2 className="w-3.5 h-3.5 text-indigo-500" />
+            <span>Dev</span>
+          </button>
+        )}
       </div>
     </header>
   );

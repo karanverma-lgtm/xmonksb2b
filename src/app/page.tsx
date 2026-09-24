@@ -84,6 +84,11 @@ export default function Home() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [isFirebaseSyncing, setIsFirebaseSyncing] = useState<boolean>(true);
 
+  const isAdmin = Boolean(
+    currentUser?.username.toLowerCase() === "admin" ||
+    currentUser?.role.toLowerCase().includes("admin")
+  );
+
   // Track if user explicitly clicked/changed tabs or if initial tab was restored
   const userHasChangedTabRef = useRef<boolean>(false);
   const initialTabLoadedRef = useRef<boolean>(false);
@@ -95,11 +100,17 @@ export default function Home() {
       const storedUser = localStorage.getItem("xmonks_b2b_user");
       if (storedUser) {
         const u = JSON.parse(storedUser);
+        const userIsAdmin = Boolean(
+          u?.username?.toLowerCase() === "admin" || u?.role?.toLowerCase().includes("admin")
+        );
         const prefs = getLocalPreferences(u.username);
         if (
           prefs?.activeTab &&
           ["kanban", "table", "outreach", "analytics", "email", "developer"].includes(prefs.activeTab)
         ) {
+          if (prefs.activeTab === "developer" && !userIsAdmin) {
+            return "kanban";
+          }
           return prefs.activeTab as NavTab;
         }
       }
@@ -152,7 +163,11 @@ export default function Home() {
       // Only set initial tab from preferences ONCE on load, and NEVER if the user has already changed tabs
       if (!initialTabLoadedRef.current && !userHasChangedTabRef.current && prefs.activeTab) {
         initialTabLoadedRef.current = true;
-        setActiveTab(prefs.activeTab as NavTab);
+        if (prefs.activeTab === "developer" && !isAdmin) {
+          setActiveTab("kanban");
+        } else {
+          setActiveTab(prefs.activeTab as NavTab);
+        }
       }
       if (prefs.searchTerm !== undefined) setSearchTerm(prefs.searchTerm);
       if (prefs.fromDate !== undefined) setFromDate(prefs.fromDate);
@@ -163,7 +178,14 @@ export default function Home() {
     });
 
     return () => unsub();
-  }, [currentUser]);
+  }, [currentUser, isAdmin]);
+
+  // Ensure non-admin users can never land on or stay on the developer tab
+  useEffect(() => {
+    if (currentUser && !isAdmin && activeTab === "developer") {
+      setActiveTab("kanban");
+    }
+  }, [currentUser, isAdmin, activeTab]);
 
   // Debounce search sync to Firestore
   const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -178,6 +200,9 @@ export default function Home() {
 
   // Handlers to synchronize UI state to Firestore
   const handleTabChange = (tab: NavTab) => {
+    if (tab === "developer" && !isAdmin) {
+      return;
+    }
     userHasChangedTabRef.current = true;
     initialTabLoadedRef.current = true;
     setActiveTab(tab);
@@ -571,11 +596,6 @@ export default function Home() {
     }
   };
 
-  const isAdmin = Boolean(
-    currentUser?.username.toLowerCase() === "admin" ||
-    currentUser?.role.toLowerCase().includes("admin")
-  );
-
   const handleExportLeads = () => {
     // Export all active leads in the system for admin
     exportLeadsToCSV(leads, "xMonks_B2B_All_Clients_Export");
@@ -731,11 +751,11 @@ export default function Home() {
         {activeTab === "email" && (
           <EmailCampaignTab
             leads={userScopedLeads}
-            onNavigateToDeveloper={() => handleTabChange("developer")}
+            onNavigateToDeveloper={isAdmin ? () => handleTabChange("developer") : undefined}
           />
         )}
 
-        {activeTab === "developer" && (
+        {activeTab === "developer" && isAdmin && (
           <DeveloperTab onOpenChangePassword={() => setIsChangePasswordModalOpen(true)} />
         )}
       </main>
