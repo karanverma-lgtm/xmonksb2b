@@ -39,6 +39,9 @@ import {
   saveCampaignRecord,
   deleteCampaignRecord,
   clearAllCampaigns,
+  subscribeToSenderProfiles,
+  setActiveSender,
+  SMTPSenderProfile,
   EmailLogEntry,
   EmailCampaign,
 } from "@/lib/emailService";
@@ -488,7 +491,18 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
     );
   }, [logs, logSearchTerm]);
 
-  const smtpConfig = useMemo(() => getStoredSMTPConfig(), []);
+  const [senderProfiles, setSenderProfiles] = useState<SMTPSenderProfile[]>([]);
+
+  useEffect(() => {
+    const unsub = subscribeToSenderProfiles((profiles) => {
+      setSenderProfiles(profiles);
+    });
+    return () => unsub();
+  }, []);
+
+  const activeSender = useMemo(() => {
+    return senderProfiles.find((s) => s.isDefault) || senderProfiles[0] || getStoredSMTPConfig();
+  }, [senderProfiles]);
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -512,16 +526,37 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
         </div>
 
         <div className="flex items-center space-x-3">
-          <div className="px-3.5 py-2 rounded-xl bg-slate-900/80 border border-slate-800 text-xs">
-            <span className="text-slate-400 block text-[10px]">Connected Sender:</span>
-            <span className="font-bold text-indigo-300 font-mono">{smtpConfig.userEmail}</span>
+          <div className="px-3.5 py-2 rounded-xl bg-slate-900/80 border border-slate-800 text-xs flex items-center space-x-2.5">
+            <div>
+              <span className="text-slate-400 block text-[9px] uppercase font-semibold">Active Sender Capsule:</span>
+              <div className="flex items-center space-x-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="font-bold text-indigo-300 font-mono text-xs">
+                  {activeSender.senderName || activeSender.userEmail}
+                </span>
+              </div>
+            </div>
+
+            {senderProfiles.length > 1 && (
+              <select
+                value={activeSender.id || ""}
+                onChange={(e) => setActiveSender(e.target.value)}
+                className="bg-slate-800 text-xs text-white rounded-lg px-2 py-1 border border-slate-700 focus:outline-none focus:border-indigo-500 font-mono"
+              >
+                {senderProfiles.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.senderName} ({s.userEmail})
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           {onNavigateToDeveloper && (
             <button
               onClick={onNavigateToDeveloper}
               className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 transition"
-              title="Configure SMTP Settings in Developer Tab"
+              title="Configure Senders & SMTP in Developer Tab"
             >
               <Settings className="w-4 h-4" />
             </button>

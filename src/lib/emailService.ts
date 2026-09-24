@@ -12,12 +12,27 @@ import {
 import { PREBUILT_TEMPLATES, EmailTemplate } from "@/constants/emailTemplates";
 
 export interface SMTPConfig {
+  id?: string;
   userEmail: string;
   appPassword: string;
   host: string;
   port: number;
   secure: boolean;
   senderName: string;
+}
+
+export interface SMTPSenderProfile {
+  id: string;
+  userEmail: string;
+  appPassword: string;
+  senderName: string;
+  host: string;
+  port: number;
+  secure: boolean;
+  isDefault: boolean;
+  isVerified?: boolean;
+  lastVerifiedAt?: string;
+  createdAt?: string;
 }
 
 export interface EmailLogEntry {
@@ -62,11 +77,13 @@ export interface EmailCampaign {
 
 const TEMPLATES_COLLECTION = "b2b_email_templates";
 const SMTP_COLLECTION = "b2b_smtp_config";
+const SENDERS_COLLECTION = "b2b_smtp_senders";
 const LOGS_COLLECTION = "b2b_email_logs";
 const CAMPAIGNS_COLLECTION = "b2b_email_campaigns";
 const DELETED_TEMPLATES_COLLECTION = "b2b_deleted_templates";
 
 const SMTP_STORAGE_KEY = "xmonks_b2b_smtp_config";
+const SENDERS_STORAGE_KEY = "xmonks_b2b_smtp_senders";
 const CUSTOM_TEMPLATES_KEY = "xmonks_b2b_email_templates";
 const DELETED_TEMPLATES_KEY = "xmonks_b2b_deleted_templates";
 const EMAIL_LOGS_KEY = "xmonks_b2b_email_logs";
@@ -147,6 +164,249 @@ export function saveSMTPConfig(config: SMTPConfig): void {
     console.warn("Firestore save SMTP config error:", e);
   }
 }
+
+// --- MULTI-SENDER (CAPSULE MODE) PROFILE HELPERS ---
+
+export function getDefaultSenderProfile(): SMTPSenderProfile {
+  const current = getStoredSMTPConfig();
+  return {
+    id: "sender-ruby-default",
+    userEmail: current.userEmail || "ruby.dayal@xmonks.com",
+    appPassword: current.appPassword || "ombg ustr bodg bxnp",
+    senderName: current.senderName || "Ruby - xMonks",
+    host: current.host || "smtp.gmail.com",
+    port: current.port || 587,
+    secure: current.secure !== undefined ? current.secure : false,
+    isDefault: true,
+    isVerified: true,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+export function getAllSenderProfiles(): SMTPSenderProfile[] {
+  if (typeof window === "undefined") return [getDefaultSenderProfile()];
+  try {
+    const raw = localStorage.getItem(SENDERS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn("Error reading sender profiles from localStorage", e);
+  }
+
+  const initial = [getDefaultSenderProfile()];
+  saveLocalSenderProfiles(initial);
+  return initial;
+}
+
+export function saveLocalSenderProfiles(senders: SMTPSenderProfile[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(SENDERS_STORAGE_KEY, JSON.stringify(senders));
+  } catch (e) {
+    console.warn("Failed to save senders to localStorage", e);
+  }
+}
+
+export function saveSenderProfile(
+  profileData: Omit<SMTPSenderProfile, "id"> & { id?: string }
+): SMTPSenderProfile {
+  const id = profileData.id || `sender-${Date.now()}`;
+  const isDefault = Boolean(profileData.isDefault);
+
+  const newProfile: SMTPSenderProfile = {
+    ...profileData,
+    id,
+    isDefault,
+    createdAt: profileData.createdAt || new Date().toISOString(),
+  };
+
+  const current = getAllSenderProfiles();
+  const existingIdx = current.findIndex((s) => s.id === id);
+
+  let updatedList: SMTPSenderProfile[] = [];
+
+  if (existingIdx >= 0) {
+    current[existingIdx] = newProfile;
+    updatedList = [...current];
+  } else {
+    updatedList = [newProfile, ...current];
+  }
+
+  // If this profile is set as default (or if it's the only one), ensure others are not default
+  if (isDefault || updatedList.length === 1) {
+    updatedList = updatedList.map((s) => ({
+      ...s,
+      isDefault: s.id === id,
+    }));
+    // Sync to active SMTPConfig
+    saveSMTPConfig({
+      id: newProfile.id,
+      userEmail: newProfile.userEmail,
+      appPassword: newProfile.appPassword,
+      senderName: newProfile.senderName,
+      host: newProfile.host,
+      port: newProfile.port,
+      secure: newProfile.secure,
+    });
+  }
+
+  saveLocalSenderProfiles(updatedList);
+
+  // Sync to Firestore
+  if (typeof window !== "undefined") {
+    try {
+      const docRef = doc(db, SENDERS_COLLECTION, id);
+      setDoc(docRef, newProfile, { merge: true }).catch((err) =>
+        console.warn("Firestore save sender warning:", err)
+      );
+    } catch (e) {
+      console.warn("Firestore save sender error:", e);
+    }
+  }
+
+  return newProfile;
+}
+
+export function setActiveSender(senderId: string): SMTPSenderProfile | null {
+  const current = getAllSenderProfiles();
+  const target = current.find((s) => s.id === senderId);
+  if (!target) return null;
+
+  const updatedList = current.map((s) => ({
+    ...s,
+    isDefault: s.id === senderId,
+  }));
+
+  saveLocalSenderProfiles(updatedList);
+
+  // Sync to active SMTPConfig
+  saveSMTPConfig({
+    id: target.id,
+    userEmail: target.userEmail,
+    appPassword: target.appPassword,
+    senderName: target.senderName,
+    host: target.host,
+    port: target.port,
+    secure: target.secure,
+  });
+
+  // Sync isDefault flag to Firestore for all senders
+  if (typeof window !== "undefined") {
+    try {
+      updatedList.forEach((s) => {
+        const docRef = doc(db, SENDERS_COLLECTION, s.id);
+        setDoc(docRef, { isDefault: s.id === senderId }, { merge: true }).catch(() => {});
+      });
+    } catch {}
+  }
+
+  return target;
+}
+
+export function deleteSenderProfile(senderId: string): void {
+  const current = getAllSenderProfiles();
+  if (current.length <= 1) {
+    console.warn("Cannot delete the only sender profile.");
+    return;
+  }
+
+  const filtered = current.filter((s) => s.id !== senderId);
+  const deletedWasDefault = current.find((s) => s.id === senderId)?.isDefault;
+
+  if (deletedWasDefault && filtered.length > 0) {
+    filtered[0].isDefault = true;
+    saveSMTPConfig({
+      id: filtered[0].id,
+      userEmail: filtered[0].userEmail,
+      appPassword: filtered[0].appPassword,
+      senderName: filtered[0].senderName,
+      host: filtered[0].host,
+      port: filtered[0].port,
+      secure: filtered[0].secure,
+    });
+  }
+
+  saveLocalSenderProfiles(filtered);
+
+  if (typeof window !== "undefined") {
+    try {
+      const docRef = doc(db, SENDERS_COLLECTION, senderId);
+      deleteDoc(docRef).catch((err) => console.warn("Firestore delete sender warning:", err));
+    } catch (e) {
+      console.warn("Firestore delete sender error:", e);
+    }
+  }
+}
+
+export function subscribeToSenderProfiles(
+  onData: (senders: SMTPSenderProfile[], isFirebaseSyncing: boolean) => void
+): () => void {
+  if (typeof window === "undefined") return () => {};
+
+  let unsubscribed = false;
+
+  try {
+    const ref = collection(db, SENDERS_COLLECTION);
+    const unsubscribe = onSnapshot(
+      ref,
+      (snapshot) => {
+        if (unsubscribed) return;
+        if (!snapshot.empty) {
+          const firestoreSenders: SMTPSenderProfile[] = snapshot.docs.map((d) => ({
+            id: d.id,
+            ...(d.data() as Omit<SMTPSenderProfile, "id">),
+          }));
+
+          // Sort by default first, then created
+          firestoreSenders.sort((a, b) => (b.isDefault ? -1 : 1));
+          saveLocalSenderProfiles(firestoreSenders);
+
+          const defaultSender = firestoreSenders.find((s) => s.isDefault);
+          if (defaultSender) {
+            saveLocalSMTPConfig({
+              id: defaultSender.id,
+              userEmail: defaultSender.userEmail,
+              appPassword: defaultSender.appPassword,
+              senderName: defaultSender.senderName,
+              host: defaultSender.host,
+              port: defaultSender.port,
+              secure: defaultSender.secure,
+            });
+          }
+
+          onData(firestoreSenders, true);
+        } else {
+          // If Firestore collection empty, seed with local senders
+          const locals = getAllSenderProfiles();
+          locals.forEach((s) => {
+            const docRef = doc(db, SENDERS_COLLECTION, s.id);
+            setDoc(docRef, s, { merge: true }).catch(() => {});
+          });
+          onData(locals, true);
+        }
+      },
+      (error) => {
+        console.warn("Firestore senders listener fallback to local:", error);
+        if (!unsubscribed) {
+          onData(getAllSenderProfiles(), false);
+        }
+      }
+    );
+
+    return () => {
+      unsubscribed = true;
+      unsubscribe();
+    };
+  } catch {
+    onData(getAllSenderProfiles(), false);
+    return () => {};
+  }
+}
+
 
 export function getAllTemplates(): EmailTemplate[] {
   if (typeof window === "undefined") return PREBUILT_TEMPLATES;
