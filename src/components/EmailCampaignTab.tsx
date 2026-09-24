@@ -23,11 +23,14 @@ import {
   Square,
   Settings,
   Save,
+  ShieldCheck,
+  Lock,
 } from "lucide-react";
 import { EmailPreviewCard } from "@/components/EmailPreviewCard";
 import { AITemplateGeneratorModal } from "@/components/AITemplateGeneratorModal";
 import { Lead } from "@/types/lead";
 import { EmailTemplate } from "@/constants/emailTemplates";
+import { UserAccount } from "@/constants/users";
 import {
   getAllTemplates,
   saveCustomTemplate,
@@ -43,6 +46,7 @@ import {
   clearAllCampaigns,
   subscribeToSenderProfiles,
   setActiveSender,
+  getSenderProfileForUser,
   SMTPSenderProfile,
   EmailLogEntry,
   EmailCampaign,
@@ -51,6 +55,8 @@ import {
 interface EmailCampaignTabProps {
   leads: Lead[];
   onNavigateToDeveloper?: () => void;
+  currentUser?: UserAccount | null;
+  isAdmin?: boolean;
 }
 
 interface ParsedCSVEmailRecipient {
@@ -71,9 +77,31 @@ v.sethi@quantummed.org,Dr. Vikram Sethi,Quantum Medical Systems,Head of R&D,Heal
 export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
   leads,
   onNavigateToDeveloper,
+  currentUser,
+  isAdmin = false,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<"templates" | "single" | "bulk" | "campaigns" | "logs">("templates");
   const [isAIModalOpen, setIsAIModalOpen] = useState<boolean>(false);
+
+  // Sender Capsules State
+  const [senderProfiles, setSenderProfiles] = useState<SMTPSenderProfile[]>([]);
+  const [adminSelectedSenderId, setAdminSelectedSenderId] = useState<string>("");
+
+  useEffect(() => {
+    const unsub = subscribeToSenderProfiles((profiles) => {
+      setSenderProfiles(profiles);
+    });
+    return () => unsub();
+  }, []);
+
+  // Active Sender: allocated to Amit for Amit, Ruby for Ruby, locked for non-admins
+  const activeSender = useMemo(() => {
+    if (isAdmin && adminSelectedSenderId) {
+      const found = senderProfiles.find((s) => s.id === adminSelectedSenderId);
+      if (found) return found;
+    }
+    return getSenderProfileForUser(senderProfiles, currentUser);
+  }, [senderProfiles, currentUser, isAdmin, adminSelectedSenderId]);
 
   // Template State
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
@@ -83,6 +111,20 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
   const [templateCategory, setTemplateCategory] = useState<EmailTemplate["category"]>("outreach");
   const [templateHtml, setTemplateHtml] = useState<string>("");
   const [templateSavedMsg, setTemplateSavedMsg] = useState<string>("");
+
+  // Individual Scoped Templates:
+  // Each user has their own custom templates + shared system prebuilt templates.
+  // Admin can see all templates.
+  const userVisibleTemplates = useMemo(() => {
+    if (isAdmin) return templates;
+    const currentUsername = currentUser?.username?.toLowerCase();
+    return templates.filter((tpl) => {
+      if (tpl.isSystem || !tpl.owner || tpl.owner === "system") {
+        return true;
+      }
+      return Boolean(currentUsername && tpl.owner.toLowerCase() === currentUsername);
+    });
+  }, [templates, currentUser, isAdmin]);
 
   // Single Email State
   const [selectedSingleTemplateId, setSelectedSingleTemplateId] = useState<string>("");
@@ -128,17 +170,29 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
       setTemplates(updatedTemplates);
       if (updatedTemplates.length > 0 && !initialized) {
         initialized = true;
-        const initialTpl = updatedTemplates[0];
-        setSelectedTemplateId(initialTpl.id);
-        loadTemplateIntoEditor(initialTpl);
+        const currentUsername = currentUser?.username?.toLowerCase();
+        const visible = isAdmin
+          ? updatedTemplates
+          : updatedTemplates.filter(
+              (tpl) =>
+                tpl.isSystem ||
+                !tpl.owner ||
+                tpl.owner === "system" ||
+                (currentUsername && tpl.owner.toLowerCase() === currentUsername)
+            );
+        const initialTpl = visible[0] || updatedTemplates[0];
+        if (initialTpl) {
+          setSelectedTemplateId(initialTpl.id);
+          loadTemplateIntoEditor(initialTpl);
 
-        setSelectedSingleTemplateId(initialTpl.id);
-        setSingleSubject(initialTpl.subject);
-        setSingleHtmlContent(initialTpl.htmlContent);
+          setSelectedSingleTemplateId(initialTpl.id);
+          setSingleSubject(initialTpl.subject);
+          setSingleHtmlContent(initialTpl.htmlContent);
 
-        setSelectedBulkTemplateId(initialTpl.id);
-        setBulkSubject(initialTpl.subject);
-        setBulkHtmlContent(initialTpl.htmlContent);
+          setSelectedBulkTemplateId(initialTpl.id);
+          setBulkSubject(initialTpl.subject);
+          setBulkHtmlContent(initialTpl.htmlContent);
+        }
       }
     });
 
@@ -155,7 +209,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
       unsubCampaigns();
       unsubLogs();
     };
-  }, [loadTemplateIntoEditor]);
+  }, [loadTemplateIntoEditor, currentUser, isAdmin]);
 
   const handleCreateNewTemplate = () => {
     setSelectedTemplateId("");
@@ -171,13 +225,38 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
 
   const handleSaveTemplate = () => {
     if (!templateName.trim() || !templateHtml.trim()) return;
+    const currentOwner = currentUser?.username?.toLowerCase() || "system";
+    const currentCreator = currentUser?.name || currentUser?.username || "User";
+
+    const existing = templates.find((t) => t.id === selectedTemplateId);
+    // If not admin and editing a system template or another user's template, save as personal copy
+    if (!isAdmin && existing && (existing.isSystem || (existing.owner && existing.owner.toLowerCase() !== currentOwner))) {
+      const saved = saveCustomTemplate({
+        name: `${templateName} (My Copy)`,
+        subject: templateSubject,
+        category: templateCategory,
+        htmlContent: templateHtml,
+        description: `Personal copy saved by ${currentCreator}`,
+        owner: currentOwner,
+        createdBy: currentCreator,
+        isSystem: false,
+      });
+      setSelectedTemplateId(saved.id);
+      setTemplateSavedMsg("Saved as your personal custom template!");
+      setTimeout(() => setTemplateSavedMsg(""), 3000);
+      return;
+    }
+
     const saved = saveCustomTemplate({
       id: selectedTemplateId || undefined,
       name: templateName,
       subject: templateSubject,
       category: templateCategory,
       htmlContent: templateHtml,
-      description: "Custom user-created HTML template",
+      description: existing?.description || `Custom template by ${currentCreator}`,
+      owner: existing?.owner || currentOwner,
+      createdBy: existing?.createdBy || currentCreator,
+      isSystem: existing ? Boolean(existing.isSystem) : false,
     });
     setSelectedTemplateId(saved.id);
     setTemplateSavedMsg("Template saved successfully!");
@@ -187,13 +266,32 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
   const handleDeleteTemplate = (id?: string) => {
     const targetId = id || selectedTemplateId;
     if (!targetId) return;
+    const target = templates.find((t) => t.id === targetId);
+    const currentOwner = currentUser?.username?.toLowerCase();
+
+    if (!isAdmin && target) {
+      if (target.isSystem || (target.owner && target.owner.toLowerCase() !== currentOwner)) {
+        alert("You can only delete your own personal templates.");
+        return;
+      }
+    }
+
     if (confirm("Are you sure you want to delete this HTML email template?")) {
       deleteTemplate(targetId);
       const remaining = getAllTemplates();
       setTemplates(remaining);
-      if (remaining.length > 0) {
-        setSelectedTemplateId(remaining[0].id);
-        loadTemplateIntoEditor(remaining[0]);
+      const remainingVisible = isAdmin
+        ? remaining
+        : remaining.filter(
+            (t) =>
+              t.isSystem ||
+              !t.owner ||
+              t.owner === "system" ||
+              (currentOwner && t.owner.toLowerCase() === currentOwner)
+          );
+      if (remainingVisible.length > 0) {
+        setSelectedTemplateId(remainingVisible[0].id);
+        loadTemplateIntoEditor(remainingVisible[0]);
       } else {
         handleCreateNewTemplate();
       }
@@ -210,19 +308,25 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
     htmlContent: string;
     description: string;
   }) => {
+    const currentOwner = currentUser?.username?.toLowerCase() || "system";
+    const currentCreator = currentUser?.name || currentUser?.username || "User";
+
     const saved = saveCustomTemplate({
       name: aiTemplate.name,
       subject: aiTemplate.subject,
       category: aiTemplate.category,
       htmlContent: aiTemplate.htmlContent,
       description: aiTemplate.description,
+      owner: currentOwner,
+      createdBy: currentCreator,
+      isSystem: false,
     });
     setSelectedTemplateId(saved.id);
     setTemplateName(saved.name);
     setTemplateSubject(saved.subject);
     setTemplateCategory(saved.category);
     setTemplateHtml(saved.htmlContent);
-    setTemplateSavedMsg("✨ AI Template generated, saved & synced to library!");
+    setTemplateSavedMsg("✨ AI Template generated & saved to your personal library!");
     setTimeout(() => setTemplateSavedMsg(""), 4000);
   };
 
@@ -294,6 +398,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
         ],
         subject: singleSubject,
         htmlContent: singleHtmlContent,
+        smtpConfig: activeSender,
       });
 
       const successCount = res.successCount || (res.success ? 1 : 0);
@@ -454,6 +559,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
         recipients: targetRecipients,
         subject: bulkSubject,
         htmlContent: bulkHtmlContent,
+        smtpConfig: activeSender,
       });
 
       setBulkProgress({ current: targetRecipients.length, total: targetRecipients.length });
@@ -530,19 +636,6 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
     );
   }, [logs, logSearchTerm]);
 
-  const [senderProfiles, setSenderProfiles] = useState<SMTPSenderProfile[]>([]);
-
-  useEffect(() => {
-    const unsub = subscribeToSenderProfiles((profiles) => {
-      setSenderProfiles(profiles);
-    });
-    return () => unsub();
-  }, []);
-
-  const activeSender = useMemo(() => {
-    return senderProfiles.find((s) => s.isDefault) || senderProfiles[0] || getStoredSMTPConfig();
-  }, [senderProfiles]);
-
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* Top Header Banner */}
@@ -573,25 +666,38 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                 <span className="font-bold text-indigo-300 font-mono text-xs">
                   {activeSender.senderName || activeSender.userEmail}
                 </span>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  ({activeSender.userEmail})
+                </span>
               </div>
             </div>
 
-            {senderProfiles.length > 1 && (
-              <select
-                value={activeSender.id || ""}
-                onChange={(e) => setActiveSender(e.target.value)}
-                className="bg-slate-800 text-xs text-white rounded-lg px-2 py-1 border border-slate-700 focus:outline-none focus:border-indigo-500 font-mono"
-              >
-                {senderProfiles.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.senderName} ({s.userEmail})
-                  </option>
-                ))}
-              </select>
+            {isAdmin ? (
+              senderProfiles.length > 1 && (
+                <select
+                  value={activeSender.id || ""}
+                  onChange={(e) => {
+                    setAdminSelectedSenderId(e.target.value);
+                    setActiveSender(e.target.value);
+                  }}
+                  className="bg-slate-800 text-xs text-white rounded-lg px-2 py-1 border border-slate-700 focus:outline-none focus:border-indigo-500 font-mono"
+                >
+                  {senderProfiles.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.senderName} ({s.userEmail})
+                    </option>
+                  ))}
+                </select>
+              )
+            ) : (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center space-x-1">
+                <ShieldCheck className="w-3 h-3 text-indigo-400" />
+                <span>Assigned</span>
+              </span>
             )}
           </div>
 
-          {onNavigateToDeveloper && (
+          {isAdmin && onNavigateToDeveloper && (
             <button
               onClick={onNavigateToDeveloper}
               className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 transition"
@@ -614,13 +720,13 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
           }`}
         >
           <FileCode className="w-4 h-4" />
-          <span>HTML Templates ({templates.length})</span>
+          <span>HTML Templates ({userVisibleTemplates.length})</span>
         </button>
 
         <button
           onClick={() => {
             setActiveSubTab("single");
-            const currentTpl = templates.find((t) => t.id === selectedTemplateId) || templates[0];
+            const currentTpl = userVisibleTemplates.find((t) => t.id === selectedTemplateId) || userVisibleTemplates[0];
             if (currentTpl && !singleSubject) handleApplyTemplateToSingle(currentTpl);
           }}
           className={`flex items-center space-x-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all ${
@@ -636,7 +742,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
         <button
           onClick={() => {
             setActiveSubTab("bulk");
-            const currentTpl = templates.find((t) => t.id === selectedTemplateId) || templates[0];
+            const currentTpl = userVisibleTemplates.find((t) => t.id === selectedTemplateId) || userVisibleTemplates[0];
             if (currentTpl && !bulkSubject) handleApplyTemplateToBulk(currentTpl);
           }}
           className={`flex items-center space-x-2 px-5 py-2.5 rounded-xl text-xs font-extrabold transition-all ${
@@ -685,7 +791,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
           <div className="lg:col-span-4 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-5 space-y-4 shadow-sm">
             <div className="flex items-center justify-between gap-1.5">
               <h3 className="font-extrabold text-xs uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                Templates ({templates.length})
+                Templates ({userVisibleTemplates.length})
               </h3>
               <div className="flex items-center space-x-1.5">
                 <button
@@ -708,7 +814,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
             </div>
 
             <div className="space-y-2.5 max-h-[600px] overflow-y-auto pr-1">
-              {templates.map((tpl) => (
+              {userVisibleTemplates.map((tpl) => (
                 <div
                   key={tpl.id}
                   onClick={() => {
@@ -729,8 +835,14 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                   </div>
                   <p className="text-[11px] text-slate-500 line-clamp-1">{tpl.subject}</p>
                   <div className="mt-2.5 flex items-center justify-between border-t border-slate-200/60 dark:border-slate-800/60 pt-2">
-                    <span className="text-[10px] text-slate-400">
-                      {tpl.id.startsWith("custom-") ? "User Custom" : "System Template"}
+                    <span className="text-[10px]">
+                      {tpl.isSystem || !tpl.owner || tpl.owner === "system" ? (
+                        <span className="text-slate-500 font-medium">System Prebuilt</span>
+                      ) : currentUser?.username && tpl.owner.toLowerCase() === currentUser.username.toLowerCase() ? (
+                        <span className="text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-500/10 px-2 py-0.5 rounded-md">My Template</span>
+                      ) : (
+                        <span className="text-slate-400 font-medium">{tpl.createdBy || tpl.owner}</span>
+                      )}
                     </span>
 
                     <div className="flex items-center space-x-2">
@@ -745,16 +857,18 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                         Use in Single
                       </button>
 
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteTemplate(tpl.id);
-                        }}
-                        className="p-1 text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition"
-                        title="Delete Template"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {(isAdmin || (Boolean(tpl.owner) && tpl.owner?.toLowerCase() === currentUser?.username?.toLowerCase())) && !tpl.isSystem && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteTemplate(tpl.id);
+                          }}
+                          className="p-1 text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition"
+                          title="Delete Template"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1029,7 +1143,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                 onChange={(e) => {
                   const tplId = e.target.value;
                   setSelectedSingleTemplateId(tplId);
-                  const tpl = templates.find((t) => t.id === tplId);
+                  const tpl = userVisibleTemplates.find((t) => t.id === tplId);
                   if (tpl) {
                     setSingleSubject(tpl.subject);
                     setSingleHtmlContent(tpl.htmlContent);
@@ -1038,7 +1152,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                 className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
               >
                 <option value="" disabled>-- Select Saved HTML Email Template --</option>
-                {templates.map((t) => (
+                {userVisibleTemplates.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name} ({t.category.toUpperCase()}) - {t.subject}
                   </option>
@@ -1314,7 +1428,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                   onChange={(e) => {
                     const tplId = e.target.value;
                     setSelectedBulkTemplateId(tplId);
-                    const tpl = templates.find((t) => t.id === tplId);
+                    const tpl = userVisibleTemplates.find((t) => t.id === tplId);
                     if (tpl) {
                       setBulkSubject(tpl.subject);
                       setBulkHtmlContent(tpl.htmlContent);
@@ -1323,7 +1437,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                   className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 >
                   <option value="" disabled>-- Select Saved HTML Email Template --</option>
-                  {templates.map((t) => (
+                  {userVisibleTemplates.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.name} ({t.category.toUpperCase()}) - {t.subject}
                     </option>

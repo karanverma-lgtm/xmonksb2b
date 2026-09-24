@@ -5,6 +5,11 @@ export interface EmailTemplate {
   subject: string;
   htmlContent: string;
   description: string;
+  owner?: string;
+  createdBy?: string;
+  isSystem?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export const PREBUILT_TEMPLATES: EmailTemplate[] = [
@@ -14,6 +19,9 @@ export const PREBUILT_TEMPLATES: EmailTemplate[] = [
     category: "outreach",
     subject: "Strategic B2B Growth Opportunity for {{companyName}}",
     description: "High-converting outreach template targeting VP/Director level decision makers.",
+    isSystem: true,
+    owner: "system",
+    createdBy: "System",
     htmlContent: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b; background-color: #ffffff; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px;">
   <div style="text-align: left; margin-bottom: 20px; border-bottom: 2px solid #4f46e5; padding-bottom: 12px;">
     <h2 style="color: #4f46e5; margin: 0; font-size: 20px;">xMonks B2B Solutions</h2>
@@ -57,6 +65,9 @@ export const PREBUILT_TEMPLATES: EmailTemplate[] = [
     category: "proposal",
     subject: "Following up on B2B Proposal for {{companyName}}",
     description: "Polite and effective follow-up for sent proposals.",
+    isSystem: true,
+    owner: "system",
+    createdBy: "System",
     htmlContent: `<div style="font-family: Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #0f172a; background-color: #ffffff; padding: 24px; border: 1px solid #cbd5e1; border-radius: 12px;">
   <p style="font-size: 15px; line-height: 1.6;">Dear <strong>{{contactName}}</strong>,</p>
 
@@ -90,6 +101,9 @@ export const PREBUILT_TEMPLATES: EmailTemplate[] = [
     category: "outreach",
     subject: "Exclusive Demo: Boosting Sales Conversion at {{companyName}}",
     description: "Invites prospective clients to a live demonstration of the CRM platform.",
+    isSystem: true,
+    owner: "system",
+    createdBy: "System",
     htmlContent: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b; background-color: #ffffff; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px;">
   <div style="background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); padding: 20px; border-radius: 8px; text-align: center; color: white; margin-bottom: 24px;">
     <h1 style="margin: 0; font-size: 22px;">xMonks CRM Live Demo</h1>

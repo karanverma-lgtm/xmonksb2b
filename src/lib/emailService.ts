@@ -167,13 +167,43 @@ export function saveSMTPConfig(config: SMTPConfig): void {
 
 // --- MULTI-SENDER (CAPSULE MODE) PROFILE HELPERS ---
 
+export function getDefaultSenderProfiles(): SMTPSenderProfile[] {
+  return [
+    {
+      id: "sender-ruby-default",
+      userEmail: "ruby.dayal@xmonks.com",
+      appPassword: "ombg ustr bodg bxnp",
+      senderName: "Ruby Dayal",
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      isDefault: true,
+      isVerified: true,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    },
+    {
+      id: "sender-amit-default",
+      userEmail: "amit@xmonks.com",
+      appPassword: "ombg ustr bodg bxnp",
+      senderName: "Amit",
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      isDefault: false,
+      isVerified: true,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    },
+  ];
+}
+
 export function getDefaultSenderProfile(): SMTPSenderProfile {
   const current = getStoredSMTPConfig();
+  const defaults = getDefaultSenderProfiles();
   return {
     id: "sender-ruby-default",
-    userEmail: current.userEmail || "ruby.dayal@xmonks.com",
-    appPassword: current.appPassword || "ombg ustr bodg bxnp",
-    senderName: current.senderName || "Ruby - xMonks",
+    userEmail: current.userEmail || defaults[0].userEmail,
+    appPassword: current.appPassword || defaults[0].appPassword,
+    senderName: current.senderName || defaults[0].senderName,
     host: current.host || "smtp.gmail.com",
     port: current.port || 587,
     secure: current.secure !== undefined ? current.secure : false,
@@ -183,23 +213,80 @@ export function getDefaultSenderProfile(): SMTPSenderProfile {
   };
 }
 
+export function getSenderProfileForUser(
+  senders: SMTPSenderProfile[],
+  currentUser?: { username?: string; name?: string } | null
+): SMTPSenderProfile {
+  const defaults = getDefaultSenderProfiles();
+  const pool = senders && senders.length > 0 ? senders : defaults;
+
+  if (!currentUser?.username) {
+    return pool.find((s) => s.isDefault) || pool[0] || defaults[0];
+  }
+
+  const uName = currentUser.username.trim().toLowerCase();
+
+  // 1. Allocate Amit to Amit
+  if (uName === "amit") {
+    const amitProfile = pool.find(
+      (s) =>
+        s.userEmail.toLowerCase().includes("amit@") ||
+        s.senderName.toLowerCase() === "amit" ||
+        s.id.toLowerCase().includes("amit")
+    );
+    return amitProfile || defaults[1];
+  }
+
+  // 2. Allocate Ruby to Ruby
+  if (uName === "ruby") {
+    const rubyProfile = pool.find(
+      (s) =>
+        s.userEmail.toLowerCase().includes("ruby") ||
+        s.senderName.toLowerCase().includes("ruby") ||
+        s.id.toLowerCase().includes("ruby")
+    );
+    return rubyProfile || defaults[0];
+  }
+
+  // 3. Match any other user account by email or name
+  const matched = pool.find(
+    (s) =>
+      s.userEmail.toLowerCase().includes(uName) ||
+      s.senderName.toLowerCase().includes(uName)
+  );
+  if (matched) return matched;
+
+  return pool.find((s) => s.isDefault) || pool[0] || defaults[0];
+}
+
 export function getAllSenderProfiles(): SMTPSenderProfile[] {
-  if (typeof window === "undefined") return [getDefaultSenderProfile()];
+  const defaults = getDefaultSenderProfiles();
+  if (typeof window === "undefined") return defaults;
   try {
     const raw = localStorage.getItem(SENDERS_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        const list: SMTPSenderProfile[] = [...parsed];
+        for (const def of defaults) {
+          const exists = list.some(
+            (s) =>
+              s.id === def.id ||
+              s.userEmail.toLowerCase() === def.userEmail.toLowerCase()
+          );
+          if (!exists) {
+            list.push(def);
+          }
+        }
+        return list;
       }
     }
   } catch (e) {
     console.warn("Error reading sender profiles from localStorage", e);
   }
 
-  const initial = [getDefaultSenderProfile()];
-  saveLocalSenderProfiles(initial);
-  return initial;
+  saveLocalSenderProfiles(defaults);
+  return defaults;
 }
 
 export function saveLocalSenderProfiles(senders: SMTPSenderProfile[]): void {
@@ -360,6 +447,20 @@ export function subscribeToSenderProfiles(
             id: d.id,
             ...(d.data() as Omit<SMTPSenderProfile, "id">),
           }));
+
+          // Ensure default profiles (Ruby & Amit) are always available
+          const defaults = getDefaultSenderProfiles();
+          for (const def of defaults) {
+            if (
+              !firestoreSenders.some(
+                (s) =>
+                  s.id === def.id ||
+                  s.userEmail.toLowerCase() === def.userEmail.toLowerCase()
+              )
+            ) {
+              firestoreSenders.push(def);
+            }
+          }
 
           // Sort by default first, then created
           firestoreSenders.sort((a, b) => (b.isDefault ? -1 : 1));

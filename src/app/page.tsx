@@ -751,6 +751,8 @@ export default function Home() {
         {activeTab === "email" && (
           <EmailCampaignTab
             leads={userScopedLeads}
+            currentUser={currentUser}
+            isAdmin={isAdmin}
             onNavigateToDeveloper={isAdmin ? () => handleTabChange("developer") : undefined}
           />
         )}
