@@ -37,6 +37,7 @@ import { UserAccount } from "@/constants/users";
 import {
   subscribeToUserPreferences,
   saveUserPreferencesToFirestore,
+  getLocalPreferences,
 } from "@/lib/preferencesService";
 import { useRef, useSyncExternalStore } from "react";
 
@@ -70,7 +71,30 @@ export default function Home() {
 
   const [leads, setLeads] = useState<Lead[]>([]);
   const [isFirebaseSyncing, setIsFirebaseSyncing] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<NavTab>("kanban");
+
+  // Track if user explicitly clicked/changed tabs or if initial tab was restored
+  const userHasChangedTabRef = useRef<boolean>(false);
+  const initialTabLoadedRef = useRef<boolean>(false);
+
+  // Initialize activeTab from local preferences immediately to prevent flash
+  const [activeTab, setActiveTab] = useState<NavTab>(() => {
+    if (typeof window === "undefined") return "kanban";
+    try {
+      const storedUser = localStorage.getItem("xmonks_b2b_user");
+      if (storedUser) {
+        const u = JSON.parse(storedUser);
+        const prefs = getLocalPreferences(u.username);
+        if (
+          prefs?.activeTab &&
+          ["kanban", "table", "analytics", "email", "developer"].includes(prefs.activeTab)
+        ) {
+          return prefs.activeTab as NavTab;
+        }
+      }
+    } catch {}
+    return "kanban";
+  });
+
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState<boolean>(false);
@@ -111,7 +135,11 @@ export default function Home() {
   useEffect(() => {
     if (!currentUser) return;
     const unsub = subscribeToUserPreferences(currentUser.username, (prefs) => {
-      if (prefs.activeTab) setActiveTab(prefs.activeTab as NavTab);
+      // Only set initial tab from preferences ONCE on load, and NEVER if the user has already changed tabs
+      if (!initialTabLoadedRef.current && !userHasChangedTabRef.current && prefs.activeTab) {
+        initialTabLoadedRef.current = true;
+        setActiveTab(prefs.activeTab as NavTab);
+      }
       if (prefs.searchTerm !== undefined) setSearchTerm(prefs.searchTerm);
       if (prefs.fromDate !== undefined) setFromDate(prefs.fromDate);
       if (prefs.toDate !== undefined) setToDate(prefs.toDate);
@@ -136,6 +164,8 @@ export default function Home() {
 
   // Handlers to synchronize UI state to Firestore
   const handleTabChange = (tab: NavTab) => {
+    userHasChangedTabRef.current = true;
+    initialTabLoadedRef.current = true;
     setActiveTab(tab);
     if (currentUser) {
       saveUserPreferencesToFirestore(currentUser.username, { activeTab: tab });
