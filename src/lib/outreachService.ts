@@ -11,7 +11,6 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { ColdClient, OutreachTouchpoint, ColdClientStatus, OutreachChannel } from "@/types/outreach";
-import { INITIAL_COLD_CLIENTS } from "@/constants/outreach";
 import { formatTimestamp, sanitizeForFirestore, createLead } from "./leadsService";
 
 const COLLECTION_NAME = "b2b_cold_clients";
@@ -48,32 +47,49 @@ export function cleanLegacyColdClients(clients: ColdClient[]): { cleaned: ColdCl
   return { cleaned, changed };
 }
 
+export const DEMO_COLD_CLIENT_IDS = new Set([
+  "cold-101",
+  "cold-102",
+  "cold-103",
+  "cold-104",
+  "cold-105",
+]);
+
+export function isDemoColdClient(id?: string): boolean {
+  if (!id) return false;
+  return DEMO_COLD_CLIENT_IDS.has(id);
+}
+
 // Get initial cold clients from LocalStorage
 export function getStoredLocalColdClients(): ColdClient[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(INITIAL_COLD_CLIENTS));
-      return INITIAL_COLD_CLIENTS;
+      return [];
     }
     const parsed: ColdClient[] = JSON.parse(raw);
-    const clientsList = Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_COLD_CLIENTS;
-    const { cleaned, changed } = cleanLegacyColdClients(clientsList);
-    if (changed) {
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      return [];
+    }
+    // Filter out all demo leads
+    const realClients = parsed.filter((c) => !isDemoColdClient(c.id));
+    const { cleaned, changed } = cleanLegacyColdClients(realClients);
+    if (changed || realClients.length !== parsed.length) {
       saveStoredLocalColdClients(cleaned);
     }
     return cleaned;
   } catch (err) {
     console.warn("Failed to parse local cold clients", err);
-    return INITIAL_COLD_CLIENTS;
+    return [];
   }
 }
 
 export function saveStoredLocalColdClients(clients: ColdClient[]) {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(clients));
+    const nonDemos = clients.filter((c) => !isDemoColdClient(c.id));
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(nonDemos));
   } catch (err) {
     console.error("Failed to save cold clients to localStorage", err);
   }
@@ -96,25 +112,36 @@ export function subscribeToColdClients(
       (snapshot) => {
         if (unsubscribed) return;
         if (snapshot.empty) {
-          // If Firestore collection has not been seeded yet, use local/initial data
-          const localClients = getStoredLocalColdClients();
-          if (localClients.length > 0) {
-            // Seed to firestore in background
-            seedInitialColdClients(localClients).catch(() => {});
-          }
-          onData(localClients, true);
+          // Empty collection means 0 leads - do NOT re-seed demo data
+          saveStoredLocalColdClients([]);
+          onData([], true);
         } else {
-          const rawClients: ColdClient[] = snapshot.docs.map((docSnap) => {
-            const data = docSnap.data() as Omit<ColdClient, "id">;
-            return {
-              id: docSnap.id,
-              ...data,
-              touchpoints: Array.isArray(data.touchpoints) ? data.touchpoints : [],
-            };
+          const rawClients: ColdClient[] = [];
+          const demoDocIdsToDelete: string[] = [];
+
+          snapshot.docs.forEach((docSnap) => {
+            if (isDemoColdClient(docSnap.id)) {
+              demoDocIdsToDelete.push(docSnap.id);
+            } else {
+              const data = docSnap.data() as Omit<ColdClient, "id">;
+              rawClients.push({
+                id: docSnap.id,
+                ...data,
+                touchpoints: Array.isArray(data.touchpoints) ? data.touchpoints : [],
+              });
+            }
           });
+
+          // Automatically delete legacy demo docs from Firestore
+          if (demoDocIdsToDelete.length > 0) {
+            demoDocIdsToDelete.forEach((demoId) => {
+              deleteDoc(doc(db, COLLECTION_NAME, demoId)).catch(() => {});
+            });
+          }
+
           const { cleaned, changed } = cleanLegacyColdClients(rawClients);
           saveStoredLocalColdClients(cleaned);
-          if (changed) {
+          if (changed && cleaned.length > 0) {
             // Sync normalized owners to Firestore
             seedInitialColdClients(cleaned).catch(() => {});
           }
@@ -143,15 +170,18 @@ export function subscribeToColdClients(
 }
 
 async function seedInitialColdClients(clients: ColdClient[]): Promise<void> {
+  const realClients = clients.filter((c) => !isDemoColdClient(c.id));
+  if (realClients.length === 0) return;
+
   try {
     const batch = writeBatch(db);
-    for (const client of clients) {
+    for (const client of realClients) {
       const docRef = doc(db, COLLECTION_NAME, client.id);
       batch.set(docRef, sanitizeForFirestore(client));
     }
     await batch.commit();
   } catch (e) {
-    console.warn("Failed to auto-seed initial cold clients to Firestore:", e);
+    console.warn("Failed to sync cold clients to Firestore:", e);
   }
 }
 
