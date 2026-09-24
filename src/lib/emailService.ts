@@ -9,7 +9,7 @@ import {
   orderBy,
   getDocs,
 } from "firebase/firestore";
-import { PREBUILT_TEMPLATES, EmailTemplate } from "@/constants/emailTemplates";
+import { PREBUILT_TEMPLATES, EmailTemplate, AMIT_ENTERPRISE_EMAIL_BANK } from "@/constants/emailTemplates";
 
 export interface SMTPConfig {
   id?: string;
@@ -510,11 +510,12 @@ export function subscribeToSenderProfiles(
 
 
 export function getAllTemplates(): EmailTemplate[] {
-  if (typeof window === "undefined") return PREBUILT_TEMPLATES;
+  const allDefaults = [...PREBUILT_TEMPLATES, ...AMIT_ENTERPRISE_EMAIL_BANK];
+  if (typeof window === "undefined") return allDefaults;
   try {
     const deletedIds = getDeletedTemplateIds();
     const raw = localStorage.getItem(CUSTOM_TEMPLATES_KEY);
-    let combined = [...PREBUILT_TEMPLATES];
+    let combined = [...allDefaults];
     if (raw) {
       const custom: EmailTemplate[] = JSON.parse(raw);
       // Merge unique templates by ID
@@ -527,7 +528,7 @@ export function getAllTemplates(): EmailTemplate[] {
   } catch (e) {
     console.warn("Error reading local templates", e);
   }
-  return PREBUILT_TEMPLATES;
+  return allDefaults;
 }
 
 export function saveLocalTemplates(templates: EmailTemplate[]): void {
@@ -542,7 +543,8 @@ export function saveLocalTemplates(templates: EmailTemplate[]): void {
 // Seed prebuilt templates into Firestore if collection is empty
 async function seedPrebuiltTemplates() {
   try {
-    for (const tpl of PREBUILT_TEMPLATES) {
+    const allDefaults = [...PREBUILT_TEMPLATES, ...AMIT_ENTERPRISE_EMAIL_BANK];
+    for (const tpl of allDefaults) {
       const docRef = doc(db, TEMPLATES_COLLECTION, tpl.id);
       await setDoc(docRef, tpl, { merge: true });
     }
@@ -745,7 +747,8 @@ export function subscribeToTemplates(
     let latestDeletedIds: string[] = getDeletedTemplateIds();
 
     const combineAndNotify = (isSyncing: boolean) => {
-      const prebuiltMissing = PREBUILT_TEMPLATES.filter(
+      const allDefaults = [...PREBUILT_TEMPLATES, ...AMIT_ENTERPRISE_EMAIL_BANK];
+      const prebuiltMissing = allDefaults.filter(
         (pt) =>
           !latestFirestoreTemplates.some((ft) => ft.id === pt.id) &&
           !latestDeletedIds.includes(pt.id)

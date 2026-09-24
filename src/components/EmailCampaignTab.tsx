@@ -25,6 +25,11 @@ import {
   Save,
   ShieldCheck,
   Lock,
+  BookOpen,
+  ChevronDown,
+  ChevronUp,
+  Calendar,
+  Flame,
 } from "lucide-react";
 import { EmailPreviewCard } from "@/components/EmailPreviewCard";
 import { AITemplateGeneratorModal } from "@/components/AITemplateGeneratorModal";
@@ -125,6 +130,42 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
       return Boolean(currentUsername && tpl.owner.toLowerCase() === currentUsername);
     });
   }, [templates, currentUser, isAdmin]);
+
+  // Enterprise Persona Filters & 30-Day Sequence Matrix
+  const [selectedPersonaFilter, setSelectedPersonaFilter] = useState<string>("all");
+  const [showPlaybookGuide, setShowPlaybookGuide] = useState<boolean>(false);
+
+  const filteredUserTemplates = useMemo(() => {
+    if (selectedPersonaFilter === "all") return userVisibleTemplates;
+    const filter = selectedPersonaFilter.toLowerCase();
+    return userVisibleTemplates.filter((t) => {
+      const name = t.name.toLowerCase();
+      const desc = (t.description || "").toLowerCase();
+      const id = t.id.toLowerCase();
+      if (filter === "chro") return id.includes("chro") || name.includes("chro") || desc.includes("chro");
+      if (filter === "ld") return id.includes("ld") || name.includes("l&d") || desc.includes("l&d");
+      if (filter === "talent") return id.includes("talent") || name.includes("talent") || desc.includes("hi-po") || desc.includes("succession");
+      if (filter === "hrbp") return id.includes("hrbp") || name.includes("hrbp") || desc.includes("hrbp");
+      if (filter === "dei") return id.includes("dei") || name.includes("dei") || desc.includes("women");
+      if (filter === "ceo") return id.includes("ceo") || name.includes("ceo") || desc.includes("business head");
+      if (filter === "closing") return id.includes("conversion") || name.includes("closing") || desc.includes("20-min") || desc.includes("conversion");
+      return true;
+    });
+  }, [userVisibleTemplates, selectedPersonaFilter]);
+
+  const handleSelectPlaybookTemplate = (tplId: string) => {
+    const found = templates.find((t) => t.id === tplId);
+    if (found) {
+      setSelectedTemplateId(found.id);
+      loadTemplateIntoEditor(found);
+      setSelectedSingleTemplateId(found.id);
+      setSingleSubject(found.subject);
+      setSingleHtmlContent(found.htmlContent);
+      setSelectedBulkTemplateId(found.id);
+      setBulkSubject(found.subject);
+      setBulkHtmlContent(found.htmlContent);
+    }
+  };
 
   // Single Email State
   const [selectedSingleTemplateId, setSelectedSingleTemplateId] = useState<string>("");
@@ -791,7 +832,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
           <div className="lg:col-span-4 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-5 space-y-4 shadow-sm">
             <div className="flex items-center justify-between gap-1.5">
               <h3 className="font-extrabold text-xs uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                Templates ({userVisibleTemplates.length})
+                Templates ({filteredUserTemplates.length})
               </h3>
               <div className="flex items-center space-x-1.5">
                 <button
@@ -813,8 +854,201 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
               </div>
             </div>
 
+            {/* 30-Day Enterprise Playbook Collapsible for Amit */}
+            <div className="bg-gradient-to-r from-orange-500/10 via-amber-500/5 to-slate-900/40 border border-orange-500/30 rounded-2xl p-3">
+              <button
+                type="button"
+                onClick={() => setShowPlaybookGuide(!showPlaybookGuide)}
+                className="w-full flex items-center justify-between text-left text-xs font-bold text-orange-600 dark:text-orange-400 hover:text-orange-500 transition"
+              >
+                <div className="flex items-center space-x-2">
+                  <Flame className="w-4 h-4 text-orange-500" />
+                  <span>30-Day Enterprise Emailer Playbook</span>
+                </div>
+                {showPlaybookGuide ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+
+              {showPlaybookGuide && (
+                <div className="mt-3 space-y-2.5 pt-2.5 border-t border-orange-500/20 text-[11px]">
+                  <p className="text-slate-500 dark:text-slate-400 text-[11px] leading-relaxed">
+                    Account-based sequential cadences for Amit Shelly. Click any step to load that email instantly:
+                  </p>
+                  
+                  {/* CHRO Sequence */}
+                  <div className="bg-white/80 dark:bg-slate-950/60 p-2 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <span className="font-extrabold text-[10.5px] text-slate-800 dark:text-slate-200 block mb-1">
+                      CHRO / HR Head:
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {[
+                        { day: "Day 0", id: "amit-chro-email-1", name: "Email 1" },
+                        { day: "Day 4", id: "amit-chro-email-2", name: "Email 2" },
+                        { day: "Day 9", id: "amit-chro-email-3", name: "Email 3" },
+                        { day: "Day 15", id: "amit-chro-email-4", name: "Email 4" },
+                        { day: "Day 23", id: "amit-conversion-email-18", name: "Email 18" },
+                      ].map((s) => (
+                        <button
+                          key={s.id}
+                          onClick={() => handleSelectPlaybookTemplate(s.id)}
+                          className="px-1.5 py-0.5 rounded bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border border-orange-300 dark:border-orange-800 font-bold text-[9.5px] hover:bg-orange-500 hover:text-white transition"
+                        >
+                          {s.day}: {s.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* L&D Head Sequence */}
+                  <div className="bg-white/80 dark:bg-slate-950/60 p-2 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <span className="font-extrabold text-[10.5px] text-slate-800 dark:text-slate-200 block mb-1">
+                      L&D Head:
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {[
+                        { day: "Day 0", id: "amit-ld-email-5", name: "Email 5" },
+                        { day: "Day 3", id: "amit-ld-email-6", name: "Email 6" },
+                        { day: "Day 8", id: "amit-ld-email-7", name: "Email 7" },
+                        { day: "Day 14", id: "amit-ld-email-8", name: "Email 8" },
+                        { day: "Day 22", id: "amit-conversion-email-18", name: "Email 18" },
+                      ].map((s) => (
+                        <button
+                          key={s.id}
+                          onClick={() => handleSelectPlaybookTemplate(s.id)}
+                          className="px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-800 font-bold text-[9.5px] hover:bg-purple-600 hover:text-white transition"
+                        >
+                          {s.day}: {s.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Talent Head Sequence */}
+                  <div className="bg-white/80 dark:bg-slate-950/60 p-2 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <span className="font-extrabold text-[10.5px] text-slate-800 dark:text-slate-200 block mb-1">
+                      Talent / Succession Head:
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {[
+                        { day: "Day 0", id: "amit-talent-email-9", name: "Email 9" },
+                        { day: "Day 5", id: "amit-talent-email-10", name: "Email 10" },
+                        { day: "Day 11", id: "amit-talent-email-11", name: "Email 11" },
+                        { day: "Day 18", id: "amit-chro-email-4", name: "Email 4" },
+                        { day: "Day 25", id: "amit-conversion-email-18", name: "Email 18" },
+                      ].map((s) => (
+                        <button
+                          key={s.id}
+                          onClick={() => handleSelectPlaybookTemplate(s.id)}
+                          className="px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-800 font-bold text-[9.5px] hover:bg-blue-600 hover:text-white transition"
+                        >
+                          {s.day}: {s.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* HRBP Sequence */}
+                  <div className="bg-white/80 dark:bg-slate-950/60 p-2 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <span className="font-extrabold text-[10.5px] text-slate-800 dark:text-slate-200 block mb-1">
+                      HRBP:
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {[
+                        { day: "Day 0", id: "amit-hrbp-email-12", name: "Email 12" },
+                        { day: "Day 5", id: "amit-hrbp-email-13", name: "Email 13" },
+                        { day: "Day 12", id: "amit-ld-email-6", name: "Email 6" },
+                        { day: "Day 20", id: "amit-chro-email-2", name: "Email 2" },
+                        { day: "Day 27", id: "amit-conversion-email-18", name: "Email 18" },
+                      ].map((s) => (
+                        <button
+                          key={s.id}
+                          onClick={() => handleSelectPlaybookTemplate(s.id)}
+                          className="px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 font-bold text-[9.5px] hover:bg-emerald-600 hover:text-white transition"
+                        >
+                          {s.day}: {s.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* DEI / Women Leadership Sequence */}
+                  <div className="bg-white/80 dark:bg-slate-950/60 p-2 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <span className="font-extrabold text-[10.5px] text-slate-800 dark:text-slate-200 block mb-1">
+                      DEI & Women Leadership:
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {[
+                        { day: "Day 0", id: "amit-dei-email-14", name: "Email 14" },
+                        { day: "Day 5", id: "amit-dei-email-15", name: "Email 15" },
+                        { day: "Day 12", id: "amit-talent-email-11", name: "Email 11" },
+                        { day: "Day 20", id: "amit-chro-email-4", name: "Email 4" },
+                        { day: "Day 27", id: "amit-conversion-email-18", name: "Email 18" },
+                      ].map((s) => (
+                        <button
+                          key={s.id}
+                          onClick={() => handleSelectPlaybookTemplate(s.id)}
+                          className="px-1.5 py-0.5 rounded bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-300 dark:border-pink-800 font-bold text-[9.5px] hover:bg-pink-600 hover:text-white transition"
+                        >
+                          {s.day}: {s.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* CEO / Business Head Sequence */}
+                  <div className="bg-white/80 dark:bg-slate-950/60 p-2 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <span className="font-extrabold text-[10.5px] text-slate-800 dark:text-slate-200 block mb-1">
+                      CEO / Business Head:
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {[
+                        { day: "Day 0", id: "amit-ceo-email-16", name: "Email 16" },
+                        { day: "Day 5", id: "amit-ceo-email-17", name: "Email 17" },
+                        { day: "Day 12", id: "amit-chro-email-3", name: "Email 3" },
+                        { day: "Day 19", id: "amit-chro-email-4", name: "Email 4" },
+                        { day: "Day 27", id: "amit-conversion-email-18", name: "Email 18" },
+                      ].map((s) => (
+                        <button
+                          key={s.id}
+                          onClick={() => handleSelectPlaybookTemplate(s.id)}
+                          className="px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800 font-bold text-[9.5px] hover:bg-indigo-600 hover:text-white transition"
+                        >
+                          {s.day}: {s.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Persona Quick Filter Pills */}
+            <div className="flex flex-wrap items-center gap-1">
+              {[
+                { id: "all", label: `All (${userVisibleTemplates.length})` },
+                { id: "chro", label: "CHRO" },
+                { id: "ld", label: "L&D" },
+                { id: "talent", label: "Talent" },
+                { id: "hrbp", label: "HRBP" },
+                { id: "dei", label: "DEI" },
+                { id: "ceo", label: "CEO" },
+                { id: "closing", label: "Closing" },
+              ].map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setSelectedPersonaFilter(f.id)}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition ${
+                    selectedPersonaFilter === f.id
+                      ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+
             <div className="space-y-2.5 max-h-[600px] overflow-y-auto pr-1">
-              {userVisibleTemplates.map((tpl) => (
+              {filteredUserTemplates.map((tpl) => (
                 <div
                   key={tpl.id}
                   onClick={() => {

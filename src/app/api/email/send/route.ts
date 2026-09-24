@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import nodemailer from "nodemailer";
+import fs from "fs";
+import path from "path";
 
 interface EmailRecipient {
   email: string;
@@ -123,27 +125,60 @@ export async function POST(req: NextRequest) {
       const dealValue = item.dealValue ? String(item.dealValue) : "";
 
       // Perform dynamic placeholder replacement
-      const personalizedHtml = htmlContent
-        .replace(/\{\{\s*contactName\s*\}\}/gi, recipientName)
+      let personalizedHtml = htmlContent
+        .replace(/\{\{\s*contactName\s*\}\}|\[\s*First Name\s*\]/gi, recipientName)
         .replace(/\{\{\s*name\s*\}\}/gi, recipientName)
-        .replace(/\{\{\s*companyName\s*\}\}/gi, companyName)
+        .replace(/\{\{\s*companyName\s*\}\}|\[\s*Company Name\s*\]/gi, companyName)
         .replace(/\{\{\s*designation\s*\}\}/gi, designation)
         .replace(/\{\{\s*industry\s*\}\}/gi, industry)
         .replace(/\{\{\s*dealValue\s*\}\}/gi, dealValue)
         .replace(/\{\{\s*email\s*\}\}/gi, recipientEmail);
 
       const personalizedSubject = subject
-        .replace(/\{\{\s*contactName\s*\}\}/gi, recipientName)
+        .replace(/\{\{\s*contactName\s*\}\}|\[\s*First Name\s*\]/gi, recipientName)
         .replace(/\{\{\s*name\s*\}\}/gi, recipientName)
-        .replace(/\{\{\s*companyName\s*\}\}/gi, companyName)
+        .replace(/\{\{\s*companyName\s*\}\}|\[\s*Company Name\s*\]/gi, companyName)
         .replace(/\{\{\s*designation\s*\}\}/gi, designation)
         .replace(/\{\{\s*industry\s*\}\}/gi, industry);
+
+      // Check if local public images are referenced and attach inline CID
+      const attachments: Array<{ filename: string; path: string; cid: string }> = [];
+      const publicDir = path.join(process.cwd(), "public");
+
+      if (personalizedHtml.includes("xmonks-logo.png") || personalizedHtml.includes("xMonks Logo")) {
+        const logoPath = path.join(publicDir, "xmonks-logo.png");
+        if (fs.existsSync(logoPath)) {
+          attachments.push({
+            filename: "xmonks-logo.png",
+            path: logoPath,
+            cid: "xmonks-logo",
+          });
+          personalizedHtml = personalizedHtml
+            .replace(/\/xmonks-logo\.png/g, "cid:xmonks-logo")
+            .replace(/\/xMonks%20Logo-01%202%20\(4\)\.png/g, "cid:xmonks-logo");
+        }
+      }
+
+      if (personalizedHtml.includes("amit-signature.png") || personalizedHtml.includes("signature-amit")) {
+        const sigPath = path.join(publicDir, "amit-signature.png");
+        if (fs.existsSync(sigPath)) {
+          attachments.push({
+            filename: "amit-signature.png",
+            path: sigPath,
+            cid: "amit-signature",
+          });
+          personalizedHtml = personalizedHtml
+            .replace(/\/amit-signature\.png/g, "cid:amit-signature")
+            .replace(/\/signature-amit-shelly%20\(2\)\.png/g, "cid:amit-signature");
+        }
+      }
 
       const mailOptions = {
         from: `"${senderName}" <${userEmail}>`,
         to: recipientEmail,
         subject: personalizedSubject,
         html: personalizedHtml,
+        attachments: attachments.length > 0 ? attachments : undefined,
       };
 
       try {

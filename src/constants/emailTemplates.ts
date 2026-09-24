@@ -1,16 +1,20 @@
 export interface EmailTemplate {
   id: string;
   name: string;
-  category: "outreach" | "followup" | "proposal" | "custom";
+  category: "outreach" | "followup" | "proposal" | "custom" | string;
   subject: string;
   htmlContent: string;
   description: string;
   owner?: string;
   createdBy?: string;
   isSystem?: boolean;
+  persona?: string;
+  daySequence?: string | number;
   createdAt?: string;
   updatedAt?: string;
 }
+
+export { AMIT_ENTERPRISE_EMAIL_BANK } from "./amitEmailBank";
 
 export const PREBUILT_TEMPLATES: EmailTemplate[] = [
   {
