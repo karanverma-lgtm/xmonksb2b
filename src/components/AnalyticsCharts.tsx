@@ -34,6 +34,21 @@ import {
 
 import { formatINR } from "@/lib/formatters";
 
+// Analytics Subcomponents
+import { ExecutiveKPICards } from "./analytics/ExecutiveKPICards";
+import { MonthlyForecastChart } from "./analytics/MonthlyForecastChart";
+import { ProgramBreakdown } from "./analytics/ProgramBreakdown";
+import { LeadSourceAnalysis } from "./analytics/LeadSourceAnalysis";
+import { SalesLeaderboard } from "./analytics/SalesLeaderboard";
+import { PipelineHealthRadar } from "./analytics/PipelineHealthRadar";
+import { IndustryGeoDistribution } from "./analytics/IndustryGeoDistribution";
+import {
+  AnalyticsFilterBar,
+  AnalyticsFilterState,
+} from "./analytics/AnalyticsFilterBar";
+import { ExecutiveReportModal } from "./analytics/ExecutiveReportModal";
+import { exportAnalyticsToCSV } from "./analytics/exportAnalyticsReport";
+
 interface AnalyticsChartsProps {
   leads: Lead[];
   onSelectLead: (lead: Lead) => void;
@@ -52,10 +67,21 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
   leads,
   onSelectLead,
 }) => {
+  // Global Analytics Filter State
+  const [filters, setFilters] = useState<AnalyticsFilterState>({
+    dateRange: "all",
+    program: "all",
+    owner: "all",
+    industry: "all",
+  });
+
+  // Stage Distribution local interactive state
   const [selectedStage, setSelectedStage] = useState<string>("all");
-  const [searchQuery, setSearchQuery] = useState<string>("");
-  const [viewMode, setViewMode] = useState<"chart" | "grouped">("chart");
-  const [showBreakdownModal, setShowBreakdownModal] = useState<boolean>(false);
+  const [stageSearchQuery, setStageSearchQuery] = useState<string>("");
+  const [stageViewMode, setStageViewMode] = useState<"chart" | "grouped">("chart");
+  const [showStageBreakdownModal, setShowStageBreakdownModal] = useState<boolean>(false);
+  const [showBriefingModal, setShowBriefingModal] = useState<boolean>(false);
+
   const [expandedStages, setExpandedStages] = useState<Record<string, boolean>>({
     interest: true,
     discussion: true,
@@ -82,10 +108,95 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
     return `₹${val.toLocaleString("en-IN")}`;
   };
 
+  // Extract available owners and industries from current leads dataset
+  const availableOwners = useMemo(() => {
+    const set = new Set<string>();
+    leads.forEach((l) => {
+      if (l.owner?.trim()) set.add(l.owner.trim());
+    });
+    return Array.from(set).sort();
+  }, [leads]);
+
+  const availableIndustries = useMemo(() => {
+    const set = new Set<string>();
+    leads.forEach((l) => {
+      if (l.industry?.trim()) set.add(l.industry.trim());
+    });
+    return Array.from(set).sort();
+  }, [leads]);
+
+  // Apply Analytics Date & Attribute Filters
+  const activeFilteredLeads = useMemo(() => {
+    const now = new Date();
+    const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+    return leads.filter((lead) => {
+      // 1. Program filter
+      if (filters.program !== "all" && lead.program !== filters.program) {
+        return false;
+      }
+      // 2. Owner filter
+      if (filters.owner !== "all" && lead.owner !== filters.owner) {
+        return false;
+      }
+      // 3. Industry filter
+      if (filters.industry !== "all" && lead.industry !== filters.industry) {
+        return false;
+      }
+      // 4. Date Range filter
+      if (filters.dateRange === "this_month") {
+        const matchesMonth =
+          (lead.closureMonth && lead.closureMonth === currentMonthStr) ||
+          (lead.expectedCloseDate && lead.expectedCloseDate.startsWith(currentMonthStr));
+        if (!matchesMonth) return false;
+      } else if (filters.dateRange === "this_quarter") {
+        const curM = now.getMonth() + 1; // 1-12
+        const qStartM = Math.floor((curM - 1) / 3) * 3 + 1;
+        const qEndM = qStartM + 2;
+        const year = now.getFullYear();
+
+        const lMonth =
+          lead.closureMonth || (lead.expectedCloseDate ? lead.expectedCloseDate.slice(0, 7) : "");
+        if (lMonth && lMonth.includes("-")) {
+          const [yStr, mStr] = lMonth.split("-");
+          const y = parseInt(yStr, 10);
+          const m = parseInt(mStr, 10);
+          if (y !== year || m < qStartM || m > qEndM) return false;
+        } else {
+          return false;
+        }
+      } else if (filters.dateRange === "fy26_27") {
+        // FY 2026-27: April 1, 2026 to March 31, 2027
+        const lDate = lead.closureMonth || lead.expectedCloseDate || lead.createdAt;
+        if (lDate) {
+          const dStr = lDate.slice(0, 7);
+          const [y, m] = dStr.split("-").map(Number);
+          const isFY = (y === 2026 && m >= 4) || (y === 2027 && m <= 3);
+          if (!isFY) return false;
+        }
+      } else if (filters.dateRange === "next_90_days") {
+        const closeDateStr =
+          lead.expectedCloseDate || (lead.closureMonth ? `${lead.closureMonth}-28` : "");
+        if (!closeDateStr) return false;
+        const cDate = new Date(closeDateStr);
+        const diffDays = (cDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+        if (diffDays < 0 || diffDays > 90) return false;
+      }
+
+      return true;
+    });
+  }, [leads, filters]);
+
+  // Total pipeline metrics for active dataset
+  const totalPipelineValue = useMemo(
+    () => activeFilteredLeads.reduce((acc, curr) => acc + (curr.dealValue || 0), 0),
+    [activeFilteredLeads]
+  );
+
   // Prepare data for Bar chart: Unweighted Value vs Weighted Value by Stage
   const stageData = PIPELINE_STAGES.map((stageKey) => {
     const stageInfo = STAGES[stageKey];
-    const stageLeads = leads.filter((l) => l.stage === stageKey);
+    const stageLeads = activeFilteredLeads.filter((l) => l.stage === stageKey);
     const unweightedTotal = stageLeads.reduce((acc, curr) => acc + (curr.dealValue || 0), 0);
     const weightedTotal = unweightedTotal * (stageInfo.weightage / 100);
 
@@ -102,7 +213,7 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
   const stageStats = useMemo(() => {
     return STAGE_ORDER.map((stageKey) => {
       const stageInfo = STAGES[stageKey];
-      const stageLeads = leads
+      const stageLeads = activeFilteredLeads
         .filter((l) => l.stage === stageKey)
         .sort((a, b) => (b.dealValue || 0) - (a.dealValue || 0));
       const totalAmount = stageLeads.reduce((acc, curr) => acc + (curr.dealValue || 0), 0);
@@ -119,13 +230,7 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
         color: STAGE_COLORS[stageKey] || "#6366f1",
       };
     });
-  }, [leads]);
-
-  // Total pipeline metrics
-  const totalPipelineValue = useMemo(
-    () => leads.reduce((acc, curr) => acc + (curr.dealValue || 0), 0),
-    [leads]
-  );
+  }, [activeFilteredLeads]);
 
   const totalWeightedValue = useMemo(() => {
     return stageStats.reduce((acc, curr) => acc + curr.weightedAmount, 0);
@@ -137,14 +242,14 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
   }, [stageStats]);
 
   // Filtered leads for the active stage client list
-  const displayedLeads = useMemo(() => {
+  const displayedStageLeads = useMemo(() => {
     let list =
       selectedStage === "all"
-        ? leads
-        : leads.filter((l) => l.stage === selectedStage);
+        ? activeFilteredLeads
+        : activeFilteredLeads.filter((l) => l.stage === selectedStage);
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
+    if (stageSearchQuery.trim()) {
+      const q = stageSearchQuery.toLowerCase();
       list = list.filter(
         (l) =>
           l.companyName.toLowerCase().includes(q) ||
@@ -155,25 +260,85 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
     }
 
     return [...list].sort((a, b) => (b.dealValue || 0) - (a.dealValue || 0));
-  }, [leads, selectedStage, searchQuery]);
+  }, [activeFilteredLeads, selectedStage, stageSearchQuery]);
 
-  const selectedTotalAmount = useMemo(() => {
-    return displayedLeads.reduce((acc, curr) => acc + (curr.dealValue || 0), 0);
-  }, [displayedLeads]);
+  const selectedStageTotalAmount = useMemo(() => {
+    return displayedStageLeads.reduce((acc, curr) => acc + (curr.dealValue || 0), 0);
+  }, [displayedStageLeads]);
 
   const selectedStageMeta = stageStats.find((s) => s.stageKey === selectedStage);
 
   // Flatten all journey logs for a Global Timeline Activity Stream
-  const allLogs = leads
-    .flatMap((lead) =>
-      (lead.journeyLogs || []).map((log) => ({
-        ...log,
-        leadId: lead.id,
-        companyName: lead.companyName,
-        leadObj: lead,
-      }))
-    )
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const allLogs = useMemo(() => {
+    return activeFilteredLeads
+      .flatMap((lead) =>
+        (lead.journeyLogs || []).map((log) => ({
+          ...log,
+          leadId: lead.id,
+          companyName: lead.companyName,
+          leadObj: lead,
+        }))
+      )
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [activeFilteredLeads]);
+
+  // Metrics for Executive Briefing & CSV Export
+  const wonLeads = useMemo(
+    () => activeFilteredLeads.filter((l) => l.stage === "closure"),
+    [activeFilteredLeads]
+  );
+  const lostLeads = useMemo(
+    () => activeFilteredLeads.filter((l) => l.stage === "closed_lost"),
+    [activeFilteredLeads]
+  );
+  const totalClosedCount = wonLeads.length + lostLeads.length;
+  const winRate =
+    totalClosedCount > 0
+      ? (wonLeads.length / totalClosedCount) * 100
+      : activeFilteredLeads.length > 0
+      ? (wonLeads.length / activeFilteredLeads.length) * 100
+      : 0;
+  const avgDealSize =
+    activeFilteredLeads.length > 0
+      ? Math.round(totalPipelineValue / activeFilteredLeads.length)
+      : 0;
+
+  const now = new Date();
+  const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const closingThisMonthLeads = useMemo(() => {
+    return activeFilteredLeads.filter((l) => {
+      if (l.stage === "closed_lost") return false;
+      if (l.closureMonth && l.closureMonth === currentMonthStr) return true;
+      if (l.expectedCloseDate && l.expectedCloseDate.startsWith(currentMonthStr)) return true;
+      return false;
+    });
+  }, [activeFilteredLeads, currentMonthStr]);
+
+  const closingThisMonthValue = useMemo(
+    () => closingThisMonthLeads.reduce((acc, curr) => acc + (curr.dealValue || 0), 0),
+    [closingThisMonthLeads]
+  );
+
+  const handleExportCSV = () => {
+    exportAnalyticsToCSV({
+      leads: activeFilteredLeads,
+      totalPipelineValue,
+      totalWeightedValue,
+      winRate,
+      avgDealSize,
+      closingThisMonthValue,
+      closingThisMonthCount: closingThisMonthLeads.length,
+    });
+  };
+
+  const handleResetFilters = () => {
+    setFilters({
+      dateRange: "all",
+      program: "all",
+      owner: "all",
+      industry: "all",
+    });
+  };
 
   // Custom Rich Tooltip for Donut Chart with clients list and amount
   const CustomPieTooltip = ({ active, payload }: any) => {
@@ -238,9 +403,23 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Charts Row */}
+      {/* 8. Analytics Date & Filter Bar + Executive Export Actions */}
+      <AnalyticsFilterBar
+        filters={filters}
+        onFilterChange={setFilters}
+        onResetFilters={handleResetFilters}
+        onExportCSV={handleExportCSV}
+        onPrintReport={() => setShowBriefingModal(true)}
+        availableOwners={availableOwners}
+        availableIndustries={availableIndustries}
+      />
+
+      {/* 1. Executive KPI Summary Strip (Top Cards) */}
+      <ExecutiveKPICards leads={activeFilteredLeads} onSelectLead={onSelectLead} />
+
+      {/* Top Core Charts Grid: Stage Revenue & Stage Distribution */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        {/* 1. Bar Chart: Revenue Forecast Breakdown */}
+        {/* Unweighted vs. Weighted Revenue by Stage (Bar Chart) */}
         <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
             <div>
@@ -298,7 +477,7 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
           </div>
         </div>
 
-        {/* 2. Upgraded Stage Distribution: Interactive Donut, Stage Filters, Client List & Amounts */}
+        {/* Stage Distribution: Interactive Donut, Stage Filters, Client List & Amounts */}
         <div className="bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col">
           {/* Header with Title and Mode Switcher */}
           <div className="flex items-start justify-between gap-2 mb-3">
@@ -308,7 +487,7 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
                 <span>Stage Distribution</span>
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                {leads.length} deals • {formatCompact(totalPipelineValue)} total
+                {activeFilteredLeads.length} deals • {formatCompact(totalPipelineValue)} total
               </p>
             </div>
 
@@ -317,9 +496,9 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
               <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
                 <button
                   type="button"
-                  onClick={() => setViewMode("chart")}
+                  onClick={() => setStageViewMode("chart")}
                   className={`p-1 rounded text-xs transition-colors ${
-                    viewMode === "chart"
+                    stageViewMode === "chart"
                       ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs font-semibold"
                       : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
                   }`}
@@ -329,9 +508,9 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setViewMode("grouped")}
+                  onClick={() => setStageViewMode("grouped")}
                   className={`p-1 rounded text-xs transition-colors ${
-                    viewMode === "grouped"
+                    stageViewMode === "grouped"
                       ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs font-semibold"
                       : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
                   }`}
@@ -344,7 +523,7 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
               {/* Full Breakdown Modal Trigger */}
               <button
                 type="button"
-                onClick={() => setShowBreakdownModal(true)}
+                onClick={() => setShowStageBreakdownModal(true)}
                 className="p-1.5 rounded-lg bg-slate-100 hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-indigo-950/60 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 border border-slate-200/60 dark:border-slate-700/60 transition-colors"
                 title="Open Full Stage & Client Breakdown Modal"
               >
@@ -353,7 +532,7 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
             </div>
           </div>
 
-          {viewMode === "chart" ? (
+          {stageViewMode === "chart" ? (
             <>
               {/* Donut Chart with center value */}
               <div className="h-44 w-full relative">
@@ -400,7 +579,7 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
                     {selectedStage === "all" ? "Pipeline" : selectedStageMeta?.name?.split(" ")[0]}
                   </span>
                   <span className="text-xs font-bold text-slate-900 dark:text-white">
-                    {selectedStage === "all" ? `${leads.length} Deals` : `${selectedStageMeta?.count || 0} Deals`}
+                    {selectedStage === "all" ? `${activeFilteredLeads.length} Deals` : `${selectedStageMeta?.count || 0} Deals`}
                   </span>
                   <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
                     {selectedStage === "all"
@@ -422,7 +601,7 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
                   }`}
                 >
                   <span>All</span>
-                  <span className="opacity-70">({leads.length})</span>
+                  <span className="opacity-70">({activeFilteredLeads.length})</span>
                 </button>
 
                 {pieData.map((item) => {
@@ -464,31 +643,31 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
                         : `${selectedStageMeta?.name || "Stage"} Clients`}
                     </span>
                     <span className="text-[10px] text-slate-400 flex-shrink-0">
-                      ({displayedLeads.length})
+                      ({displayedStageLeads.length})
                     </span>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <span className="font-mono font-bold text-xs text-emerald-600 dark:text-emerald-400">
-                      {formatINR(selectedTotalAmount)}
+                      {formatINR(selectedStageTotalAmount)}
                     </span>
                   </div>
                 </div>
 
-                {/* Quick Search inside Client List if there are more than 3 leads */}
-                {(leads.length > 3 || searchQuery) && (
+                {/* Quick Search inside Client List */}
+                {(activeFilteredLeads.length > 3 || stageSearchQuery) && (
                   <div className="relative mb-2">
                     <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input
                       type="text"
                       placeholder="Filter clients..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
+                      value={stageSearchQuery}
+                      onChange={(e) => setStageSearchQuery(e.target.value)}
                       className="w-full text-xs pl-7 pr-7 py-1 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
                     />
-                    {searchQuery && (
+                    {stageSearchQuery && (
                       <button
                         type="button"
-                        onClick={() => setSearchQuery("")}
+                        onClick={() => setStageSearchQuery("")}
                         className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                       >
                         <X className="w-3 h-3" />
@@ -499,12 +678,12 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
 
                 {/* Scrollable Client List */}
                 <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-                  {displayedLeads.length === 0 ? (
+                  {displayedStageLeads.length === 0 ? (
                     <div className="text-center py-6 text-slate-400 text-xs">
                       No clients found in this view
                     </div>
                   ) : (
-                    displayedLeads.map((lead) => {
+                    displayedStageLeads.map((lead) => {
                       const stageColor = STAGE_COLORS[lead.stage] || "#6366f1";
                       return (
                         <div
@@ -652,6 +831,48 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
         </div>
       </div>
 
+      {/* 2. Monthly Revenue Forecast & Closure Timeline */}
+      <MonthlyForecastChart
+        leads={activeFilteredLeads}
+        onSelectLead={onSelectLead}
+      />
+
+      {/* 3 & 4. Offerings and Acquisition Channels Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* 3. Program / Service Line Breakdown */}
+        <ProgramBreakdown
+          leads={activeFilteredLeads}
+          onSelectLead={onSelectLead}
+        />
+
+        {/* 4. Lead Source Performance & Conversion Efficiency */}
+        <LeadSourceAnalysis
+          leads={activeFilteredLeads}
+          onSelectLead={onSelectLead}
+        />
+      </div>
+
+      {/* 5 & 7. Sales Team Leaderboard and Market Demographics */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* 5. Sales Team / Deal Owner Leaderboard */}
+        <SalesLeaderboard
+          leads={activeFilteredLeads}
+          onSelectLead={onSelectLead}
+        />
+
+        {/* 7. Industry & Geographic (City) Distribution */}
+        <IndustryGeoDistribution
+          leads={activeFilteredLeads}
+          onSelectLead={onSelectLead}
+        />
+      </div>
+
+      {/* 6. Pipeline Health Radar & Stale Deals Warning System */}
+      <PipelineHealthRadar
+        leads={activeFilteredLeads}
+        onSelectLead={onSelectLead}
+      />
+
       {/* Global Activity Log Feed */}
       <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm">
         <div className="flex items-center justify-between mb-4">
@@ -668,42 +889,48 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
         </div>
 
         <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-          {allLogs.map((log) => (
-            <div
-              key={log.id}
-              onClick={() => onSelectLead(log.leadObj)}
-              className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/60 dark:border-slate-800 hover:border-indigo-500/40 transition cursor-pointer flex items-start justify-between gap-4"
-            >
-              <div className="space-y-1">
-                <div className="flex items-center space-x-2">
-                  <span className="font-bold text-xs text-slate-900 dark:text-white flex items-center space-x-1">
-                    <Building2 className="w-3.5 h-3.5 text-indigo-500" />
-                    <span>{log.companyName}</span>
-                  </span>
-                  <span className="text-slate-400">•</span>
-                  <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
-                    {log.title}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-600 dark:text-slate-300">
-                  {log.description}
-                </p>
-                <div className="text-[10px] text-slate-400">Author: {log.author}</div>
-              </div>
-
-              <div className="text-right flex-shrink-0">
-                <div className="text-[11px] font-mono text-slate-500 flex items-center space-x-1 justify-end">
-                  <Clock className="w-3 h-3 text-slate-400" />
-                  <span>{log.formattedDate}</span>
-                </div>
-              </div>
+          {allLogs.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-400 italic">
+              No recent journey logs match the current analytics filter
             </div>
-          ))}
+          ) : (
+            allLogs.map((log) => (
+              <div
+                key={log.id}
+                onClick={() => onSelectLead(log.leadObj)}
+                className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200/60 dark:border-slate-800 hover:border-indigo-500/40 transition cursor-pointer flex items-start justify-between gap-4"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-bold text-xs text-slate-900 dark:text-white flex items-center space-x-1">
+                      <Building2 className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>{log.companyName}</span>
+                    </span>
+                    <span className="text-slate-400">•</span>
+                    <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+                      {log.title}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-300">
+                    {log.description}
+                  </p>
+                  <div className="text-[10px] text-slate-400">Author: {log.author}</div>
+                </div>
+
+                <div className="text-right flex-shrink-0">
+                  <div className="text-[11px] font-mono text-slate-500 flex items-center space-x-1 justify-end">
+                    <Clock className="w-3 h-3 text-slate-400" />
+                    <span>{log.formattedDate}</span>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
-      {/* Comprehensive Stage & Client Breakdown Modal */}
-      {showBreakdownModal && (
+      {/* Stage Breakdown Modal */}
+      {showStageBreakdownModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[88vh] flex flex-col overflow-hidden">
             {/* Modal Header */}
@@ -724,7 +951,7 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
 
               <button
                 type="button"
-                onClick={() => setShowBreakdownModal(false)}
+                onClick={() => setShowStageBreakdownModal(false)}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -736,7 +963,7 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/80 border border-slate-200/60 dark:border-slate-800">
                 <div className="text-[11px] text-slate-400 font-medium">Total Deals</div>
                 <div className="text-lg font-bold text-slate-900 dark:text-white">
-                  {leads.length} Accounts
+                  {activeFilteredLeads.length} Accounts
                 </div>
               </div>
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/80 border border-slate-200/60 dark:border-slate-800">
@@ -799,7 +1026,7 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
                             <div
                               key={lead.id}
                               onClick={() => {
-                                setShowBreakdownModal(false);
+                                setShowStageBreakdownModal(false);
                                 onSelectLead(lead);
                               }}
                               className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800 hover:border-indigo-500 hover:bg-indigo-50/30 dark:hover:bg-indigo-950/30 transition-all cursor-pointer flex items-center justify-between gap-2 group"
@@ -838,7 +1065,7 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
               <span>Tip: Click on any client to open their full deal profile and customer journey</span>
               <button
                 type="button"
-                onClick={() => setShowBreakdownModal(false)}
+                onClick={() => setShowStageBreakdownModal(false)}
                 className="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-slate-950 font-medium transition-colors"
               >
                 Close
@@ -847,7 +1074,19 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
           </div>
         </div>
       )}
+
+      {/* Printable Executive Report Modal */}
+      <ExecutiveReportModal
+        isOpen={showBriefingModal}
+        onClose={() => setShowBriefingModal(false)}
+        leads={activeFilteredLeads}
+        totalPipelineValue={totalPipelineValue}
+        totalWeightedValue={totalWeightedValue}
+        winRate={winRate}
+        avgDealSize={avgDealSize}
+        closingThisMonthValue={closingThisMonthValue}
+        closingThisMonthCount={closingThisMonthLeads.length}
+      />
     </div>
   );
 };
-
