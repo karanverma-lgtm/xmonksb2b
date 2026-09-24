@@ -52,6 +52,7 @@ import {
   subscribeToSenderProfiles,
   setActiveSender,
   getSenderProfileForUser,
+  stripBadgesFromEmailHtml,
   SMTPSenderProfile,
   EmailLogEntry,
   EmailCampaign,
@@ -160,10 +161,10 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
       loadTemplateIntoEditor(found);
       setSelectedSingleTemplateId(found.id);
       setSingleSubject(found.subject);
-      setSingleHtmlContent(found.htmlContent);
+      setSingleHtmlContent(stripBadgesFromEmailHtml(found.htmlContent));
       setSelectedBulkTemplateId(found.id);
       setBulkSubject(found.subject);
-      setBulkHtmlContent(found.htmlContent);
+      setBulkHtmlContent(stripBadgesFromEmailHtml(found.htmlContent));
     }
   };
 
@@ -201,7 +202,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
     setTemplateName(tpl.name);
     setTemplateSubject(tpl.subject);
     setTemplateCategory(tpl.category);
-    setTemplateHtml(tpl.htmlContent);
+    setTemplateHtml(stripBadgesFromEmailHtml(tpl.htmlContent));
   }, []);
 
   // Subscribe to Real-Time Templates, Campaigns & Email Logs via Firebase Firestore
@@ -228,11 +229,11 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
 
           setSelectedSingleTemplateId(initialTpl.id);
           setSingleSubject(initialTpl.subject);
-          setSingleHtmlContent(initialTpl.htmlContent);
+          setSingleHtmlContent(stripBadgesFromEmailHtml(initialTpl.htmlContent));
 
           setSelectedBulkTemplateId(initialTpl.id);
           setBulkSubject(initialTpl.subject);
-          setBulkHtmlContent(initialTpl.htmlContent);
+          setBulkHtmlContent(stripBadgesFromEmailHtml(initialTpl.htmlContent));
         }
       }
     });
@@ -391,14 +392,14 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
   const handleApplyTemplateToSingle = (tpl: EmailTemplate) => {
     setSelectedSingleTemplateId(tpl.id);
     setSingleSubject(tpl.subject);
-    setSingleHtmlContent(tpl.htmlContent);
+    setSingleHtmlContent(stripBadgesFromEmailHtml(tpl.htmlContent));
   };
 
   // Apply template to Bulk Email sender
   const handleApplyTemplateToBulk = (tpl: EmailTemplate) => {
     setSelectedBulkTemplateId(tpl.id);
     setBulkSubject(tpl.subject);
-    setBulkHtmlContent(tpl.htmlContent);
+    setBulkHtmlContent(stripBadgesFromEmailHtml(tpl.htmlContent));
   };
 
   // Select CRM lead for Single Email

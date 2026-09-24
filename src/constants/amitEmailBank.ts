@@ -1,7 +1,7 @@
 import { EmailTemplate } from "./emailTemplates";
 
 export function generateAmitEmailHtml(params: {
-  personaBadge: string;
+  personaBadge?: string;
   sequenceBadge?: string;
   leadParagraph: string;
   paragraphs: string[];
@@ -37,19 +37,9 @@ export function generateAmitEmailHtml(params: {
   <div style="background: linear-gradient(135deg, #233F4D 0%, #172a34 100%); padding: 22px 28px; position: relative;">
     <table style="width: 100%; border-collapse: collapse;">
       <tr>
-        <td style="vertical-align: middle;">
+        <td style="vertical-align: middle; text-align: left;">
           <!-- xMonks Logo (Clean transparent brand PNG) -->
           <img src="/xmonks-logo.png" alt="xMonks" style="height: 44px; max-width: 210px; display: block; object-fit: contain; background: rgba(255,255,255,0.92); padding: 5px 12px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);" />
-        </td>
-        <td style="vertical-align: middle; text-align: right;">
-          <span style="display: inline-block; background-color: rgba(241, 90, 36, 0.2); color: #ff8c5a; border: 1px solid rgba(241, 90, 36, 0.4); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; padding: 4px 10px; border-radius: 20px;">
-            ${params.personaBadge}
-          </span>
-          ${
-            params.sequenceBadge
-              ? `<div style="color: #94a3b8; font-size: 10px; font-weight: 600; margin-top: 4px;">${params.sequenceBadge}</div>`
-              : ""
-          }
         </td>
       </tr>
     </table>

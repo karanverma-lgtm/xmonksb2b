@@ -511,8 +511,19 @@ export function subscribeToSenderProfiles(
 
 const RETIRED_TEMPLATE_IDS = ["amit-talent-email-10"];
 
+export function stripBadgesFromEmailHtml(html: string): string {
+  if (!html) return "";
+  return html
+    .replace(/<td[^>]*text-align:\s*right[^>]*>[\s\S]*?<\/td>/gi, "")
+    .replace(/<span[^>]*>[^<]*(?:CHRO|HR HEAD|L&D|TALENT|SUCCESSION|HRBP|DEI|WOMEN LEADERSHIP|BUSINESS HEAD|CEO|CLOSING)[^<]*<\/span>/gi, "")
+    .replace(/<div[^>]*>Sequence Step:[^<]*<\/div>/gi, "");
+}
+
 export function getAllTemplates(): EmailTemplate[] {
-  const allDefaults = [...PREBUILT_TEMPLATES, ...AMIT_ENTERPRISE_EMAIL_BANK];
+  const allDefaults = [...PREBUILT_TEMPLATES, ...AMIT_ENTERPRISE_EMAIL_BANK].map((t) => ({
+    ...t,
+    htmlContent: stripBadgesFromEmailHtml(t.htmlContent),
+  }));
   if (typeof window === "undefined") return allDefaults.filter((t) => !RETIRED_TEMPLATE_IDS.includes(t.id));
   try {
     const deletedIds = getDeletedTemplateIds();
@@ -526,7 +537,9 @@ export function getAllTemplates(): EmailTemplate[] {
       );
       combined = [...customUnique, ...combined];
     }
-    return combined.filter((t) => !deletedIds.includes(t.id) && !RETIRED_TEMPLATE_IDS.includes(t.id));
+    return combined
+      .filter((t) => !deletedIds.includes(t.id) && !RETIRED_TEMPLATE_IDS.includes(t.id))
+      .map((t) => ({ ...t, htmlContent: stripBadgesFromEmailHtml(t.htmlContent) }));
   } catch (e) {
     console.warn("Error reading local templates", e);
   }
@@ -759,7 +772,10 @@ export function subscribeToTemplates(
       const combined = [
         ...latestFirestoreTemplates.filter((t) => !isExcluded(t.id)),
         ...prebuiltMissing,
-      ];
+      ].map((t) => ({
+        ...t,
+        htmlContent: stripBadgesFromEmailHtml(t.htmlContent),
+      }));
       saveLocalTemplates(combined);
       onData(combined, isSyncing);
     };

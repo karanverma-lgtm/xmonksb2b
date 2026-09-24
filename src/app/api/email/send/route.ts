@@ -132,7 +132,11 @@ export async function POST(req: NextRequest) {
         .replace(/\{\{\s*designation\s*\}\}/gi, designation)
         .replace(/\{\{\s*industry\s*\}\}/gi, industry)
         .replace(/\{\{\s*dealValue\s*\}\}/gi, dealValue)
-        .replace(/\{\{\s*email\s*\}\}/gi, recipientEmail);
+      // Strip any internal sequence / persona badge header text if present
+      personalizedHtml = personalizedHtml
+        .replace(/<td[^>]*text-align:\s*right[^>]*>[\s\S]*?<\/td>/gi, "")
+        .replace(/<span[^>]*>[^<]*(?:CHRO|HR HEAD|L&D|TALENT|SUCCESSION|HRBP|DEI|WOMEN LEADERSHIP|BUSINESS HEAD|CEO|CLOSING)[^<]*<\/span>/gi, "")
+        .replace(/<div[^>]*>Sequence Step:[^<]*<\/div>/gi, "");
 
       const personalizedSubject = subject
         .replace(/\{\{\s*contactName\s*\}\}|\[\s*First Name\s*\]/gi, recipientName)
