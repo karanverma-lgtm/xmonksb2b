@@ -266,7 +266,7 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
   return (
     <div className="space-y-6">
       {/* Top Banner & KPI Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
         <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs flex items-center justify-between">
           <div>
             <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
@@ -477,7 +477,8 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
       {/* Main View: Board or Table */}
       {viewMode === "board" ? (
         /* Board View */
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-4 items-start">
+        <div className="w-full overflow-x-auto pb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-4 items-start min-w-[720px] 2xl:min-w-0">
           {boardColumns.map((col) => {
             const colClients = filteredClients.filter((c) => col.statusList.includes(c.status));
 
@@ -583,6 +584,7 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
               </div>
             );
           })}
+          </div>
         </div>
       ) : (
         /* Table View */

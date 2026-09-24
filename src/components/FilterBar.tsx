@@ -73,10 +73,10 @@ export const FilterBar: React.FC<FilterBarProps> = ({
 
   return (
     <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm mb-6 space-y-3">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+      <div className="flex flex-col 2xl:flex-row 2xl:items-center justify-between gap-3">
         {/* Search Input */}
-        <div className="relative flex-1 min-w-[220px]">
-          <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+        <div className="relative w-full 2xl:w-72 flex-shrink-0">
+          <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
           <input
             type="text"
             placeholder="Search company, contact, email..."
@@ -88,9 +88,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
 
         {/* Filter Controls Grid */}
         <div
-          className={`grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 ${
-            isAdmin ? "xl:grid-cols-7" : "xl:grid-cols-6"
-          } gap-2 items-center`}
+          className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-7 gap-2 items-center flex-1`}
         >
           {/* Client Partner Filter (Admin View) */}
           {isAdmin && setSelectedPartner && (
