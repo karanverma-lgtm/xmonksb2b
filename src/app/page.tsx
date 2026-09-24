@@ -119,6 +119,7 @@ export default function Home() {
   });
 
   const [coldClients, setColdClients] = useState<ColdClient[]>([]);
+  const [outreachFilteredCount, setOutreachFilteredCount] = useState<number | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState<boolean>(false);
@@ -667,7 +668,11 @@ export default function Home() {
         onLogout={handleLogout}
         currentUser={currentUser}
         isFirebaseSyncing={isFirebaseSyncing}
-        totalLeadsCount={filteredLeads.length}
+        totalLeadsCount={
+          activeTab === "outreach"
+            ? (outreachFilteredCount ?? userScopedColdClients.length)
+            : filteredLeads.length
+        }
         totalWeightedPipeline={totalWeightedPipeline}
       />
 
@@ -738,6 +743,7 @@ export default function Home() {
             onNavigateToEmailTab={(email, name, company) => {
               handleTabChange("email");
             }}
+            onFilteredCountChange={setOutreachFilteredCount}
           />
         )}
 

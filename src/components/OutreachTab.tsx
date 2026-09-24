@@ -65,6 +65,7 @@ interface OutreachTabProps {
   onDeleteColdClient: (id: string) => Promise<void>;
   currentUser?: UserAccount | null;
   onNavigateToEmailTab?: (recipientEmail: string, recipientName: string, companyName: string) => void;
+  onFilteredCountChange?: (count: number) => void;
 }
 
 export const OutreachTab: React.FC<OutreachTabProps> = ({
@@ -77,6 +78,7 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
   onDeleteColdClient,
   currentUser,
   onNavigateToEmailTab,
+  onFilteredCountChange,
 }) => {
   const [viewMode, setViewMode] = useState<"board" | "table">("board");
   const [searchTerm, setSearchTerm] = useState("");
@@ -91,20 +93,35 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
 
   const todayStr = new Date().toISOString().split("T")[0];
 
-  // Valid platform users list for Owner selection
+  // Dynamic platform users list for Owner selection (including any custom owners)
   const platformOwners = useMemo(() => {
-    return VALID_USERS.map((u) => u.name);
-  }, []);
+    const list = new Set<string>();
+    VALID_USERS.forEach((u) => list.add(u.name));
+    coldClients.forEach((c) => {
+      if (c.owner && c.owner.trim()) {
+        list.add(c.owner.trim());
+      }
+    });
+    return Array.from(list);
+  }, [coldClients]);
 
-  // Filtered cold clients
-  const filteredClients = useMemo(() => {
+  const hasActiveFilters = Boolean(
+    searchTerm.trim() ||
+    selectedStatus !== "all" ||
+    selectedChannel !== "all" ||
+    selectedOwner !== "all" ||
+    onlyDueToday
+  );
+
+  // 1. Scoped clients based on dimensional filters (Search, Channel, Owner)
+  const baseClients = useMemo(() => {
     return coldClients.filter((client) => {
       // 1. Search term
       if (searchTerm.trim()) {
         const q = searchTerm.toLowerCase();
-        const matchCompany = client.companyName.toLowerCase().includes(q);
-        const matchContact = client.contactName.toLowerCase().includes(q);
-        const matchEmail = client.email.toLowerCase().includes(q);
+        const matchCompany = client.companyName?.toLowerCase().includes(q) || false;
+        const matchContact = client.contactName?.toLowerCase().includes(q) || false;
+        const matchEmail = client.email?.toLowerCase().includes(q) || false;
         const matchRole = client.designation?.toLowerCase().includes(q) || false;
         const matchCity = client.city?.toLowerCase().includes(q) || false;
         if (!matchCompany && !matchContact && !matchEmail && !matchRole && !matchCity) {
@@ -112,17 +129,12 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
         }
       }
 
-      // 2. Status
-      if (selectedStatus !== "all" && client.status !== selectedStatus) {
-        return false;
-      }
-
-      // 3. Channel
+      // 2. Channel
       if (selectedChannel !== "all" && client.channel !== selectedChannel) {
         return false;
       }
 
-      // 4. Owner filter (matching platform user name or username)
+      // 3. Owner filter (matching platform user name or username)
       if (selectedOwner !== "all") {
         const selClean = selectedOwner.toLowerCase().trim();
         const clientOwner = (client.owner || "").toLowerCase().trim();
@@ -135,7 +147,29 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
         }
       }
 
-      // 5. Only Due Today / Overdue
+      return true;
+    });
+  }, [coldClients, searchTerm, selectedChannel, selectedOwner]);
+
+  // 2. Filtered cold clients: applies stage and due date filters on top of base scope
+  const filteredClients = useMemo(() => {
+    return baseClients.filter((client) => {
+      // Status
+      if (selectedStatus !== "all") {
+        if (selectedStatus === "in_motion") {
+          if (!["email_sent", "follow_up_1", "follow_up_2"].includes(client.status)) {
+            return false;
+          }
+        } else if (selectedStatus === "high_intent") {
+          if (!["call_scheduled", "replied_interested"].includes(client.status)) {
+            return false;
+          }
+        } else if (client.status !== selectedStatus) {
+          return false;
+        }
+      }
+
+      // Only Due Today / Overdue
       if (onlyDueToday) {
         if (client.status === "converted" || client.status === "not_interested") return false;
         if (!client.nextFollowUpDate || client.nextFollowUpDate > todayStr) return false;
@@ -143,19 +177,26 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
 
       return true;
     });
-  }, [coldClients, searchTerm, selectedStatus, selectedChannel, selectedOwner, onlyDueToday, todayStr]);
+  }, [baseClients, selectedStatus, onlyDueToday, todayStr]);
 
-  // KPI Metrics
+  // Notify parent component of current filtered count
+  React.useEffect(() => {
+    onFilteredCountChange?.(filteredClients.length);
+  }, [filteredClients.length, onFilteredCountChange]);
+
+  // 3. KPI Metrics: Dynamically recalculates based on active filters
   const stats = useMemo(() => {
-    const total = coldClients.length;
-    const inProgress = coldClients.filter((c) =>
+    const isStageFiltered = selectedStatus !== "all" || onlyDueToday;
+    const total = isStageFiltered ? filteredClients.length : baseClients.length;
+
+    const inProgress = baseClients.filter((c) =>
       ["email_sent", "follow_up_1", "follow_up_2"].includes(c.status)
     ).length;
-    const highIntent = coldClients.filter((c) =>
+    const highIntent = baseClients.filter((c) =>
       ["call_scheduled", "replied_interested"].includes(c.status)
     ).length;
-    const converted = coldClients.filter((c) => c.status === "converted").length;
-    const dueCount = coldClients.filter(
+    const converted = baseClients.filter((c) => c.status === "converted").length;
+    const dueCount = baseClients.filter(
       (c) =>
         c.status !== "converted" &&
         c.status !== "not_interested" &&
@@ -164,7 +205,7 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
     ).length;
 
     return { total, inProgress, highIntent, converted, dueCount };
-  }, [coldClients, todayStr]);
+  }, [baseClients, filteredClients, selectedStatus, onlyDueToday, todayStr]);
 
   // Export to CSV
   const handleExportCSV = () => {
@@ -269,24 +310,56 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Banner & KPI Strip */}
+      {/* Top Banner & KPI Strip (Interactive & Dynamically Filtered) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
-        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs flex items-center justify-between">
+        {/* 1. Total / Filtered Accounts */}
+        <div
+          onClick={() => {
+            setSelectedStatus("all");
+            setOnlyDueToday(false);
+          }}
+          className={`p-4 rounded-2xl bg-white dark:bg-slate-900 border shadow-xs flex items-center justify-between cursor-pointer transition-all ${
+            selectedStatus === "all" && !onlyDueToday
+              ? "border-blue-500/60 ring-2 ring-blue-500/20 bg-blue-50/50 dark:bg-blue-950/20"
+              : "border-slate-200 dark:border-slate-800 hover:border-blue-400"
+          }`}
+          title="Click to reset stage/due filters and view all matching accounts"
+        >
           <div>
             <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              Total Cold Accounts
+              {hasActiveFilters ? "Filtered Accounts" : "Total Cold Accounts"}
             </p>
             <h3 className="text-2xl font-black text-slate-900 dark:text-white mt-1">
               {stats.total}
             </h3>
-            <p className="text-[10px] text-slate-400 mt-0.5">Prospects logged</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              {hasActiveFilters
+                ? `Showing ${filteredClients.length} of ${coldClients.length} total`
+                : "Prospects logged"}
+            </p>
           </div>
           <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
             <Building2 className="w-5 h-5" />
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs flex items-center justify-between">
+        {/* 2. Outreach In Motion */}
+        <div
+          onClick={() => {
+            if (selectedStatus === "in_motion") {
+              setSelectedStatus("all");
+            } else {
+              setSelectedStatus("in_motion");
+              setOnlyDueToday(false);
+            }
+          }}
+          className={`p-4 rounded-2xl bg-white dark:bg-slate-900 border shadow-xs flex items-center justify-between cursor-pointer transition-all ${
+            selectedStatus === "in_motion" || ["email_sent", "follow_up_1", "follow_up_2"].includes(selectedStatus)
+              ? "border-indigo-500/60 ring-2 ring-indigo-500/20 bg-indigo-50/50 dark:bg-indigo-950/20"
+              : "border-slate-200 dark:border-slate-800 hover:border-indigo-400"
+          }`}
+          title="Click to filter by Outreach In Motion"
+        >
           <div>
             <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Outreach In Motion
@@ -294,14 +367,34 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
             <h3 className="text-2xl font-black text-indigo-600 dark:text-indigo-400 mt-1">
               {stats.inProgress}
             </h3>
-            <p className="text-[10px] text-slate-400 mt-0.5">Sent & follow-ups</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              {selectedStatus === "in_motion" || ["email_sent", "follow_up_1", "follow_up_2"].includes(selectedStatus)
+                ? "Active filter applied"
+                : "Sent & follow-ups"}
+            </p>
           </div>
           <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
             <Mail className="w-5 h-5" />
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs flex items-center justify-between">
+        {/* 3. Engaged / Calls Booked */}
+        <div
+          onClick={() => {
+            if (selectedStatus === "high_intent") {
+              setSelectedStatus("all");
+            } else {
+              setSelectedStatus("high_intent");
+              setOnlyDueToday(false);
+            }
+          }}
+          className={`p-4 rounded-2xl bg-white dark:bg-slate-900 border shadow-xs flex items-center justify-between cursor-pointer transition-all ${
+            selectedStatus === "high_intent" || ["call_scheduled", "replied_interested"].includes(selectedStatus)
+              ? "border-emerald-500/60 ring-2 ring-emerald-500/20 bg-emerald-50/50 dark:bg-emerald-950/20"
+              : "border-slate-200 dark:border-slate-800 hover:border-emerald-400"
+          }`}
+          title="Click to filter by Engaged / Discovery Booked"
+        >
           <div>
             <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Engaged / Calls
@@ -309,14 +402,34 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
             <h3 className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
               {stats.highIntent}
             </h3>
-            <p className="text-[10px] text-slate-400 mt-0.5">Discovery booked</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              {selectedStatus === "high_intent" || ["call_scheduled", "replied_interested"].includes(selectedStatus)
+                ? "Active filter applied"
+                : "Discovery booked"}
+            </p>
           </div>
           <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
             <Sparkles className="w-5 h-5" />
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs flex items-center justify-between">
+        {/* 4. Graduated to Pipeline Leads */}
+        <div
+          onClick={() => {
+            if (selectedStatus === "converted") {
+              setSelectedStatus("all");
+            } else {
+              setSelectedStatus("converted");
+              setOnlyDueToday(false);
+            }
+          }}
+          className={`p-4 rounded-2xl bg-white dark:bg-slate-900 border shadow-xs flex items-center justify-between cursor-pointer transition-all ${
+            selectedStatus === "converted"
+              ? "border-cyan-500/60 ring-2 ring-cyan-500/20 bg-cyan-50/50 dark:bg-cyan-950/20"
+              : "border-slate-200 dark:border-slate-800 hover:border-cyan-400"
+          }`}
+          title="Click to filter by Converted to Leads"
+        >
           <div>
             <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Graduated to Leads
@@ -324,20 +437,24 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
             <h3 className="text-2xl font-black text-cyan-600 dark:text-cyan-400 mt-1">
               {stats.converted}
             </h3>
-            <p className="text-[10px] text-slate-400 mt-0.5">In CRM pipeline</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              {selectedStatus === "converted" ? "Active filter applied" : "In CRM pipeline"}
+            </p>
           </div>
           <div className="w-10 h-10 rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 flex items-center justify-center">
             <CheckCheck className="w-5 h-5" />
           </div>
         </div>
 
+        {/* 5. Follow-ups Due Today */}
         <div
           onClick={() => setOnlyDueToday(!onlyDueToday)}
           className={`p-4 rounded-2xl border shadow-xs flex items-center justify-between cursor-pointer transition-all ${
             onlyDueToday
-              ? "bg-amber-500/15 border-amber-500/50 ring-2 ring-amber-500/30"
+              ? "bg-amber-500/15 border-amber-500/60 ring-2 ring-amber-500/30"
               : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-amber-400"
           }`}
+          title="Click to toggle follow-ups due filter"
         >
           <div>
             <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
@@ -379,6 +496,8 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
             className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 focus:outline-none"
           >
             <option value="all">All Outreach Stages</option>
+            <option value="in_motion">Outreach In Motion (All)</option>
+            <option value="high_intent">High Intent / Calls Booked</option>
             {Object.entries(COLD_STATUS_CONFIG).map(([k, cfg]) => (
               <option key={k} value={k}>
                 {cfg.label}
@@ -404,23 +523,37 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
           <select
             value={selectedOwner}
             onChange={(e) => setSelectedOwner(e.target.value)}
-            className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 focus:outline-none"
+            className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 focus:outline-none font-medium"
           >
-            <option value="all">All Owners</option>
-            {platformOwners.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
+            <option value="all">All Owners ({coldClients.length})</option>
+            {platformOwners.map((name) => {
+              const ownerAccountsCount = coldClients.filter((c) => {
+                const o = (c.owner || "").toLowerCase().trim();
+                const n = name.toLowerCase().trim();
+                return o === n || o.includes(n) || n.includes(o);
+              }).length;
+              return (
+                <option key={name} value={name}>
+                  {name} {ownerAccountsCount > 0 ? `(${ownerAccountsCount})` : ""}
+                </option>
+              );
+            })}
           </select>
 
-          {onlyDueToday && (
+          {hasActiveFilters && (
             <button
-              onClick={() => setOnlyDueToday(false)}
-              className="px-2.5 py-1 text-[11px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 rounded-xl flex items-center space-x-1"
+              onClick={() => {
+                setSearchTerm("");
+                setSelectedStatus("all");
+                setSelectedChannel("all");
+                setSelectedOwner("all");
+                setOnlyDueToday(false);
+              }}
+              className="px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl transition flex items-center space-x-1"
+              title="Reset all filters"
             >
-              <span>Due Today</span>
-              <RotateCcw className="w-3 h-3 ml-1" />
+              <RotateCcw className="w-3 h-3" />
+              <span>Reset Filters</span>
             </button>
           )}
         </div>
