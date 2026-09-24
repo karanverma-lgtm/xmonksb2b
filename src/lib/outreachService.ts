@@ -17,6 +17,37 @@ import { formatTimestamp, sanitizeForFirestore, createLead } from "./leadsServic
 const COLLECTION_NAME = "b2b_cold_clients";
 const LOCAL_STORAGE_KEY = "xmonks_b2b_cold_clients_v1";
 
+function normalizeClientOwner(ownerStr?: string): string {
+  if (!ownerStr) return "Amit";
+  const lower = ownerStr.toLowerCase().trim();
+  if (lower === "karan") return "Amit";
+  if (lower === "pooja") return "Preeti";
+  if (lower === "admin") return "Admin User";
+  return ownerStr;
+}
+
+export function cleanLegacyColdClients(clients: ColdClient[]): { cleaned: ColdClient[]; changed: boolean } {
+  let changed = false;
+  const cleaned = clients.map((c) => {
+    const newOwner = normalizeClientOwner(c.owner);
+    if (newOwner !== c.owner) {
+      changed = true;
+    }
+    const cleanedTouchpoints = (c.touchpoints || []).map((tp) => {
+      const newAuthor = normalizeClientOwner(tp.author);
+      if (newAuthor !== tp.author) changed = true;
+      return { ...tp, author: newAuthor };
+    });
+
+    return {
+      ...c,
+      owner: newOwner,
+      touchpoints: cleanedTouchpoints,
+    };
+  });
+  return { cleaned, changed };
+}
+
 // Get initial cold clients from LocalStorage
 export function getStoredLocalColdClients(): ColdClient[] {
   if (typeof window === "undefined") return [];
@@ -27,7 +58,12 @@ export function getStoredLocalColdClients(): ColdClient[] {
       return INITIAL_COLD_CLIENTS;
     }
     const parsed: ColdClient[] = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_COLD_CLIENTS;
+    const clientsList = Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_COLD_CLIENTS;
+    const { cleaned, changed } = cleanLegacyColdClients(clientsList);
+    if (changed) {
+      saveStoredLocalColdClients(cleaned);
+    }
+    return cleaned;
   } catch (err) {
     console.warn("Failed to parse local cold clients", err);
     return INITIAL_COLD_CLIENTS;
@@ -68,7 +104,7 @@ export function subscribeToColdClients(
           }
           onData(localClients, true);
         } else {
-          const clients: ColdClient[] = snapshot.docs.map((docSnap) => {
+          const rawClients: ColdClient[] = snapshot.docs.map((docSnap) => {
             const data = docSnap.data() as Omit<ColdClient, "id">;
             return {
               id: docSnap.id,
@@ -76,8 +112,13 @@ export function subscribeToColdClients(
               touchpoints: Array.isArray(data.touchpoints) ? data.touchpoints : [],
             };
           });
-          saveStoredLocalColdClients(clients);
-          onData(clients, true);
+          const { cleaned, changed } = cleanLegacyColdClients(rawClients);
+          saveStoredLocalColdClients(cleaned);
+          if (changed) {
+            // Sync normalized owners to Firestore
+            seedInitialColdClients(cleaned).catch(() => {});
+          }
+          onData(cleaned, true);
         }
       },
       (error) => {

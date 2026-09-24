@@ -30,7 +30,7 @@ import {
 import { ColdClient, ColdClientStatus, OutreachChannel, OutreachTouchpoint } from "@/types/outreach";
 import { COLD_STATUS_CONFIG, OUTREACH_CHANNELS, OUTREACH_INDUSTRIES } from "@/constants/outreach";
 import { PRESET_PROGRAMS } from "@/constants/programs";
-import { UserAccount } from "@/constants/users";
+import { UserAccount, VALID_USERS } from "@/constants/users";
 import { formatINR } from "@/lib/formatters";
 
 interface ColdClientDetailModalProps {
@@ -90,6 +90,7 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
   const [estimatedValue, setEstimatedValue] = useState("");
   const [status, setStatus] = useState<ColdClientStatus>("uncontacted");
   const [channel, setChannel] = useState<OutreachChannel>("email");
+  const [owner, setOwner] = useState("Amit");
   const [nextFollowUpDate, setNextFollowUpDate] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -119,6 +120,7 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
       setEstimatedValue(client.estimatedPotentialValue?.toString() || "0");
       setStatus(client.status || "uncontacted");
       setChannel(client.channel || "email");
+      setOwner(client.owner || currentUser?.name || "Amit");
       setNextFollowUpDate(client.nextFollowUpDate || "");
       setNotes(client.notes || "");
       setConvertDealValue(client.estimatedPotentialValue?.toString() || "500000");
@@ -128,7 +130,7 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
       setTpSummary("");
       setTpNextStatus("");
     }
-  }, [client]);
+  }, [client, currentUser]);
 
   if (!isOpen || !client) return null;
 
@@ -152,6 +154,7 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
         estimatedPotentialValue: estimatedValue ? parseInt(estimatedValue.replace(/\D/g, ""), 10) : 0,
         status,
         channel,
+        owner,
         nextFollowUpDate: nextFollowUpDate || undefined,
         notes: notes.trim() || undefined,
       });
@@ -177,7 +180,7 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
       await onLogTouchpoint(client.id, {
         channel: tpChannel,
         summary: tpSummary.trim(),
-        author: currentUser?.username || "Admin",
+        author: currentUser?.name || currentUser?.username || "Admin User",
         nextStatus: tpNextStatus ? (tpNextStatus as ColdClientStatus) : undefined,
         nextFollowUpDate: tpFollowUpDate || undefined,
       });
@@ -198,7 +201,7 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
     try {
       setIsConverting(true);
       const val = parseInt(convertDealValue.replace(/\D/g, ""), 10) || 500000;
-      await onConvertToLead(client, val, currentUser?.username || "Admin", convertClosureMonth);
+      await onConvertToLead(client, val, currentUser?.name || currentUser?.username || "Admin User", convertClosureMonth);
       setConvertSuccess(true);
       setStatus("converted");
       setTimeout(() => {
@@ -442,6 +445,20 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                       onChange={(e) => setNextFollowUpDate(e.target.value)}
                       className="w-full mt-1 px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
                     />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-500">Assigned Owner</label>
+                    <select
+                      value={owner}
+                      onChange={(e) => setOwner(e.target.value)}
+                      className="w-full mt-1 px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-medium"
+                    >
+                      {VALID_USERS.map((u) => (
+                        <option key={u.username} value={u.name}>
+                          {u.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               </div>

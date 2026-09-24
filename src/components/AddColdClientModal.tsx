@@ -21,7 +21,7 @@ import {
 import { ColdClient, ColdClientStatus, OutreachChannel } from "@/types/outreach";
 import { COLD_STATUS_CONFIG, OUTREACH_CHANNELS, OUTREACH_INDUSTRIES } from "@/constants/outreach";
 import { PRESET_PROGRAMS } from "@/constants/programs";
-import { UserAccount } from "@/constants/users";
+import { UserAccount, VALID_USERS } from "@/constants/users";
 
 interface AddColdClientModalProps {
   isOpen: boolean;
@@ -61,6 +61,7 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
   const [estimatedValue, setEstimatedValue] = useState<string>("500000");
   const [status, setStatus] = useState<ColdClientStatus>("uncontacted");
   const [channel, setChannel] = useState<OutreachChannel>("email");
+  const [assignedOwner, setAssignedOwner] = useState(currentUser?.name || "Amit");
   const [nextFollowUpDate, setNextFollowUpDate] = useState<string>(
     new Date(Date.now() + 2 * 86400000).toISOString().split("T")[0]
   );
@@ -107,7 +108,7 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
         estimatedPotentialValue: estimatedValue ? parseInt(estimatedValue.replace(/\D/g, ""), 10) : 0,
         status: status,
         channel: channel,
-        owner: currentUser?.username || "Admin",
+        owner: assignedOwner,
         notes: initialNote.trim() || undefined,
         nextFollowUpDate: nextFollowUpDate || undefined,
         initialNote: initialNote.trim() || undefined,
@@ -145,7 +146,7 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
           targetProgram: PRESET_PROGRAMS[0]?.name || "Executive Coaching",
           status: bulkStatus,
           channel: bulkChannel,
-          owner: currentUser?.username || "Admin",
+          owner: assignedOwner,
           nextFollowUpDate: new Date(Date.now() + 2 * 86400000).toISOString().split("T")[0],
         });
       }
@@ -429,11 +430,11 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
               </div>
             </div>
 
-            {/* Row 6: Est Potential Value & City */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Row 6: Est Potential Value, City & Assigned Owner */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Estimated Potential Deal Value (INR)
+                  Estimated Value (INR)
                 </label>
                 <input
                   type="number"
@@ -454,10 +455,27 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
                     type="text"
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
-                    placeholder="e.g. Mumbai, Bengaluru, Delhi NCR"
+                    placeholder="e.g. Mumbai, Bengaluru"
                     className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Assigned Owner
+                </label>
+                <select
+                  value={assignedOwner}
+                  onChange={(e) => setAssignedOwner(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium"
+                >
+                  {VALID_USERS.map((u) => (
+                    <option key={u.username} value={u.name}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -523,7 +541,7 @@ Microsoft India, Satya N, satya@microsoft.com, Director HR, +91 9800000002"
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Default Outreach Status
@@ -553,6 +571,23 @@ Microsoft India, Satya N, satya@microsoft.com, Director HR, +91 9800000002"
                   {OUTREACH_CHANNELS.map((ch) => (
                     <option key={ch.id} value={ch.id}>
                       {ch.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Assigned Owner
+                </label>
+                <select
+                  value={assignedOwner}
+                  onChange={(e) => setAssignedOwner(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium"
+                >
+                  {VALID_USERS.map((u) => (
+                    <option key={u.username} value={u.name}>
+                      {u.name}
                     </option>
                   ))}
                 </select>

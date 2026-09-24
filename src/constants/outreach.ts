@@ -132,7 +132,7 @@ export const INITIAL_COLD_CLIENTS: ColdClient[] = [
     estimatedPotentialValue: 1200000,
     status: "email_sent",
     channel: "email",
-    owner: "Karan",
+    owner: "Amit",
     notes: "Targeting VP engineering & GM level leaders for executive presence & transition coaching.",
     touchpoints: [
       {
@@ -141,7 +141,7 @@ export const INITIAL_COLD_CLIENTS: ColdClient[] = [
         formattedDate: "Sep 21, 2026, 11:30 AM",
         channel: "email",
         summary: "Sent customized B2B Executive Cold Outreach with leadership coaching ROI benchmarks.",
-        author: "Karan",
+        author: "Amit",
       },
     ],
     lastContactDate: new Date(Date.now() - 3 * 86400000).toISOString().split("T")[0],
@@ -165,7 +165,7 @@ export const INITIAL_COLD_CLIENTS: ColdClient[] = [
     estimatedPotentialValue: 1800000,
     status: "follow_up_1",
     channel: "linkedin",
-    owner: "Pooja",
+    owner: "Preeti",
     notes: "Connected on LinkedIn, discussed capability building for mid-management to senior leaders.",
     touchpoints: [
       {
@@ -174,7 +174,7 @@ export const INITIAL_COLD_CLIENTS: ColdClient[] = [
         formattedDate: "Sep 17, 2026, 03:15 PM",
         channel: "linkedin",
         summary: "Sent personalized connection note highlighting fintech leadership transformations.",
-        author: "Pooja",
+        author: "Preeti",
       },
       {
         id: "tp-3",
@@ -182,7 +182,7 @@ export const INITIAL_COLD_CLIENTS: ColdClient[] = [
         formattedDate: "Sep 22, 2026, 04:45 PM",
         channel: "email",
         summary: "Shared L&D Architecture brochure and client transformation case study.",
-        author: "Pooja",
+        author: "Preeti",
       },
     ],
     lastContactDate: new Date(Date.now() - 2 * 86400000).toISOString().split("T")[0],
@@ -206,7 +206,7 @@ export const INITIAL_COLD_CLIENTS: ColdClient[] = [
     estimatedPotentialValue: 950000,
     status: "call_scheduled",
     channel: "email",
-    owner: "Karan",
+    owner: "Gaurav",
     notes: "Discovery call scheduled to evaluate 360-degree leadership potential assessment tools.",
     touchpoints: [
       {
@@ -215,7 +215,7 @@ export const INITIAL_COLD_CLIENTS: ColdClient[] = [
         formattedDate: "Sep 20, 2026, 02:00 PM",
         channel: "email",
         summary: "Cold pitch for Psychometric and 360 Assessment battery.",
-        author: "Karan",
+        author: "Gaurav",
       },
       {
         id: "tp-5",
@@ -223,7 +223,7 @@ export const INITIAL_COLD_CLIENTS: ColdClient[] = [
         formattedDate: "Sep 23, 2026, 05:20 PM",
         channel: "call",
         summary: "Brief phone call; agreed to 30-min Zoom demo next Tuesday.",
-        author: "Karan",
+        author: "Gaurav",
       },
     ],
     lastContactDate: new Date(Date.now() - 1 * 86400000).toISOString().split("T")[0],
@@ -247,7 +247,7 @@ export const INITIAL_COLD_CLIENTS: ColdClient[] = [
     estimatedPotentialValue: 1500000,
     status: "uncontacted",
     channel: "email",
-    owner: "Admin",
+    owner: "Admin User",
     notes: "Identified rapid EV engineering scaling; potential fit for TASC in-house high potential academy.",
     touchpoints: [],
     nextFollowUpDate: new Date().toISOString().split("T")[0],
@@ -270,7 +270,7 @@ export const INITIAL_COLD_CLIENTS: ColdClient[] = [
     estimatedPotentialValue: 1600000,
     status: "replied_interested",
     channel: "linkedin",
-    owner: "Karan",
+    owner: "Ruby",
     notes: "Chitresh replied wanting an overview of xMonks Master Coaches for Senior Directors.",
     touchpoints: [
       {
@@ -279,7 +279,7 @@ export const INITIAL_COLD_CLIENTS: ColdClient[] = [
         formattedDate: "Sep 19, 2026, 10:00 AM",
         channel: "linkedin",
         summary: "InMail sent regarding Executive coaching roaster.",
-        author: "Karan",
+        author: "Ruby",
       },
       {
         id: "tp-7",
@@ -287,7 +287,7 @@ export const INITIAL_COLD_CLIENTS: ColdClient[] = [
         formattedDate: "Sep 23, 2026, 01:10 PM",
         channel: "linkedin",
         summary: "Received reply: 'Send coach bios and commercial structure for 10-leader cohort.'",
-        author: "Karan",
+        author: "Ruby",
       },
     ],
     lastContactDate: new Date(Date.now() - 1 * 86400000).toISOString().split("T")[0],

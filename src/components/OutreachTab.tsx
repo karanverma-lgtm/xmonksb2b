@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import { ColdClient, ColdClientStatus, OutreachChannel } from "@/types/outreach";
 import { COLD_STATUS_CONFIG, OUTREACH_CHANNELS, OUTREACH_INDUSTRIES } from "@/constants/outreach";
-import { UserAccount } from "@/constants/users";
+import { UserAccount, VALID_USERS } from "@/constants/users";
 import { formatINR } from "@/lib/formatters";
 import { AddColdClientModal } from "./AddColdClientModal";
 import { ColdClientDetailModal } from "./ColdClientDetailModal";
@@ -91,14 +91,10 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
 
   const todayStr = new Date().toISOString().split("T")[0];
 
-  // Distinct owners
-  const ownersList = useMemo(() => {
-    const set = new Set<string>();
-    coldClients.forEach((c) => {
-      if (c.owner) set.add(c.owner);
-    });
-    return Array.from(set);
-  }, [coldClients]);
+  // Valid platform users list for Owner selection
+  const platformOwners = useMemo(() => {
+    return VALID_USERS.map((u) => u.name);
+  }, []);
 
   // Filtered cold clients
   const filteredClients = useMemo(() => {
@@ -126,9 +122,17 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
         return false;
       }
 
-      // 4. Owner
-      if (selectedOwner !== "all" && client.owner !== selectedOwner) {
-        return false;
+      // 4. Owner filter (matching platform user name or username)
+      if (selectedOwner !== "all") {
+        const selClean = selectedOwner.toLowerCase().trim();
+        const clientOwner = (client.owner || "").toLowerCase().trim();
+        const matches =
+          clientOwner === selClean ||
+          clientOwner.includes(selClean) ||
+          selClean.includes(clientOwner);
+        if (!matches) {
+          return false;
+        }
       }
 
       // 5. Only Due Today / Overdue
@@ -397,20 +401,18 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
           </select>
 
           {/* Owner Filter */}
-          {ownersList.length > 1 && (
-            <select
-              value={selectedOwner}
-              onChange={(e) => setSelectedOwner(e.target.value)}
-              className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 focus:outline-none"
-            >
-              <option value="all">All Owners</option>
-              {ownersList.map((o) => (
-                <option key={o} value={o}>
-                  {o}
-                </option>
-              ))}
-            </select>
-          )}
+          <select
+            value={selectedOwner}
+            onChange={(e) => setSelectedOwner(e.target.value)}
+            className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 focus:outline-none"
+          >
+            <option value="all">All Owners</option>
+            {platformOwners.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
 
           {onlyDueToday && (
             <button
