@@ -15,6 +15,7 @@ import {
   Mail,
   Code2,
   Download,
+  KeyRound,
 } from "lucide-react";
 
 import { formatINR } from "@/lib/formatters";
@@ -27,6 +28,7 @@ interface NavbarProps {
   setActiveTab: (tab: NavTab) => void;
   onOpenAddModal: () => void;
   onOpenBulkModal: () => void;
+  onOpenChangePassword?: () => void;
   onExportLeads?: () => void;
   onLogout?: () => void;
   currentUser?: UserAccount | null;
@@ -40,6 +42,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   setActiveTab,
   onOpenAddModal,
   onOpenBulkModal,
+  onOpenChangePassword,
   onExportLeads,
   onLogout,
   currentUser,
@@ -217,6 +220,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <User className="w-3.5 h-3.5 text-indigo-500" />
                 <span>{currentUser.name}</span>
               </div>
+            )}
+
+            {/* Change Password Button */}
+            {currentUser && onOpenChangePassword && (
+              <button
+                type="button"
+                onClick={onOpenChangePassword}
+                className="flex items-center space-x-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 font-bold text-xs rounded-xl border border-slate-200/80 dark:border-slate-700 transition whitespace-nowrap"
+                title="Change Account Password"
+              >
+                <KeyRound className="w-3.5 h-3.5 text-amber-500" />
+                <span className="hidden sm:inline">Change Password</span>
+              </button>
             )}
 
             {/* Logout Button */}

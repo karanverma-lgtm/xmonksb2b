@@ -155,3 +155,133 @@ export async function saveUserToFirestore(user: UserAccount): Promise<void> {
     console.warn("Failed to save user to Firestore:", err);
   }
 }
+
+export interface ChangePasswordResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
+// Change user password in Firestore, local cache, and active session
+export async function changeUserPassword(
+  username: string,
+  currentPassInput: string,
+  newPassInput: string
+): Promise<ChangePasswordResult> {
+  const cleanUser = username.trim().toLowerCase();
+  const currentPass = currentPassInput.trim();
+  const newPass = newPassInput.trim();
+
+  if (!cleanUser) {
+    return { success: false, error: "Username is required." };
+  }
+  if (!currentPass) {
+    return { success: false, error: "Please enter your current password." };
+  }
+  if (!newPass) {
+    return { success: false, error: "Please enter a new password." };
+  }
+  if (newPass.length < 3) {
+    return { success: false, error: "New password must be at least 3 characters long." };
+  }
+  if (currentPass === newPass) {
+    return { success: false, error: "New password must be different from your current password." };
+  }
+
+  try {
+    // 1. Check against Firestore
+    const userDocRef = doc(db, USERS_COLLECTION, cleanUser);
+    const docSnap = await getDoc(userDocRef);
+    let userAccount: UserAccount | null = null;
+
+    if (docSnap.exists()) {
+      userAccount = docSnap.data() as UserAccount;
+    } else {
+      // Check static users fallback
+      const staticMatch = VALID_USERS.find(
+        (u) => u.username.toLowerCase() === cleanUser
+      );
+      if (staticMatch) {
+        userAccount = { ...staticMatch };
+      }
+    }
+
+    if (!userAccount) {
+      // Check local cache
+      const cached = getCachedUsers();
+      const cachedMatch = cached.find(
+        (u) => u.username.toLowerCase() === cleanUser
+      );
+      if (cachedMatch) userAccount = { ...cachedMatch };
+    }
+
+    if (!userAccount) {
+      return { success: false, error: "User account could not be found." };
+    }
+
+    // Verify current password
+    if (
+      userAccount.password !== currentPass &&
+      userAccount.password.toLowerCase() !== currentPass.toLowerCase()
+    ) {
+      return { success: false, error: "Current password does not match our records." };
+    }
+
+    // Update password
+    const updatedUser: UserAccount = {
+      ...userAccount,
+      password: newPass,
+    };
+
+    // Update Firestore
+    try {
+      await setDoc(userDocRef, updatedUser, { merge: true });
+    } catch (fsErr) {
+      console.warn("Firestore password update warning:", fsErr);
+    }
+
+    // Update local cached users list
+    const currentCached = getCachedUsers();
+    const updatedCached = currentCached.map((u) =>
+      u.username.toLowerCase() === cleanUser ? { ...u, password: newPass } : u
+    );
+    if (!updatedCached.some((u) => u.username.toLowerCase() === cleanUser)) {
+      updatedCached.push(updatedUser);
+    }
+    cacheUsersLocally(updatedCached);
+
+    // Update in-memory VALID_USERS if present
+    const staticIdx = VALID_USERS.findIndex((u) => u.username.toLowerCase() === cleanUser);
+    if (staticIdx >= 0) {
+      VALID_USERS[staticIdx].password = newPass;
+    }
+
+    // Update active user in localStorage if matching
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("xmonks_b2b_user");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed.username && parsed.username.toLowerCase() === cleanUser) {
+            localStorage.setItem(
+              "xmonks_b2b_user",
+              JSON.stringify({ ...parsed, password: newPass })
+            );
+          }
+        }
+      } catch (lsErr) {
+        console.warn("Failed to update active user password in localStorage", lsErr);
+      }
+    }
+
+    return {
+      success: true,
+      message: "Password changed successfully! You can now use your new password.",
+    };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to update password. Please try again.",
+    };
+  }
+}

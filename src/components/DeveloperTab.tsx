@@ -47,7 +47,11 @@ import {
   fetchEnvGeminiConfig,
 } from "@/lib/geminiService";
 
-export const DeveloperTab: React.FC = () => {
+export interface DeveloperTabProps {
+  onOpenChangePassword?: () => void;
+}
+
+export const DeveloperTab: React.FC<DeveloperTabProps> = ({ onOpenChangePassword }) => {
   const [senders, setSenders] = useState<SMTPSenderProfile[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -380,14 +384,28 @@ export const DeveloperTab: React.FC = () => {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={handleAddNew}
-          className="flex items-center justify-center space-x-2 px-5 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-500/30 transition transform hover:scale-[1.02] active:scale-[0.98] flex-shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          <span>+ Add New Sender Capsule</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5 flex-shrink-0">
+          {onOpenChangePassword && (
+            <button
+              type="button"
+              onClick={onOpenChangePassword}
+              className="flex items-center justify-center space-x-1.5 px-4 py-3 bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-xs rounded-xl shadow transition transform hover:scale-[1.02] active:scale-[0.98]"
+              title="Change Account Password"
+            >
+              <KeyRound className="w-4 h-4 text-amber-400" />
+              <span>Change Password</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleAddNew}
+            className="flex items-center justify-center space-x-2 px-5 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-500/30 transition transform hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ Add New Sender Capsule</span>
+          </button>
+        </div>
       </div>
 
       {/* Toast Feedback Alert */}

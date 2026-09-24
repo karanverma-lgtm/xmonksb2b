@@ -33,6 +33,7 @@ import { EmailCampaignTab } from "@/components/EmailCampaignTab";
 import { DeveloperTab } from "@/components/DeveloperTab";
 import { STAGES } from "@/constants/stages";
 import { LoginForm } from "@/components/LoginForm";
+import { ChangePasswordModal } from "@/components/ChangePasswordModal";
 import { UserAccount } from "@/constants/users";
 import {
   subscribeToUserPreferences,
@@ -98,6 +99,7 @@ export default function Home() {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState<boolean>(false);
+  const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState<boolean>(false);
 
   const handleLoginSuccess = (user: UserAccount) => {
     try {
@@ -552,6 +554,7 @@ export default function Home() {
         setActiveTab={handleTabChange}
         onOpenAddModal={() => setIsAddModalOpen(true)}
         onOpenBulkModal={() => setIsBulkModalOpen(true)}
+        onOpenChangePassword={() => setIsChangePasswordModalOpen(true)}
         onExportLeads={handleExportLeads}
         onLogout={handleLogout}
         currentUser={currentUser}
@@ -628,7 +631,9 @@ export default function Home() {
           />
         )}
 
-        {activeTab === "developer" && <DeveloperTab />}
+        {activeTab === "developer" && (
+          <DeveloperTab onOpenChangePassword={() => setIsChangePasswordModalOpen(true)} />
+        )}
       </main>
 
       {/* Lead Detail & Customer Journey Modal */}
@@ -664,6 +669,13 @@ export default function Home() {
         onClose={() => setIsBulkModalOpen(false)}
         currentUser={currentUser}
         onBulkImport={handleBulkImport}
+      />
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal
+        isOpen={isChangePasswordModalOpen}
+        onClose={() => setIsChangePasswordModalOpen(false)}
+        currentUser={currentUser}
       />
 
       {/* Footer */}
