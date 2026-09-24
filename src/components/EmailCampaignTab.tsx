@@ -930,7 +930,6 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                     <div className="flex flex-wrap gap-1">
                       {[
                         { day: "Day 0", id: "amit-talent-email-9", name: "Email 9" },
-                        { day: "Day 5", id: "amit-talent-email-10", name: "Email 10" },
                         { day: "Day 11", id: "amit-talent-email-11", name: "Email 11" },
                         { day: "Day 18", id: "amit-chro-email-4", name: "Email 4" },
                         { day: "Day 25", id: "amit-conversion-email-18", name: "Email 18" },

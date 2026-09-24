@@ -509,9 +509,11 @@ export function subscribeToSenderProfiles(
 }
 
 
+const RETIRED_TEMPLATE_IDS = ["amit-talent-email-10"];
+
 export function getAllTemplates(): EmailTemplate[] {
   const allDefaults = [...PREBUILT_TEMPLATES, ...AMIT_ENTERPRISE_EMAIL_BANK];
-  if (typeof window === "undefined") return allDefaults;
+  if (typeof window === "undefined") return allDefaults.filter((t) => !RETIRED_TEMPLATE_IDS.includes(t.id));
   try {
     const deletedIds = getDeletedTemplateIds();
     const raw = localStorage.getItem(CUSTOM_TEMPLATES_KEY);
@@ -524,11 +526,11 @@ export function getAllTemplates(): EmailTemplate[] {
       );
       combined = [...customUnique, ...combined];
     }
-    return combined.filter((t) => !deletedIds.includes(t.id));
+    return combined.filter((t) => !deletedIds.includes(t.id) && !RETIRED_TEMPLATE_IDS.includes(t.id));
   } catch (e) {
     console.warn("Error reading local templates", e);
   }
-  return allDefaults;
+  return allDefaults.filter((t) => !RETIRED_TEMPLATE_IDS.includes(t.id));
 }
 
 export function saveLocalTemplates(templates: EmailTemplate[]): void {
@@ -748,13 +750,14 @@ export function subscribeToTemplates(
 
     const combineAndNotify = (isSyncing: boolean) => {
       const allDefaults = [...PREBUILT_TEMPLATES, ...AMIT_ENTERPRISE_EMAIL_BANK];
+      const isExcluded = (id: string) => latestDeletedIds.includes(id) || RETIRED_TEMPLATE_IDS.includes(id);
       const prebuiltMissing = allDefaults.filter(
         (pt) =>
           !latestFirestoreTemplates.some((ft) => ft.id === pt.id) &&
-          !latestDeletedIds.includes(pt.id)
+          !isExcluded(pt.id)
       );
       const combined = [
-        ...latestFirestoreTemplates.filter((t) => !latestDeletedIds.includes(t.id)),
+        ...latestFirestoreTemplates.filter((t) => !isExcluded(t.id)),
         ...prebuiltMissing,
       ];
       saveLocalTemplates(combined);
