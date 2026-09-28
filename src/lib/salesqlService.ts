@@ -484,9 +484,20 @@ export function parseTextToBulkQueries(rawText: string): BulkEnrichPersonQuery[]
 
     // Line without headers: smart detection
     // 1. Is it a LinkedIn URL?
-    if (line.includes("linkedin.com/in/")) {
-      const match = line.match(/https?:\/\/[^\s,]+/);
-      queries.push({ linkedin_url: match ? match[0] : line });
+    if (line.toLowerCase().includes("linkedin.com/in/")) {
+      let url = line.trim();
+      const match = url.match(/(https?:\/\/[^\s,]+)/i);
+      if (match) {
+        url = match[1];
+      } else {
+        const domainMatch = url.match(/((?:www\.)?linkedin\.com\/in\/[^\s,]+)/i);
+        if (domainMatch) {
+          url = `https://${domainMatch[1]}`;
+        }
+      }
+      // Clean trailing punctuation or brackets if any
+      url = url.replace(/[),;.]+$/, "");
+      queries.push({ linkedin_url: url });
       continue;
     }
 
