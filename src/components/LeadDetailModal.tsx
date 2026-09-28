@@ -33,6 +33,7 @@ import {
   Camera,
   Image as ImageIcon,
   Link2,
+  Receipt,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
@@ -62,6 +63,7 @@ interface LeadDetailModalProps {
   onRemoveApproachNote?: (leadId: string) => void;
   onUpdateCompanyLogo?: (leadId: string, logoUrl: string) => void;
   onRemoveCompanyLogo?: (leadId: string) => void;
+  onMoveToBilling?: (lead: Lead) => void;
 }
 
 export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
@@ -80,6 +82,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   onRemoveApproachNote,
   onUpdateCompanyLogo,
   onRemoveCompanyLogo,
+  onMoveToBilling,
 }) => {
   const [newNoteText, setNewNoteText] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -549,6 +552,18 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
           </div>
 
           <div className="flex items-center space-x-2">
+            {lead.stage === "closure" && onMoveToBilling && (
+              <button
+                type="button"
+                onClick={() => onMoveToBilling(lead)}
+                className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl text-xs font-black bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white shadow-md shadow-emerald-500/20 transition transform hover:scale-[1.02]"
+                title="Duplicate this deal into Billing for the Accounts department"
+              >
+                <Receipt className="w-3.5 h-3.5 text-emerald-200" />
+                <span>Move to Billing (Accounts)</span>
+              </button>
+            )}
+
             {onDeleteLead && (
               <button
                 type="button"

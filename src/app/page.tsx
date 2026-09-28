@@ -52,6 +52,9 @@ import {
   saveUserPreferencesToFirestore,
   getLocalPreferences,
 } from "@/lib/preferencesService";
+import { migrateLeadToBilling } from "@/lib/billingService";
+import { Receipt, CheckCircle2, ArrowRight, X } from "lucide-react";
+import confetti from "canvas-confetti";
 import { useRef, useSyncExternalStore } from "react";
 
 const emptySubscribe = () => () => {};
@@ -648,6 +651,34 @@ export default function Home() {
     await deleteColdClient(id);
   };
 
+  // Move / Duplicate Closure Lead to Billing
+  const [billingToast, setBillingToast] = useState<{
+    show: boolean;
+    companyName: string;
+    leadId: string;
+  } | null>(null);
+
+  const handleMoveLeadToBilling = (lead: Lead) => {
+    // 1. Duplicate card into billing section
+    migrateLeadToBilling(lead);
+
+    // 2. Confetti celebration
+    try {
+      confetti({
+        particleCount: 80,
+        spread: 70,
+        origin: { y: 0.6 },
+      });
+    } catch {}
+
+    // 3. Show notification toast
+    setBillingToast({
+      show: true,
+      companyName: lead.companyName,
+      leadId: lead.id,
+    });
+  };
+
   if (!isClient) {
     return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-xs">Loading Portal...</div>;
   }
@@ -715,6 +746,7 @@ export default function Home() {
             onSelectLead={(lead) => setSelectedLead(lead)}
             onUpdateStage={handleUpdateStage}
             onDeleteLead={handleDeleteLead}
+            onMoveToBilling={handleMoveLeadToBilling}
           />
         )}
 
@@ -728,6 +760,7 @@ export default function Home() {
             onUpdateLeadSource={handleUpdateLeadSource}
             isAdmin={isAdmin}
             onExportLeads={handleExportLeads}
+            onMoveToBilling={handleMoveLeadToBilling}
           />
         )}
 
@@ -777,6 +810,42 @@ export default function Home() {
         )}
       </main>
 
+      {/* Floating Notification Toast when Closure Card is moved to Billing */}
+      {billingToast?.show && (
+        <div className="fixed bottom-6 right-6 z-50 p-4 bg-slate-900/95 text-white rounded-2xl shadow-2xl border border-emerald-500/40 backdrop-blur-md flex items-center space-x-4 animate-slideUp">
+          <div className="p-3 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-500/30">
+            <Receipt className="w-6 h-6" />
+          </div>
+          <div>
+            <h4 className="text-sm font-black flex items-center space-x-1.5 text-white">
+              <span>Duplicated to Billing</span>
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            </h4>
+            <p className="text-xs text-slate-300 mt-0.5">
+              <span className="font-bold text-emerald-300">{billingToast.companyName}</span> is now active in Billing for Accounts to manage payments.
+            </p>
+          </div>
+          <div className="flex items-center space-x-2 pl-3 border-l border-slate-800">
+            <button
+              onClick={() => {
+                setBillingToast(null);
+                handleTabChange("billing");
+              }}
+              className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black rounded-xl transition shadow-md flex items-center space-x-1"
+            >
+              <span>Go to Billing</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setBillingToast(null)}
+              className="p-1.5 text-slate-400 hover:text-white rounded-lg transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Lead Detail & Customer Journey Modal */}
       <LeadDetailModal
         lead={selectedLead}
@@ -794,6 +863,7 @@ export default function Home() {
         onRemoveApproachNote={handleRemoveApproachNote}
         onUpdateCompanyLogo={handleUpdateCompanyLogo}
         onRemoveCompanyLogo={handleRemoveCompanyLogo}
+        onMoveToBilling={handleMoveLeadToBilling}
       />
 
       {/* Add New Lead Modal */}

@@ -21,6 +21,8 @@ import {
   Phone,
   GraduationCap,
   Compass,
+  Receipt,
+  ArrowRight,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
@@ -32,6 +34,7 @@ interface KanbanBoardProps {
   onSelectLead: (lead: Lead) => void;
   onUpdateStage: (leadId: string, newStage: LeadStage, notes?: string) => void;
   onDeleteLead?: (leadId: string) => void;
+  onMoveToBilling?: (lead: Lead) => void;
 }
 
 export const KanbanBoard: React.FC<KanbanBoardProps> = ({
@@ -39,6 +42,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   onSelectLead,
   onUpdateStage,
   onDeleteLead,
+  onMoveToBilling,
 }) => {
   const getIcon = (iconName: string) => {
     switch (iconName) {
@@ -313,6 +317,25 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                             )}
                           </div>
                         </div>
+
+                        {/* Move to Billing (Accounts) Option for Closure Stage */}
+                        {lead.stage === "closure" && (
+                          <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onMoveToBilling?.(lead);
+                              }}
+                              className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white text-xs font-black flex items-center justify-center space-x-1.5 shadow-md shadow-emerald-500/25 transition transform hover:scale-[1.02] active:scale-[0.98]"
+                              title="Duplicate client card into Billing section for Accounts department to handle payments"
+                            >
+                              <Receipt className="w-3.5 h-3.5 text-emerald-200" />
+                              <span>Move to Billing (Accounts)</span>
+                              <ArrowRight className="w-3.5 h-3.5 text-emerald-200" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     );
                   })

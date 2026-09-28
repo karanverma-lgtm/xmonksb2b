@@ -19,6 +19,7 @@ import {
   FileText,
   Compass,
   Download,
+  Receipt,
 } from "lucide-react";
 import { formatINR, formatClosureMonth } from "@/lib/formatters";
 import { PRESET_PROGRAMS, getProgramBadgeStyle } from "@/constants/programs";
@@ -33,6 +34,7 @@ interface LeadTableProps {
   onUpdateLeadSource?: (leadId: string, newSource: string) => void;
   isAdmin?: boolean;
   onExportLeads?: () => void;
+  onMoveToBilling?: (lead: Lead) => void;
 }
 
 export const LeadTable: React.FC<LeadTableProps> = ({
@@ -43,6 +45,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({
   onUpdateLeadSource,
   isAdmin,
   onExportLeads,
+  onMoveToBilling,
 }) => {
   const [sortBy, setSortBy] = useState<"dealValue" | "weightage" | "updatedAt">("updatedAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
@@ -462,6 +465,16 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                     {/* Actions */}
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end space-x-1.5">
+                        {lead.stage === "closure" && onMoveToBilling && (
+                          <button
+                            onClick={() => onMoveToBilling(lead)}
+                            className="px-2.5 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900 border border-emerald-500/30 font-bold text-xs transition flex items-center space-x-1"
+                            title="Duplicate deal into Billing section for Accounts Department"
+                          >
+                            <Receipt className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                            <span className="hidden sm:inline">To Billing</span>
+                          </button>
+                        )}
                         <button
                           onClick={() => onSelectLead(lead)}
                           className="px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900 font-medium text-xs transition"
