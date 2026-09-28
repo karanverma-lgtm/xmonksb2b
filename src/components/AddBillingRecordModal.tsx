@@ -821,7 +821,7 @@ export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
                       type="number"
                       required
                       min={0}
-                      step={1000}
+                      step="any"
                       value={projectAmount}
                       onChange={(e) => setProjectAmount(e.target.value ? Number(e.target.value) : "")}
                       placeholder="e.g. 2400000"
@@ -912,7 +912,7 @@ export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
                     <input
                       type="number"
                       min={0}
-                      step={1000}
+                      step="any"
                       value={amountReceived}
                       onChange={(e) => setAmountReceived(e.target.value ? Number(e.target.value) : 0)}
                       placeholder="0"
@@ -938,7 +938,7 @@ export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
                     <input
                       type="number"
                       min={0}
-                      step={1000}
+                      step="any"
                       value={advancePaymentAmount}
                       onChange={(e) => setAdvancePaymentAmount(e.target.value ? Number(e.target.value) : 0)}
                       placeholder="0"
@@ -1033,7 +1033,7 @@ export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
                       <input
                         type="number"
                         min={0}
-                        step={1000}
+                        step="any"
                         value={defaultedAmount}
                         onChange={(e) => setDefaultedAmount(e.target.value ? Number(e.target.value) : "")}
                         placeholder="e.g. 500000"

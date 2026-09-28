@@ -115,8 +115,8 @@ export const LogDefaultModal: React.FC<LogDefaultModalProps> = ({
               <input
                 type="number"
                 required
-                min={1}
-                step={100}
+                min={0}
+                step="any"
                 value={expectedAmount}
                 onChange={(e) => setExpectedAmount(e.target.value ? Number(e.target.value) : "")}
                 placeholder="e.g. 500000"
