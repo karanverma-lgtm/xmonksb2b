@@ -26,6 +26,11 @@ import {
   Globe,
   Receipt,
   Edit,
+  GraduationCap,
+  Compass,
+  Link2,
+  Zap,
+  Sparkles,
 } from "lucide-react";
 import {
   BillingRecord,
@@ -33,7 +38,8 @@ import {
   BillingPaymentDefault,
   BillingDocument,
 } from "@/types/billing";
-import { formatINR } from "@/lib/formatters";
+import { formatINR, formatClosureMonth } from "@/lib/formatters";
+import { getLeadSourceBadgeStyle } from "@/constants/leadSources";
 import { uploadBillingFile } from "@/lib/billingService";
 
 interface BillingDetailModalProps {
@@ -135,11 +141,30 @@ export const BillingDetailModal: React.FC<BillingDetailModalProps> = ({
                 <p className="text-xs text-slate-300 font-semibold mt-0.5">
                   {record.projectName}
                 </p>
-                {record.contractNumber && (
-                  <span className="text-[10px] text-slate-400 font-mono">
-                    Ref: {record.contractNumber}
-                  </span>
-                )}
+                <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                  {(record.industry || v.industry) && (
+                    <span className="text-[10px] font-bold text-indigo-300 bg-white/10 px-2 py-0.5 rounded-md border border-white/20">
+                      {record.industry || v.industry}
+                    </span>
+                  )}
+                  {(record.city || v.city) && (
+                    <span className="inline-flex items-center space-x-1 text-[10px] font-semibold text-slate-300 bg-white/10 px-2 py-0.5 rounded-md">
+                      <MapPin className="w-2.5 h-2.5 text-indigo-400" />
+                      <span>{record.city || v.city}</span>
+                    </span>
+                  )}
+                  {record.leadId && (
+                    <span className="inline-flex items-center space-x-1 text-[10px] font-extrabold text-emerald-300 bg-emerald-500/20 px-2 py-0.5 rounded-md border border-emerald-500/30">
+                      <Link2 className="w-2.5 h-2.5 text-emerald-400" />
+                      <span>Pipeline Deal #{record.leadId.slice(-4)}</span>
+                    </span>
+                  )}
+                  {record.contractNumber && (
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      Ref: {record.contractNumber}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -366,6 +391,82 @@ export const BillingDetailModal: React.FC<BillingDetailModalProps> = ({
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Pipeline Journey & CRM Deal Origin Card */}
+              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center space-x-1.5">
+                    <Sparkles className="w-4 h-4 text-indigo-500" />
+                    <span>CRM Pipeline & Closure Details</span>
+                  </h3>
+                  {record.leadId && (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50">
+                      CRM ID: #{record.leadId.slice(-4)}
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                    <span className="text-[10px] text-slate-400 uppercase font-bold block">Pitched Program</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center space-x-1 mt-0.5">
+                      <GraduationCap className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                      <span className="truncate">{record.program || v.program || "Not Specified"}</span>
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                    <span className="text-[10px] text-slate-400 uppercase font-bold block">Lead Source</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center space-x-1 mt-0.5">
+                      <Compass className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                      <span className="truncate">{record.leadSource || v.leadSource || "Direct Outbound"}</span>
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                    <span className="text-[10px] text-slate-400 uppercase font-bold block">Target Closure</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center space-x-1 mt-0.5 font-mono">
+                      <Calendar className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                      <span>{record.closureMonth ? formatClosureMonth(record.closureMonth, "short") : "Achieved"}</span>
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                    <span className="text-[10px] text-slate-400 uppercase font-bold block">Pipeline Deal Value</span>
+                    <span className="font-black text-emerald-600 dark:text-emerald-400 font-mono text-sm block mt-0.5">
+                      {formatINR(record.pipelineDealValue || record.projectAmount)}
+                    </span>
+                  </div>
+                </div>
+
+                {record.approachNote && (
+                  <div className="p-3.5 rounded-xl bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200/60 dark:border-rose-900/40 flex items-center justify-between text-xs">
+                    <div className="flex items-center space-x-2.5 min-w-0">
+                      <div className="p-2 bg-rose-500/10 rounded-lg text-rose-600 shrink-0">
+                        <FileText className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <span className="font-bold text-slate-800 dark:text-slate-200 truncate block">
+                          {record.approachNote.fileName}
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          Pipeline Approach Note • {record.approachNote.fileSize}
+                        </span>
+                      </div>
+                    </div>
+
+                    <a
+                      href={record.approachNote.downloadUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition flex items-center space-x-1 shrink-0"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Download</span>
+                    </a>
+                  </div>
+                )}
               </div>
 
               {/* Tenure & Timeline Card */}

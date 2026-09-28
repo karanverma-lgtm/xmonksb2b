@@ -15,6 +15,7 @@ import {
   BillingDocument,
   BillingStatus,
 } from "@/types/billing";
+import { Lead } from "@/types/lead";
 
 const BILLING_COLLECTION = "b2b_billing_records";
 const BILLING_STORAGE_KEY = "xmonks_b2b_billing_records";
@@ -23,9 +24,20 @@ const BILLING_STORAGE_KEY = "xmonks_b2b_billing_records";
 export const INITIAL_BILLING_RECORDS: BillingRecord[] = [
   {
     id: "bill-zenith-001",
+    leadId: "lead-zenith-001",
     projectName: "Enterprise Leadership & CXO Succession Cohort",
     contractNumber: "XMB-2026-0881",
     status: "active",
+    industry: "Technology",
+    city: "Bengaluru",
+    designation: "VP of Engineering & HR Sponsor",
+    program: "Executive Coaching",
+    leadSource: "Event Based",
+    closureMonth: "2026-01",
+    expectedCloseDate: "2026-01-15",
+    pipelineStage: "closure",
+    pipelineDealValue: 2400000,
+    pipelineWeightage: 100,
     projectAmount: 2400000,
     tenureMonths: 12,
     startDate: "2026-01-15",
@@ -78,6 +90,10 @@ export const INITIAL_BILLING_RECORDS: BillingRecord[] = [
       gstin: "29AABCZ9876K1Z5",
       pan: "AABCZ9876K",
       website: "https://zenithcloud.in",
+      industry: "Technology",
+      city: "Bengaluru",
+      program: "Executive Coaching",
+      leadSource: "Event Based",
     },
     documents: [
       {
@@ -112,9 +128,20 @@ export const INITIAL_BILLING_RECORDS: BillingRecord[] = [
   },
   {
     id: "bill-apex-002",
+    leadId: "lead-apex-002",
     projectName: "Supply Chain Leaders Coaching & Team Alignment",
     contractNumber: "XMB-2026-0942",
     status: "defaulted",
+    industry: "Logistics & Supply Chain",
+    city: "Mumbai",
+    designation: "Chief Human Resources Officer",
+    program: "L&D Transformation",
+    leadSource: "Self Created",
+    closureMonth: "2026-03",
+    expectedCloseDate: "2026-03-01",
+    pipelineStage: "closure",
+    pipelineDealValue: 1500000,
+    pipelineWeightage: 100,
     projectAmount: 1500000,
     tenureMonths: 6,
     startDate: "2026-03-01",
@@ -161,6 +188,10 @@ export const INITIAL_BILLING_RECORDS: BillingRecord[] = [
       gstin: "27AABCA3344M1Z2",
       pan: "AABCA3344M",
       website: "https://apexlogistics.com",
+      industry: "Logistics & Supply Chain",
+      city: "Mumbai",
+      program: "L&D Transformation",
+      leadSource: "Self Created",
     },
     documents: [
       {
@@ -195,9 +226,20 @@ export const INITIAL_BILLING_RECORDS: BillingRecord[] = [
   },
   {
     id: "bill-quantum-003",
+    leadId: "lead-quantum-003",
     projectName: "Clinical Leadership & High-Po Development Program",
     contractNumber: "XMB-2026-1015",
     status: "active",
+    industry: "Healthcare & Life Sciences",
+    city: "Bengaluru",
+    designation: "Head of Medical Affairs & R&D",
+    program: "Assessments",
+    leadSource: "Marketing",
+    closureMonth: "2026-02",
+    expectedCloseDate: "2026-02-01",
+    pipelineStage: "closure",
+    pipelineDealValue: 1850000,
+    pipelineWeightage: 100,
     projectAmount: 1850000,
     tenureMonths: 9,
     startDate: "2026-02-01",
@@ -241,6 +283,10 @@ export const INITIAL_BILLING_RECORDS: BillingRecord[] = [
       gstin: "29AAACQ1122P1Z0",
       pan: "AAACQ1122P",
       website: "https://quantummed.org",
+      industry: "Healthcare & Life Sciences",
+      city: "Bengaluru",
+      program: "Assessments",
+      leadSource: "Marketing",
     },
     documents: [
       {
@@ -264,9 +310,20 @@ export const INITIAL_BILLING_RECORDS: BillingRecord[] = [
   },
   {
     id: "bill-nova-004",
+    leadId: "lead-nova-004",
     projectName: "Strategic Change & Executive Transition Coaching",
     contractNumber: "XMB-2025-0720",
     status: "completed",
+    industry: "BFSI",
+    city: "Mumbai",
+    designation: "Managing Director - People & Talent",
+    program: "Executive Coaching",
+    leadSource: "TASC Upselling",
+    closureMonth: "2025-09",
+    expectedCloseDate: "2025-09-01",
+    pipelineStage: "closure",
+    pipelineDealValue: 3200000,
+    pipelineWeightage: 100,
     projectAmount: 3200000,
     tenureMonths: 18,
     startDate: "2025-09-01",
@@ -328,6 +385,10 @@ export const INITIAL_BILLING_RECORDS: BillingRecord[] = [
       gstin: "27AAACN5566R1Z9",
       pan: "AAACN5566R",
       website: "https://novafin.com",
+      industry: "BFSI",
+      city: "Mumbai",
+      program: "Executive Coaching",
+      leadSource: "TASC Upselling",
     },
     documents: [
       {
@@ -764,4 +825,187 @@ export function exportBillingRecordsToCSV(records: BillingRecord[]): void {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+}
+
+/**
+ * 1-Click Migration from a Pipeline Lead (Closure card) into a full Billing Record.
+ * Syncs company information, contact details, project amount, industry, pitched program,
+ * lead source, closure month, and auto-imports pipeline approach notes into company documents.
+ */
+export function migrateLeadToBilling(
+  lead: Lead,
+  customizations?: {
+    tenureMonths?: number;
+    billingFrequency?: BillingRecord["billingFrequency"];
+    startDate?: string;
+    contractNumber?: string;
+    projectName?: string;
+  }
+): BillingRecord {
+  const timestamp = Date.now();
+  const today = customizations?.startDate || new Date().toISOString().split("T")[0];
+  const tenure = customizations?.tenureMonths || 12;
+
+  // Calculate end date based on start date and tenure
+  const sDate = new Date(today);
+  const eDate = new Date(sDate);
+  eDate.setMonth(sDate.getMonth() + tenure);
+  eDate.setDate(eDate.getDate() - 1);
+  const endDate = eDate.toISOString().split("T")[0];
+
+  const contractNum =
+    customizations?.contractNumber ||
+    `XMB-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+  // Automatically migrate approach note from pipeline into Billing Documents
+  const docs: BillingDocument[] = [];
+  if (lead.approachNote) {
+    docs.push({
+      id: `doc-pipeline-${timestamp}`,
+      name: lead.approachNote.fileName || `${lead.companyName}_Approach_Note.pdf`,
+      category: "proposal",
+      fileSize: lead.approachNote.fileSize || "1.2 MB",
+      fileSizeBytes: lead.approachNote.fileSizeBytes,
+      fileType: "application/pdf",
+      downloadUrl: lead.approachNote.downloadUrl || "#",
+      storagePath: lead.approachNote.storagePath,
+      uploadedAt: lead.approachNote.uploadedAt || new Date().toISOString(),
+      uploadedBy: lead.approachNote.uploadedBy || lead.owner || "Pipeline Deal Sync",
+    });
+  }
+
+  const projTitle =
+    customizations?.projectName ||
+    (lead.program
+      ? `${lead.companyName} - ${lead.program}`
+      : `${lead.companyName} Leadership Transformation Engagement`);
+
+  const record: BillingRecord = {
+    id: `bill-${lead.id}-${timestamp.toString(36)}`,
+    leadId: lead.id,
+    projectName: projTitle,
+    contractNumber: contractNum,
+    status: "active",
+    industry: lead.industry,
+    city: lead.city,
+    designation: lead.designation,
+    program: lead.program,
+    leadSource: lead.leadSource,
+    closureMonth: lead.closureMonth,
+    expectedCloseDate: lead.expectedCloseDate,
+    pipelineStage: lead.stage,
+    pipelineDealValue: lead.dealValue,
+    pipelineWeightage: lead.weightage,
+    approachNote: lead.approachNote,
+    tags: lead.tags,
+    owner: lead.owner,
+    projectAmount: lead.dealValue || 1000000,
+    tenureMonths: tenure,
+    startDate: today,
+    endDate,
+    billingFrequency: customizations?.billingFrequency || "milestone",
+    amountReceived: 0,
+    pendingAmount: lead.dealValue || 1000000,
+    hasDefaults: false,
+    defaultCount: 0,
+    defaultedAmount: 0,
+    paymentHistory: [],
+    defaultsHistory: [],
+    vendor: {
+      companyName: lead.companyName,
+      contactPerson: lead.contactName,
+      designation: lead.designation,
+      companyAddress: lead.city ? `${lead.city}, India` : "India",
+      contactPersonPhone: lead.contactPhone || "",
+      contactPersonEmail: lead.contactEmail,
+      companyLogoUrl: lead.companyLogo,
+      industry: lead.industry,
+      city: lead.city,
+      program: lead.program,
+      leadSource: lead.leadSource,
+    },
+    documents: docs,
+    notes: `Migrated from CRM Pipeline Closure (${lead.stage}). Original Deal Value: ₹${(lead.dealValue || 0).toLocaleString("en-IN")}.`,
+    createdAt: new Date().toISOString(),
+    createdAtMs: timestamp,
+    updatedAt: new Date().toISOString(),
+  };
+
+  saveBillingRecord(record);
+  return record;
+}
+
+/**
+ * Automatically syncs updated lead information (logos, contact changes, industry, program)
+ * into linked billing records that have `leadId`.
+ */
+export function syncBillingWithLeads(
+  records: BillingRecord[],
+  leads: Lead[]
+): BillingRecord[] {
+  if (!leads || leads.length === 0) return records;
+  const leadMap = new Map(leads.map((l) => [l.id, l]));
+
+  return records.map((record) => {
+    if (!record.leadId) return record;
+    const lead = leadMap.get(record.leadId);
+    if (!lead) return record;
+
+    let hasChanges = false;
+    const updatedVendor = { ...record.vendor };
+
+    if (lead.companyLogo && !updatedVendor.companyLogoUrl) {
+      updatedVendor.companyLogoUrl = lead.companyLogo;
+      hasChanges = true;
+    }
+    if (lead.industry && (!record.industry || !updatedVendor.industry)) {
+      record.industry = lead.industry;
+      updatedVendor.industry = lead.industry;
+      hasChanges = true;
+    }
+    if (lead.city && (!record.city || !updatedVendor.city)) {
+      record.city = lead.city;
+      updatedVendor.city = lead.city;
+      hasChanges = true;
+    }
+    if (lead.program && (!record.program || !updatedVendor.program)) {
+      record.program = lead.program;
+      updatedVendor.program = lead.program;
+      hasChanges = true;
+    }
+    if (lead.leadSource && (!record.leadSource || !updatedVendor.leadSource)) {
+      record.leadSource = lead.leadSource;
+      updatedVendor.leadSource = lead.leadSource;
+      hasChanges = true;
+    }
+    if (lead.designation && (!record.designation || !updatedVendor.designation)) {
+      record.designation = lead.designation;
+      updatedVendor.designation = lead.designation;
+      hasChanges = true;
+    }
+    if (lead.owner && !record.owner) {
+      record.owner = lead.owner;
+      hasChanges = true;
+    }
+    if (lead.dealValue && !record.pipelineDealValue) {
+      record.pipelineDealValue = lead.dealValue;
+      hasChanges = true;
+    }
+    if (lead.closureMonth && !record.closureMonth) {
+      record.closureMonth = lead.closureMonth;
+      hasChanges = true;
+    }
+    if (lead.approachNote && !record.approachNote) {
+      record.approachNote = lead.approachNote;
+      hasChanges = true;
+    }
+
+    if (hasChanges) {
+      return {
+        ...record,
+        vendor: updatedVendor,
+      };
+    }
+    return record;
+  });
 }

@@ -48,6 +48,10 @@ export interface VendorInfo {
   pan?: string;
   website?: string;
   designation?: string;
+  industry?: string;
+  city?: string;
+  program?: string;
+  leadSource?: string;
 }
 
 export type BillingStatus = "active" | "completed" | "defaulted" | "on_hold";
@@ -58,6 +62,28 @@ export interface BillingRecord {
   projectName: string;
   contractNumber?: string;
   status: BillingStatus;
+
+  // Pipeline Closure Sync Details
+  industry?: string;
+  city?: string;
+  designation?: string;
+  program?: string; // Pitched Program e.g. Executive Coaching, L&D Transformation
+  leadSource?: string; // Marketing, Event Based, etc.
+  closureMonth?: string; // Target conversion deadline e.g. "2026-10"
+  expectedCloseDate?: string;
+  pipelineStage?: string; // e.g. "closure"
+  pipelineDealValue?: number; // Original pipeline deal value in INR
+  pipelineWeightage?: number; // e.g. 100
+  approachNote?: {
+    fileName: string;
+    fileSize: string;
+    fileSizeBytes?: number;
+    uploadedAt: string;
+    uploadedBy: string;
+    downloadUrl: string;
+    storagePath?: string;
+  };
+  tags?: string[];
 
   // 1. Project Amount
   projectAmount: number; // In INR
@@ -88,7 +114,7 @@ export interface BillingRecord {
 
   // Audit Fields
   notes?: string;
-  owner?: string;
+  owner?: string; // Lead Owner / Client Partner
   createdBy?: string;
   createdAt: string;
   createdAtMs: number;

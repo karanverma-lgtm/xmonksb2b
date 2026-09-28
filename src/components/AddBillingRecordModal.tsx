@@ -66,6 +66,17 @@ export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
   const [pan, setPan] = useState<string>("");
   const [website, setWebsite] = useState<string>("");
 
+  // Pipeline Sync Details
+  const [industry, setIndustry] = useState<string>("");
+  const [city, setCity] = useState<string>("");
+  const [program, setProgram] = useState<string>("");
+  const [leadSource, setLeadSource] = useState<string>("");
+  const [closureMonth, setClosureMonth] = useState<string>("");
+  const [expectedCloseDate, setExpectedCloseDate] = useState<string>("");
+  const [pipelineStage, setPipelineStage] = useState<string>("");
+  const [pipelineDealValue, setPipelineDealValue] = useState<number | undefined>(undefined);
+  const [approachNote, setApproachNote] = useState<any>(null);
+
   // Project & Financials
   const [projectName, setProjectName] = useState<string>("");
   const [contractNumber, setContractNumber] = useState<string>("");
@@ -125,7 +136,7 @@ export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
       const v = existingRecord.vendor || {};
       setCompanyName(v.companyName || "");
       setContactPerson(v.contactPerson || "");
-      setDesignation(v.designation || "");
+      setDesignation(v.designation || existingRecord.designation || "");
       setCompanyAddress(v.companyAddress || "");
       setContactPersonPhone(v.contactPersonPhone || "");
       setContactPersonEmail(v.contactPersonEmail || "");
@@ -134,6 +145,17 @@ export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
       setGstin(v.gstin || "");
       setPan(v.pan || "");
       setWebsite(v.website || "");
+
+      // Pipeline details
+      setIndustry(existingRecord.industry || v.industry || "");
+      setCity(existingRecord.city || v.city || "");
+      setProgram(existingRecord.program || v.program || "");
+      setLeadSource(existingRecord.leadSource || v.leadSource || "");
+      setClosureMonth(existingRecord.closureMonth || "");
+      setExpectedCloseDate(existingRecord.expectedCloseDate || "");
+      setPipelineStage(existingRecord.pipelineStage || "");
+      setPipelineDealValue(existingRecord.pipelineDealValue);
+      setApproachNote(existingRecord.approachNote || null);
 
       // Defaults
       setHasDefaults(Boolean(existingRecord.hasDefaults));
@@ -172,6 +194,16 @@ export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
     setPan("");
     setWebsite("");
 
+    setIndustry("");
+    setCity("");
+    setProgram("");
+    setLeadSource("");
+    setClosureMonth("");
+    setExpectedCloseDate("");
+    setPipelineStage("");
+    setPipelineDealValue(undefined);
+    setApproachNote(null);
+
     setHasDefaults(false);
     setDefaultedAmount("");
     setDefaultReason("");
@@ -195,6 +227,38 @@ export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
       if (lead.dealValue && !projectAmount) setProjectAmount(lead.dealValue);
       if (!projectName) {
         setProjectName(`${lead.companyName} - ${lead.program || "Leadership Transformation"}`);
+      }
+
+      setIndustry(lead.industry || "");
+      setCity(lead.city || "");
+      setProgram(lead.program || "");
+      setLeadSource(lead.leadSource || "");
+      setClosureMonth(lead.closureMonth || "");
+      setExpectedCloseDate(lead.expectedCloseDate || "");
+      setPipelineStage(lead.stage || "");
+      setPipelineDealValue(lead.dealValue);
+
+      if (lead.approachNote) {
+        setApproachNote(lead.approachNote);
+        setDocuments((prev) => {
+          const alreadyHas = prev.some((d) => d.name === lead.approachNote?.fileName);
+          if (alreadyHas) return prev;
+          return [
+            ...prev,
+            {
+              id: `doc-pipeline-${Date.now()}`,
+              name: lead.approachNote!.fileName,
+              category: "proposal",
+              fileSize: lead.approachNote!.fileSize,
+              fileSizeBytes: lead.approachNote!.fileSizeBytes,
+              fileType: "application/pdf",
+              downloadUrl: lead.approachNote!.downloadUrl,
+              storagePath: lead.approachNote!.storagePath,
+              uploadedAt: lead.approachNote!.uploadedAt,
+              uploadedBy: lead.approachNote!.uploadedBy || lead.owner || "Pipeline Lead Sync",
+            },
+          ];
+        });
       }
     }
   };
@@ -294,6 +358,10 @@ export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
       gstin: gstin.trim() || undefined,
       pan: pan.trim() || undefined,
       website: website.trim() || undefined,
+      industry: industry.trim() || undefined,
+      city: city.trim() || undefined,
+      program: program.trim() || undefined,
+      leadSource: leadSource.trim() || undefined,
     };
 
     onSave({
@@ -302,6 +370,16 @@ export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
       projectName: projectName.trim(),
       contractNumber: contractNumber.trim() || undefined,
       status,
+      industry: industry.trim() || undefined,
+      city: city.trim() || undefined,
+      designation: designation.trim() || undefined,
+      program: program.trim() || undefined,
+      leadSource: leadSource.trim() || undefined,
+      closureMonth: closureMonth.trim() || undefined,
+      expectedCloseDate: expectedCloseDate.trim() || undefined,
+      pipelineStage: pipelineStage.trim() || undefined,
+      pipelineDealValue: pipelineDealValue,
+      approachNote: approachNote || undefined,
       projectAmount: pAmt,
       tenureMonths: Number(tenureMonths),
       startDate,
