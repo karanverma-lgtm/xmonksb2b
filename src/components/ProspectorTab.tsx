@@ -607,7 +607,7 @@ export const ProspectorTab: React.FC<ProspectorTabProps> = ({
               <div>
                 <div className="flex items-center space-x-2">
                   <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
-                    SalesQL Prospector Engine
+                    Prospector Engine
                   </h1>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                     Live B2B Intel
