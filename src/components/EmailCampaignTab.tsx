@@ -30,11 +30,14 @@ import {
   ChevronUp,
   Calendar,
   Flame,
+  Paperclip,
 } from "lucide-react";
 import { EmailPreviewCard } from "@/components/EmailPreviewCard";
 import { AITemplateGeneratorModal } from "@/components/AITemplateGeneratorModal";
+import { EmailAttachmentManager } from "@/components/EmailAttachmentManager";
 import { Lead } from "@/types/lead";
-import { EmailTemplate } from "@/constants/emailTemplates";
+import { EmailTemplate, EmailAttachment } from "@/constants/emailTemplates";
+import { formatBytes } from "@/lib/formatters";
 import { UserAccount } from "@/constants/users";
 import {
   getAllTemplates,
@@ -116,6 +119,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
   const [templateSubject, setTemplateSubject] = useState<string>("");
   const [templateCategory, setTemplateCategory] = useState<EmailTemplate["category"]>("outreach");
   const [templateHtml, setTemplateHtml] = useState<string>("");
+  const [templateAttachments, setTemplateAttachments] = useState<EmailAttachment[]>([]);
   const [templateSavedMsg, setTemplateSavedMsg] = useState<string>("");
 
   // Individual Scoped Templates:
@@ -162,9 +166,11 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
       setSelectedSingleTemplateId(found.id);
       setSingleSubject(found.subject);
       setSingleHtmlContent(stripBadgesFromEmailHtml(found.htmlContent));
+      setSingleAttachments(found.attachments ? [...found.attachments] : []);
       setSelectedBulkTemplateId(found.id);
       setBulkSubject(found.subject);
       setBulkHtmlContent(stripBadgesFromEmailHtml(found.htmlContent));
+      setBulkAttachments(found.attachments ? [...found.attachments] : []);
     }
   };
 
@@ -177,6 +183,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
   const [singleIndustry, setSingleIndustry] = useState<string>("");
   const [singleSubject, setSingleSubject] = useState<string>("");
   const [singleHtmlContent, setSingleHtmlContent] = useState<string>("");
+  const [singleAttachments, setSingleAttachments] = useState<EmailAttachment[]>([]);
   const [isSendingSingle, setIsSendingSingle] = useState<boolean>(false);
   const [singleStatusMsg, setSingleStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -187,6 +194,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
   const [bulkSource, setBulkSource] = useState<"csv" | "crm">("crm");
   const [bulkSubject, setBulkSubject] = useState<string>("");
   const [bulkHtmlContent, setBulkHtmlContent] = useState<string>("");
+  const [bulkAttachments, setBulkAttachments] = useState<EmailAttachment[]>([]);
   const [isSendingBulk, setIsSendingBulk] = useState<boolean>(false);
   const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | null>(null);
   const [bulkStatusMsg, setBulkStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -203,6 +211,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
     setTemplateSubject(tpl.subject);
     setTemplateCategory(tpl.category);
     setTemplateHtml(stripBadgesFromEmailHtml(tpl.htmlContent));
+    setTemplateAttachments(tpl.attachments ? [...tpl.attachments] : []);
   }, []);
 
   // Subscribe to Real-Time Templates, Campaigns & Email Logs via Firebase Firestore
@@ -230,10 +239,12 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
           setSelectedSingleTemplateId(initialTpl.id);
           setSingleSubject(initialTpl.subject);
           setSingleHtmlContent(stripBadgesFromEmailHtml(initialTpl.htmlContent));
+          setSingleAttachments(initialTpl.attachments ? [...initialTpl.attachments] : []);
 
           setSelectedBulkTemplateId(initialTpl.id);
           setBulkSubject(initialTpl.subject);
           setBulkHtmlContent(stripBadgesFromEmailHtml(initialTpl.htmlContent));
+          setBulkAttachments(initialTpl.attachments ? [...initialTpl.attachments] : []);
         }
       }
     });
@@ -263,6 +274,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
   <p>Thank you for connecting with us regarding {{companyName}} in the {{industry}} sector.</p>
   <p>Best regards,<br/>xMonks Sales Team</p>
 </div>`);
+    setTemplateAttachments([]);
   };
 
   const handleSaveTemplate = () => {
@@ -282,6 +294,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
         owner: currentOwner,
         createdBy: currentCreator,
         isSystem: false,
+        attachments: templateAttachments,
       });
       setSelectedTemplateId(saved.id);
       setTemplateSavedMsg("Saved as your personal custom template!");
@@ -299,6 +312,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
       owner: existing?.owner || currentOwner,
       createdBy: existing?.createdBy || currentCreator,
       isSystem: existing ? Boolean(existing.isSystem) : false,
+      attachments: templateAttachments,
     });
     setSelectedTemplateId(saved.id);
     setTemplateSavedMsg("Template saved successfully!");
@@ -393,6 +407,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
     setSelectedSingleTemplateId(tpl.id);
     setSingleSubject(tpl.subject);
     setSingleHtmlContent(stripBadgesFromEmailHtml(tpl.htmlContent));
+    setSingleAttachments(tpl.attachments ? [...tpl.attachments] : []);
   };
 
   // Apply template to Bulk Email sender
@@ -400,6 +415,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
     setSelectedBulkTemplateId(tpl.id);
     setBulkSubject(tpl.subject);
     setBulkHtmlContent(stripBadgesFromEmailHtml(tpl.htmlContent));
+    setBulkAttachments(tpl.attachments ? [...tpl.attachments] : []);
   };
 
   // Select CRM lead for Single Email
@@ -441,6 +457,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
         subject: singleSubject,
         htmlContent: singleHtmlContent,
         smtpConfig: activeSender,
+        attachments: singleAttachments,
       });
 
       const successCount = res.successCount || (res.success ? 1 : 0);
@@ -457,6 +474,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
         successCount,
         failedCount,
         status: successCount > 0 ? "completed" : "failed",
+        attachments: singleAttachments,
         recipients: [
           {
             email: singleRecipientEmail,
@@ -602,6 +620,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
         subject: bulkSubject,
         htmlContent: bulkHtmlContent,
         smtpConfig: activeSender,
+        attachments: bulkAttachments,
       });
 
       setBulkProgress({ current: targetRecipients.length, total: targetRecipients.length });
@@ -629,6 +648,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
         successCount: succCount,
         failedCount: totCount - succCount,
         status: succCount === targetRecipients.length ? "completed" : succCount > 0 ? "partial" : "failed",
+        attachments: bulkAttachments,
         recipients: recipientDetails,
       });
 
@@ -1244,9 +1264,20 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                     subject={templateSubject}
                     recipientName="Aarav Patel"
                     recipientEmail="aarav@zenithcloud.in"
+                    attachments={templateAttachments}
                     height="h-[420px]"
                   />
                 </div>
+              </div>
+
+              {/* Template Attachments Section */}
+              <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
+                <EmailAttachmentManager
+                  attachments={templateAttachments}
+                  onChange={setTemplateAttachments}
+                  label="Template Attachments (Saved with Template)"
+                  description="Attach PDF proposals, pitch decks, enterprise brochures, or documents to this template. These files will be saved with this template and automatically attached whenever this template is selected."
+                />
               </div>
             </div>
           </div>
@@ -1381,6 +1412,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                   if (tpl) {
                     setSingleSubject(tpl.subject);
                     setSingleHtmlContent(tpl.htmlContent);
+                    setSingleAttachments(tpl.attachments ? [...tpl.attachments] : []);
                   }
                 }}
                 className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
@@ -1392,6 +1424,16 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* Single Email Attachments */}
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+              <EmailAttachmentManager
+                attachments={singleAttachments}
+                onChange={setSingleAttachments}
+                label="Email Attachments"
+                description="Attachments loaded from the selected template. You can add extra files or remove any before sending."
+              />
             </div>
 
             {/* Template Content Preview */}
@@ -1415,6 +1457,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                     subject={singleSubject}
                     recipientName={singleContactName || "Contact Name"}
                     recipientEmail={singleRecipientEmail || "lead@company.com"}
+                    attachments={singleAttachments}
                     height="h-[360px]"
                   />
                 </div>
@@ -1666,6 +1709,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                     if (tpl) {
                       setBulkSubject(tpl.subject);
                       setBulkHtmlContent(tpl.htmlContent);
+                      setBulkAttachments(tpl.attachments ? [...tpl.attachments] : []);
                     }
                   }}
                   className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
@@ -1677,6 +1721,16 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Bulk Campaign Attachments */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                <EmailAttachmentManager
+                  attachments={bulkAttachments}
+                  onChange={setBulkAttachments}
+                  label="Campaign Attachments"
+                  description="Attachments loaded from the selected template. Every recipient in this bulk campaign will receive these attached files."
+                />
               </div>
 
               {/* Template Content Preview Card */}
@@ -1700,6 +1754,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                       subject={bulkSubject}
                       recipientName="Contact Name"
                       recipientEmail="lead@company.com"
+                      attachments={bulkAttachments}
                       height="h-[360px]"
                     />
                   </div>
@@ -1882,6 +1937,31 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                       </span>
                     </div>
                   </div>
+
+                  {/* Campaign Attachments list */}
+                  {camp.attachments && camp.attachments.length > 0 && (
+                    <div className="pt-2 border-t border-slate-200/60 dark:border-slate-800/60 flex items-center flex-wrap gap-2 text-xs">
+                      <span className="text-[11px] font-bold text-slate-500 flex items-center space-x-1 mr-1">
+                        <Paperclip className="w-3.5 h-3.5 text-purple-500" />
+                        <span>Attachments ({camp.attachments.length}):</span>
+                      </span>
+                      {camp.attachments.map((att, idx) => (
+                        <a
+                          key={att.id || idx}
+                          href={att.downloadUrl || "#"}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] font-semibold text-slate-700 dark:text-slate-300 hover:text-purple-600 dark:hover:text-purple-400 hover:border-purple-300 transition shadow-xs"
+                        >
+                          <span className="truncate max-w-[180px]">{att.name}</span>
+                          <span className="text-[10px] text-slate-400 font-normal">
+                            ({formatBytes(att.size || 0)})
+                          </span>
+                          <Download className="w-3 h-3 text-slate-400" />
+                        </a>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Recipient breakdown list */}
                   {camp.recipients && camp.recipients.length > 0 && (

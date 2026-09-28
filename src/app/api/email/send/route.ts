@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import fs from "fs";
 import path from "path";
+import { getFileFromR2 } from "@/lib/r2";
 
 interface EmailRecipient {
   email: string;
@@ -63,7 +64,7 @@ function createTransporter(
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { recipients, subject, htmlContent, smtpConfig } = body;
+    const { recipients, subject, htmlContent, smtpConfig, attachments: inputAttachments } = body;
 
     if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
       return NextResponse.json(
@@ -103,6 +104,51 @@ export async function POST(req: NextRequest) {
     }
 
     const results: Array<{ recipient: string; success: boolean; messageId?: string; error?: string }> = [];
+
+    // Resolve user-provided attachments once before sending to recipients
+    interface ResolvedAttachment {
+      filename: string;
+      content: Buffer;
+      contentType?: string;
+    }
+    const resolvedUserAttachments: ResolvedAttachment[] = [];
+
+    if (Array.isArray(inputAttachments) && inputAttachments.length > 0) {
+      for (const att of inputAttachments) {
+        try {
+          if (att.storageKey) {
+            const r2Response = await getFileFromR2(att.storageKey);
+            if (r2Response.Body) {
+              const byteArray = await r2Response.Body.transformToByteArray();
+              resolvedUserAttachments.push({
+                filename: att.name || "attachment",
+                content: Buffer.from(byteArray),
+                contentType: att.type || undefined,
+              });
+            }
+          } else if (att.data) {
+            const base64Data = att.data.replace(/^data:[^;]+;base64,/, "");
+            resolvedUserAttachments.push({
+              filename: att.name || "attachment",
+              content: Buffer.from(base64Data, "base64"),
+              contentType: att.type || undefined,
+            });
+          } else if (att.downloadUrl && att.downloadUrl.startsWith("http")) {
+            const res = await fetch(att.downloadUrl);
+            if (res.ok) {
+              const arrayBuffer = await res.arrayBuffer();
+              resolvedUserAttachments.push({
+                filename: att.name || "attachment",
+                content: Buffer.from(arrayBuffer),
+                contentType: att.type || undefined,
+              });
+            }
+          }
+        } catch (attErr) {
+          console.warn(`Failed to resolve email attachment ${att?.name}:`, attErr);
+        }
+      }
+    }
 
     // Create primary transporter
     const transporter = createTransporter(userEmail, appPassword, host, port, secure);
@@ -177,12 +223,17 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      const allMailAttachments = [
+        ...attachments,
+        ...resolvedUserAttachments,
+      ];
+
       const mailOptions = {
         from: `"${senderName}" <${userEmail}>`,
         to: recipientEmail,
         subject: personalizedSubject,
         html: personalizedHtml,
-        attachments: attachments.length > 0 ? attachments : undefined,
+        attachments: allMailAttachments.length > 0 ? allMailAttachments : undefined,
       };
 
       try {

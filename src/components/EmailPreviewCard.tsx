@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { Monitor, Smartphone, Maximize2, X, Eye } from "lucide-react";
+import { Monitor, Smartphone, Maximize2, X, Eye, Paperclip } from "lucide-react";
+import { EmailAttachment } from "@/constants/emailTemplates";
+import { formatBytes } from "@/lib/formatters";
 
 interface EmailPreviewCardProps {
   html: string;
@@ -10,6 +12,7 @@ interface EmailPreviewCardProps {
   recipientEmail?: string;
   senderEmail?: string;
   height?: string;
+  attachments?: EmailAttachment[];
 }
 
 export const EmailPreviewCard: React.FC<EmailPreviewCardProps> = ({
@@ -19,6 +22,7 @@ export const EmailPreviewCard: React.FC<EmailPreviewCardProps> = ({
   recipientEmail = "aarav@zenithcloud.in",
   senderEmail = "ruby.dayal@xmonks.com",
   height = "h-[450px]",
+  attachments = [],
 }) => {
   const [deviceMode, setDeviceMode] = useState<"desktop" | "mobile">("desktop");
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
@@ -149,6 +153,30 @@ export const EmailPreviewCard: React.FC<EmailPreviewCardProps> = ({
             />
           </div>
         </div>
+
+        {/* Attachments preview footer */}
+        {attachments && attachments.length > 0 && (
+          <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex items-center flex-wrap gap-2 text-xs">
+            <div className="flex items-center space-x-1.5 text-slate-500 font-bold text-[11px] mr-1">
+              <Paperclip className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+              <span>Attachments ({attachments.length}):</span>
+            </div>
+            {attachments.map((att, i) => (
+              <a
+                key={att.id || i}
+                href={att.downloadUrl || "#"}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center space-x-1.5 px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-purple-400 rounded-lg text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:text-purple-600 transition shadow-xs"
+              >
+                <span className="truncate max-w-[160px]">{att.name}</span>
+                <span className="text-[10px] text-slate-400 font-normal">
+                  ({formatBytes(att.size || 0)})
+                </span>
+              </a>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* FULLSCREEN PREVIEW MODAL */}
@@ -222,6 +250,30 @@ export const EmailPreviewCard: React.FC<EmailPreviewCardProps> = ({
                 />
               </div>
             </div>
+
+            {/* Fullscreen Attachments Footer */}
+            {attachments && attachments.length > 0 && (
+              <div className="px-6 py-3 bg-slate-900 border-t border-slate-800 flex items-center flex-wrap gap-2 text-xs">
+                <div className="flex items-center space-x-1.5 text-purple-400 font-bold text-xs mr-2">
+                  <Paperclip className="w-4 h-4 text-purple-400" />
+                  <span>Attachments ({attachments.length}):</span>
+                </div>
+                {attachments.map((att, i) => (
+                  <a
+                    key={att.id || i}
+                    href={att.downloadUrl || "#"}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-800 border border-slate-700 hover:border-purple-500 rounded-xl text-xs font-semibold text-slate-200 hover:text-purple-300 transition"
+                  >
+                    <span>{att.name}</span>
+                    <span className="text-[10px] text-slate-400">
+                      ({formatBytes(att.size || 0)})
+                    </span>
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

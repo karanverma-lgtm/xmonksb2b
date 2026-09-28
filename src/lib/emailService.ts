@@ -9,7 +9,7 @@ import {
   orderBy,
   getDocs,
 } from "firebase/firestore";
-import { PREBUILT_TEMPLATES, EmailTemplate, AMIT_ENTERPRISE_EMAIL_BANK } from "@/constants/emailTemplates";
+import { PREBUILT_TEMPLATES, EmailTemplate, EmailAttachment, AMIT_ENTERPRISE_EMAIL_BANK } from "@/constants/emailTemplates";
 
 export interface SMTPConfig {
   id?: string;
@@ -73,6 +73,7 @@ export interface EmailCampaign {
   createdAt: string;
   createdAtMs: number;
   recipients: EmailCampaignRecipient[];
+  attachments?: EmailAttachment[];
 }
 
 const TEMPLATES_COLLECTION = "b2b_email_templates";
@@ -1050,6 +1051,7 @@ export async function sendEmailCampaign(payload: {
   subject: string;
   htmlContent: string;
   smtpConfig?: SMTPConfig;
+  attachments?: EmailAttachment[];
 }) {
   const activeSmtp = payload.smtpConfig || getStoredSMTPConfig();
   const response = await fetch("/api/email/send", {
@@ -1060,6 +1062,7 @@ export async function sendEmailCampaign(payload: {
       subject: payload.subject,
       htmlContent: payload.htmlContent,
       smtpConfig: activeSmtp,
+      attachments: payload.attachments,
     }),
   });
 
@@ -1078,4 +1081,23 @@ export async function sendEmailCampaign(payload: {
 
   return data;
 }
+
+// Upload Email Template or Campaign Attachment
+export async function uploadEmailAttachment(file: File): Promise<EmailAttachment> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch("/api/email/attachments/upload", {
+    method: "POST",
+    body: formData,
+  });
+
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Failed to upload file attachment.");
+  }
+
+  return data.attachment as EmailAttachment;
+}
+
 

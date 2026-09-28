@@ -1,3 +1,13 @@
+export interface EmailAttachment {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  storageKey?: string;
+  downloadUrl?: string;
+  data?: string;
+}
+
 export interface EmailTemplate {
   id: string;
   name: string;
@@ -12,6 +22,7 @@ export interface EmailTemplate {
   daySequence?: string | number;
   createdAt?: string;
   updatedAt?: string;
+  attachments?: EmailAttachment[];
 }
 
 export { AMIT_ENTERPRISE_EMAIL_BANK } from "./amitEmailBank";
