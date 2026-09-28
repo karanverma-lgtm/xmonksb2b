@@ -31,12 +31,19 @@ import {
   Link2,
   Zap,
   Sparkles,
+  Key,
+  Eye,
+  EyeOff,
+  Copy,
+  Check,
+  Lock,
 } from "lucide-react";
 import {
   BillingRecord,
   BillingPayment,
   BillingPaymentDefault,
   BillingDocument,
+  VendorCredential,
 } from "@/types/billing";
 import { formatINR, formatClosureMonth } from "@/lib/formatters";
 import { getLeadSourceBadgeStyle } from "@/constants/leadSources";
@@ -52,6 +59,10 @@ interface BillingDetailModalProps {
   onResolveDefault: (recordId: string, defaultId: string, notes?: string) => void;
   onAddDocument: (recordId: string, document: BillingDocument) => void;
   onRemoveDocument: (recordId: string, documentId: string) => void;
+  onUnrecordPayment?: (recordId: string, paymentId: string) => void;
+  onAddCredential?: (recordId: string, credential: Omit<VendorCredential, "id" | "createdAt" | "updatedAt">) => void;
+  onUpdateCredential?: (recordId: string, credentialId: string, updates: Partial<VendorCredential>) => void;
+  onRemoveCredential?: (recordId: string, credentialId: string) => void;
   currentUser?: { name?: string; username?: string } | null;
 }
 
@@ -65,12 +76,27 @@ export const BillingDetailModal: React.FC<BillingDetailModalProps> = ({
   onResolveDefault,
   onAddDocument,
   onRemoveDocument,
+  onUnrecordPayment,
+  onAddCredential,
+  onUpdateCredential,
+  onRemoveCredential,
   currentUser,
 }) => {
-  const [activeTab, setActiveTab] = useState<"overview" | "payments" | "defaults" | "documents">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "payments" | "defaults" | "documents" | "credentials">("overview");
   const [isUploadingDoc, setIsUploadingDoc] = useState<boolean>(false);
   const [resolvingDefaultId, setResolvingDefaultId] = useState<string | null>(null);
   const [resolutionNotes, setResolutionNotes] = useState<string>("");
+
+  // Credentials State
+  const [showCredForm, setShowCredForm] = useState<boolean>(false);
+  const [editingCredId, setEditingCredId] = useState<string | null>(null);
+  const [credPlatformName, setCredPlatformName] = useState<string>("");
+  const [credPlatformUrl, setCredPlatformUrl] = useState<string>("");
+  const [credUsername, setCredUsername] = useState<string>("");
+  const [credPassword, setCredPassword] = useState<string>("");
+  const [credDescription, setCredDescription] = useState<string>("");
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   if (!isOpen || !record) return null;
 
@@ -99,6 +125,80 @@ export const BillingDetailModal: React.FC<BillingDetailModalProps> = ({
     onResolveDefault(record.id, defaultId, resolutionNotes.trim() || undefined);
     setResolvingDefaultId(null);
     setResolutionNotes("");
+  };
+
+  const handleCopyText = (text: string | undefined, key: string) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => {
+      setCopiedKey((curr) => (curr === key ? null : curr));
+    }, 2000);
+  };
+
+  const togglePasswordVisibility = (credId: string) => {
+    setRevealedPasswords((prev) => ({
+      ...prev,
+      [credId]: !prev[credId],
+    }));
+  };
+
+  const handleOpenAddCred = () => {
+    setEditingCredId(null);
+    setCredPlatformName("");
+    setCredPlatformUrl("");
+    setCredUsername("");
+    setCredPassword("");
+    setCredDescription("");
+    setShowCredForm(true);
+  };
+
+  const handleEditCred = (cred: VendorCredential) => {
+    setEditingCredId(cred.id);
+    setCredPlatformName(cred.platformName || "");
+    setCredPlatformUrl(cred.platformUrl || "");
+    setCredUsername(cred.usernameOrEmail || "");
+    setCredPassword(cred.password || "");
+    setCredDescription(cred.description || "");
+    setShowCredForm(true);
+  };
+
+  const handleCancelCredForm = () => {
+    setShowCredForm(false);
+    setEditingCredId(null);
+  };
+
+  const handleSaveCredSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!credUsername.trim() && !credPlatformUrl.trim() && !credPassword.trim()) {
+      alert("Please provide at least a Platform URL, Username/Email, or Password.");
+      return;
+    }
+
+    if (editingCredId) {
+      if (onUpdateCredential) {
+        onUpdateCredential(record.id, editingCredId, {
+          platformName: credPlatformName.trim() || undefined,
+          platformUrl: credPlatformUrl.trim() || undefined,
+          usernameOrEmail: credUsername.trim(),
+          password: credPassword.trim(),
+          description: credDescription.trim() || undefined,
+        });
+      }
+    } else {
+      if (onAddCredential) {
+        onAddCredential(record.id, {
+          platformName: credPlatformName.trim() || undefined,
+          platformUrl: credPlatformUrl.trim() || undefined,
+          usernameOrEmail: credUsername.trim(),
+          password: credPassword.trim(),
+          description: credDescription.trim() || undefined,
+        });
+      }
+    }
+
+    setShowCredForm(false);
+    setEditingCredId(null);
   };
 
   return (
@@ -196,7 +296,14 @@ export const BillingDetailModal: React.FC<BillingDetailModalProps> = ({
             </div>
 
             <div className="p-2 rounded-xl bg-emerald-500/10">
-              <span className="text-[10px] text-emerald-400 uppercase font-bold block">Received Till Now</span>
+              <div className="flex items-center justify-center space-x-1.5">
+                <span className="text-[10px] text-emerald-400 uppercase font-bold block">Received Till Now</span>
+                {Number(record.advancePaymentAmount || 0) > 0 && (
+                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-400/20 text-amber-300 font-bold border border-amber-400/30">
+                    Adv: {formatINR(record.advancePaymentAmount || 0)}
+                  </span>
+                )}
+              </div>
               <span className="text-sm font-black font-mono text-emerald-400">
                 {formatINR(record.amountReceived)}
               </span>
@@ -219,10 +326,10 @@ export const BillingDetailModal: React.FC<BillingDetailModalProps> = ({
         </div>
 
         {/* Tab Pills */}
-        <div className="flex items-center space-x-1 p-2 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-xs">
+        <div className="flex items-center space-x-1 p-2 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-xs overflow-x-auto">
           <button
             onClick={() => setActiveTab("overview")}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-xl font-bold transition ${
+            className={`flex items-center space-x-2 px-4 py-2 rounded-xl font-bold whitespace-nowrap transition ${
               activeTab === "overview"
                 ? "bg-emerald-600 text-white shadow-sm"
                 : "text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-800"
@@ -234,7 +341,7 @@ export const BillingDetailModal: React.FC<BillingDetailModalProps> = ({
 
           <button
             onClick={() => setActiveTab("payments")}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-xl font-bold transition ${
+            className={`flex items-center space-x-2 px-4 py-2 rounded-xl font-bold whitespace-nowrap transition ${
               activeTab === "payments"
                 ? "bg-emerald-600 text-white shadow-sm"
                 : "text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-800"
@@ -246,7 +353,7 @@ export const BillingDetailModal: React.FC<BillingDetailModalProps> = ({
 
           <button
             onClick={() => setActiveTab("defaults")}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-xl font-bold transition ${
+            className={`flex items-center space-x-2 px-4 py-2 rounded-xl font-bold whitespace-nowrap transition ${
               activeTab === "defaults"
                 ? "bg-emerald-600 text-white shadow-sm"
                 : "text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-800"
@@ -263,7 +370,7 @@ export const BillingDetailModal: React.FC<BillingDetailModalProps> = ({
 
           <button
             onClick={() => setActiveTab("documents")}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-xl font-bold transition ${
+            className={`flex items-center space-x-2 px-4 py-2 rounded-xl font-bold whitespace-nowrap transition ${
               activeTab === "documents"
                 ? "bg-emerald-600 text-white shadow-sm"
                 : "text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-800"
@@ -271,6 +378,18 @@ export const BillingDetailModal: React.FC<BillingDetailModalProps> = ({
           >
             <FileText className="w-4 h-4" />
             <span>Company Documents ({record.documents?.length || 0})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("credentials")}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-xl font-bold whitespace-nowrap transition ${
+              activeTab === "credentials"
+                ? "bg-emerald-600 text-white shadow-sm"
+                : "text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-800"
+            }`}
+          >
+            <Key className="w-4 h-4" />
+            <span>Credentials ({record.credentials?.length || 0})</span>
           </button>
         </div>
 
@@ -555,6 +674,7 @@ export const BillingDetailModal: React.FC<BillingDetailModalProps> = ({
                         <th className="p-3">Reference / UTR</th>
                         <th className="p-3">Remarks</th>
                         <th className="p-3">Recorded By</th>
+                        <th className="p-3 text-right">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -564,7 +684,14 @@ export const BillingDetailModal: React.FC<BillingDetailModalProps> = ({
                             {pay.date}
                           </td>
                           <td className="p-3 font-mono font-black text-emerald-600 dark:text-emerald-400">
-                            {formatINR(pay.amount)}
+                            <div className="flex items-center space-x-1.5">
+                              <span>{formatINR(pay.amount)}</span>
+                              {pay.isAdvance && (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-800">
+                                  Advance
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="p-3">
                             <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
@@ -579,6 +706,26 @@ export const BillingDetailModal: React.FC<BillingDetailModalProps> = ({
                           </td>
                           <td className="p-3 text-slate-400 text-[11px]">
                             {pay.recordedBy || "Admin"}
+                          </td>
+                          <td className="p-3 text-right">
+                            {onUnrecordPayment && (
+                              <button
+                                onClick={() => {
+                                  if (
+                                    window.confirm(
+                                      `Are you sure you want to unrecord payment of ${formatINR(pay.amount)} (${pay.date})?\nThis will revert the collected amount and restore the pending balance.`
+                                    )
+                                  ) {
+                                    onUnrecordPayment(record.id, pay.id);
+                                  }
+                                }}
+                                title="Unrecord / Revert this payment transaction"
+                                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-[10px] font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 transition shadow-xs"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>Unrecord</span>
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -813,6 +960,314 @@ export const BillingDetailModal: React.FC<BillingDetailModalProps> = ({
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 5: VENDOR PLATFORM CREDENTIALS */}
+          {activeTab === "credentials" && (
+            <div className="space-y-5 animate-fadeIn">
+              {/* Header and Add Button */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                    <Key className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span>Vendor Platform Credentials</span>
+                  </h4>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Securely store platform URLs, usernames, passwords, and access instructions.
+                  </p>
+                </div>
+
+                {!showCredForm && (
+                  <button
+                    onClick={handleOpenAddCred}
+                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center space-x-1.5 self-start sm:self-auto"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Credential</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Add / Edit Credential Form */}
+              {showCredForm && (
+                <form
+                  onSubmit={handleSaveCredSubmit}
+                  className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-emerald-500/40 dark:border-emerald-500/30 shadow-md space-y-4 animate-fadeIn"
+                >
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+                    <h5 className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center space-x-2">
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>{editingCredId ? "Edit Platform Credential" : "Add New Platform Credential"}</span>
+                    </h5>
+                    <button
+                      type="button"
+                      onClick={handleCancelCredForm}
+                      className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Platform Name
+                      </label>
+                      <input
+                        type="text"
+                        value={credPlatformName}
+                        onChange={(e) => setCredPlatformName(e.target.value)}
+                        placeholder="e.g. AWS Portal, Jira, Vendor Admin"
+                        className="w-full px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Platform URL
+                      </label>
+                      <input
+                        type="url"
+                        value={credPlatformUrl}
+                        onChange={(e) => setCredPlatformUrl(e.target.value)}
+                        placeholder="https://portal.vendor.com/login"
+                        className="w-full px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Username / Email
+                      </label>
+                      <input
+                        type="text"
+                        value={credUsername}
+                        onChange={(e) => setCredUsername(e.target.value)}
+                        placeholder="admin@vendor.com or username"
+                        className="w-full px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Password
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={revealedPasswords["form"] ? "text" : "password"}
+                          value={credPassword}
+                          onChange={(e) => setCredPassword(e.target.value)}
+                          placeholder="••••••••"
+                          className="w-full pl-3.5 pr-10 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => togglePasswordVisibility("form")}
+                          className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                          title={revealedPasswords["form"] ? "Hide password" : "Show password"}
+                        >
+                          {revealedPasswords["form"] ? (
+                            <EyeOff className="w-3.5 h-3.5" />
+                          ) : (
+                            <Eye className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Description / Access Notes
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={credDescription}
+                      onChange={(e) => setCredDescription(e.target.value)}
+                      placeholder="e.g. 2FA recovery code location, required corporate VPN, role permissions..."
+                      className="w-full px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end space-x-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={handleCancelCredForm}
+                      className="px-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-sm flex items-center space-x-1.5"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>{editingCredId ? "Update Credential" : "Save Credential"}</span>
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Credentials List */}
+              {!record.credentials || record.credentials.length === 0 ? (
+                <div className="p-8 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl space-y-2">
+                  <Key className="w-8 h-8 text-slate-400 mx-auto opacity-50" />
+                  <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+                    No platform credentials saved yet.
+                  </p>
+                  <p className="text-[10px] text-slate-400 max-w-sm mx-auto">
+                    Save vendor platform URLs, login usernames, passwords, and access instructions for easy team handoff.
+                  </p>
+                  <button
+                    onClick={handleOpenAddCred}
+                    className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline pt-1 inline-block"
+                  >
+                    + Add Platform Credential
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {record.credentials.map((cred) => {
+                    const isPassVisible = Boolean(revealedPasswords[cred.id]);
+                    const usernameCopied = copiedKey === `user-${cred.id}`;
+                    const passwordCopied = copiedKey === `pass-${cred.id}`;
+
+                    return (
+                      <div
+                        key={cred.id}
+                        className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:border-emerald-400 dark:hover:border-emerald-500/60 transition space-y-3"
+                      >
+                        {/* Header: Platform Name & URL */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center space-x-2.5 min-w-0">
+                            <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 shrink-0">
+                              <Key className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <h5 className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                                {cred.platformName || "Vendor Platform"}
+                              </h5>
+                              {cred.platformUrl ? (
+                                <a
+                                  href={cred.platformUrl.startsWith("http") ? cred.platformUrl : `https://${cred.platformUrl}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline flex items-center space-x-1 truncate mt-0.5"
+                                  title={cred.platformUrl}
+                                >
+                                  <span className="truncate">{cred.platformUrl}</span>
+                                  <ExternalLink className="w-2.5 h-2.5 shrink-0" />
+                                </a>
+                              ) : (
+                                <span className="text-[10px] text-slate-400 italic">No URL provided</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Action Buttons: Edit & Delete */}
+                          <div className="flex items-center space-x-1 shrink-0">
+                            <button
+                              onClick={() => handleEditCred(cred)}
+                              className="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition"
+                              title="Edit Credential"
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                            </button>
+                            {onRemoveCredential && (
+                              <button
+                                onClick={() => {
+                                  if (confirm(`Remove credentials for "${cred.platformName || cred.platformUrl || "Platform"}"?`)) {
+                                    onRemoveCredential(record.id, cred.id);
+                                  }
+                                }}
+                                className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition"
+                                title="Delete Credential"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Fields: Username / Email */}
+                        <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800/80 space-y-2 text-xs">
+                          {cred.usernameOrEmail && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[10px] uppercase font-bold text-slate-400 shrink-0">User / Email:</span>
+                              <div className="flex items-center space-x-1.5 min-w-0">
+                                <span className="font-mono text-slate-800 dark:text-slate-200 truncate select-all">
+                                  {cred.usernameOrEmail}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyText(cred.usernameOrEmail, `user-${cred.id}`)}
+                                  className="p-1 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 rounded transition shrink-0"
+                                  title="Copy username"
+                                >
+                                  {usernameCopied ? (
+                                    <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                  ) : (
+                                    <Copy className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Fields: Password */}
+                          {cred.password && (
+                            <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-200/60 dark:border-slate-800/60">
+                              <span className="text-[10px] uppercase font-bold text-slate-400 shrink-0">Password:</span>
+                              <div className="flex items-center space-x-1.5 min-w-0">
+                                <span className="font-mono text-slate-800 dark:text-slate-200 truncate select-all">
+                                  {isPassVisible ? cred.password : "••••••••••••"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => togglePasswordVisibility(cred.id)}
+                                  className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded transition shrink-0"
+                                  title={isPassVisible ? "Hide password" : "Show password"}
+                                >
+                                  {isPassVisible ? (
+                                    <EyeOff className="w-3.5 h-3.5" />
+                                  ) : (
+                                    <Eye className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyText(cred.password, `pass-${cred.id}`)}
+                                  className="p-1 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 rounded transition shrink-0"
+                                  title="Copy password"
+                                >
+                                  {passwordCopied ? (
+                                    <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                  ) : (
+                                    <Copy className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Description / Access Notes */}
+                        {cred.description && (
+                          <div className="p-2.5 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/30 text-[11px] text-amber-900 dark:text-amber-200/90 leading-relaxed">
+                            <span className="font-bold block text-[10px] uppercase text-amber-600 dark:text-amber-400 mb-0.5">
+                              Description & Notes:
+                            </span>
+                            {cred.description}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

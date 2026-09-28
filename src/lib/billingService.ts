@@ -14,6 +14,7 @@ import {
   BillingPaymentDefault,
   BillingDocument,
   BillingStatus,
+  VendorCredential,
 } from "@/types/billing";
 import { Lead } from "@/types/lead";
 
@@ -45,6 +46,7 @@ export const INITIAL_BILLING_RECORDS: BillingRecord[] = [
     billingFrequency: "monthly",
     amountReceived: 1600000,
     pendingAmount: 800000,
+    advancePaymentAmount: 400000,
     hasDefaults: false,
     defaultCount: 0,
     defaultedAmount: 0,
@@ -57,6 +59,7 @@ export const INITIAL_BILLING_RECORDS: BillingRecord[] = [
         referenceNumber: "HDFC982348271",
         notes: "Advance 2-month mobilization fee",
         recordedBy: "Finance Admin",
+        isAdvance: true,
       },
       {
         id: "pay-z2",
@@ -117,6 +120,28 @@ export const INITIAL_BILLING_RECORDS: BillingRecord[] = [
         downloadUrl: "#",
         uploadedAt: "2026-01-16T11:00:00Z",
         uploadedBy: "Finance Admin",
+      },
+    ],
+    credentials: [
+      {
+        id: "cred-zenith-1",
+        platformUrl: "https://vendor.zenithcloud.in/portal/login",
+        platformName: "Zenith Vendor Management Portal",
+        usernameOrEmail: "finance.xmonks@zenithcloud.in",
+        password: "Zenith#Vendor$2026",
+        description: "Upload monthly GST invoices and timesheet logs before the 25th of each month.",
+        createdAt: "2026-01-16T12:00:00Z",
+        updatedAt: "2026-01-16T12:00:00Z",
+      },
+      {
+        id: "cred-zenith-2",
+        platformUrl: "https://lms.zenithcloud.in/admin",
+        platformName: "Cornerstone Cohort LMS Admin",
+        usernameOrEmail: "aarav.patel@zenithcloud.in",
+        password: "CXO#Leadership!99",
+        description: "Admin portal to view executive attendance and assessment completions.",
+        createdAt: "2026-01-20T15:30:00Z",
+        updatedAt: "2026-01-20T15:30:00Z",
       },
     ],
     notes: "High strategic account. Scheduled for renewal discussion in Nov 2026.",
@@ -609,6 +634,12 @@ export function addPaymentToBillingRecord(
   const newAmountReceived = (target.amountReceived || 0) + Number(payment.amount);
   const newPending = Math.max(0, target.projectAmount - newAmountReceived);
 
+  // If advance payment, update advancePaymentAmount
+  let newAdvance = target.advancePaymentAmount || 0;
+  if (payment.isAdvance) {
+    newAdvance += Number(payment.amount);
+  }
+
   let newStatus: BillingStatus = target.status;
   if (newPending === 0) {
     newStatus = "completed";
@@ -617,8 +648,112 @@ export function addPaymentToBillingRecord(
   return saveBillingRecord({
     ...target,
     amountReceived: newAmountReceived,
+    advancePaymentAmount: newAdvance > 0 ? newAdvance : undefined,
     paymentHistory: updatedPayments,
     status: newStatus,
+  });
+}
+
+// Unrecord / delete a payment from an existing billing record
+export function unrecordPaymentFromBillingRecord(
+  recordId: string,
+  paymentId: string
+): BillingRecord | null {
+  const current = getStoredBillingRecords();
+  const target = current.find((r) => r.id === recordId);
+  if (!target) return null;
+
+  const paymentToRemove = (target.paymentHistory || []).find((p) => p.id === paymentId);
+  if (!paymentToRemove) return null;
+
+  const updatedPayments = (target.paymentHistory || []).filter((p) => p.id !== paymentId);
+  const newAmountReceived = Math.max(0, (target.amountReceived || 0) - Number(paymentToRemove.amount || 0));
+  const newPending = Math.max(0, (target.projectAmount || 0) - newAmountReceived);
+
+  let newAdvance = target.advancePaymentAmount;
+  if (paymentToRemove.isAdvance && typeof newAdvance === "number") {
+    newAdvance = Math.max(0, newAdvance - Number(paymentToRemove.amount || 0));
+  }
+
+  let newStatus: BillingStatus = target.status;
+  if (newPending > 0 && target.status === "completed") {
+    newStatus = "active";
+  }
+
+  return saveBillingRecord({
+    ...target,
+    amountReceived: newAmountReceived,
+    advancePaymentAmount: newAdvance && newAdvance > 0 ? newAdvance : undefined,
+    paymentHistory: updatedPayments,
+    status: newStatus,
+  });
+}
+
+// Add a platform credential to a billing record
+export function addCredentialToBillingRecord(
+  recordId: string,
+  credential: Omit<VendorCredential, "id" | "createdAt" | "updatedAt">
+): BillingRecord | null {
+  const current = getStoredBillingRecords();
+  const target = current.find((r) => r.id === recordId);
+  if (!target) return null;
+
+  const now = new Date().toISOString();
+  const newCred: VendorCredential = {
+    ...credential,
+    id: `cred-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const updatedCredentials = [newCred, ...(target.credentials || [])];
+  return saveBillingRecord({
+    ...target,
+    credentials: updatedCredentials,
+  });
+}
+
+// Update an existing platform credential in a billing record
+export function updateCredentialInBillingRecord(
+  recordId: string,
+  credentialId: string,
+  updates: Partial<Omit<VendorCredential, "id" | "createdAt">>
+): BillingRecord | null {
+  const current = getStoredBillingRecords();
+  const target = current.find((r) => r.id === recordId);
+  if (!target) return null;
+
+  const now = new Date().toISOString();
+  const updatedCredentials = (target.credentials || []).map((c) => {
+    if (c.id === credentialId) {
+      return {
+        ...c,
+        ...updates,
+        updatedAt: now,
+      };
+    }
+    return c;
+  });
+
+  return saveBillingRecord({
+    ...target,
+    credentials: updatedCredentials,
+  });
+}
+
+// Remove a platform credential from a billing record
+export function removeCredentialFromBillingRecord(
+  recordId: string,
+  credentialId: string
+): BillingRecord | null {
+  const current = getStoredBillingRecords();
+  const target = current.find((r) => r.id === recordId);
+  if (!target) return null;
+
+  const updatedCredentials = (target.credentials || []).filter((c) => c.id !== credentialId);
+  return saveBillingRecord({
+    ...target,
+    credentials: updatedCredentials,
   });
 }
 

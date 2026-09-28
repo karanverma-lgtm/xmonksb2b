@@ -36,6 +36,7 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<BillingPayment["paymentMethod"]>("bank_transfer");
   const [referenceNumber, setReferenceNumber] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
+  const [isAdvance, setIsAdvance] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!isOpen || !record) return null;
@@ -57,12 +58,14 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
       referenceNumber: referenceNumber.trim() || undefined,
       notes: notes.trim() || undefined,
       recordedBy,
+      isAdvance,
     });
 
     // Reset and close
     setAmount("");
     setReferenceNumber("");
     setNotes("");
+    setIsAdvance(false);
     setError(null);
     onClose();
   };
@@ -202,6 +205,25 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
               onChange={(e) => setNotes(e.target.value)}
               placeholder="e.g. Q2 milestone installment 2 of 4"
               className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+            />
+          </div>
+
+          {/* Advance Payment Checkbox */}
+          <div className="p-3 bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-500/20 rounded-2xl flex items-center justify-between">
+            <div>
+              <label htmlFor="isAdvanceCheckbox" className="text-xs font-bold text-slate-800 dark:text-slate-200 block cursor-pointer">
+                Tag as Advance Payment Received
+              </label>
+              <span className="text-[10px] text-slate-400 block">
+                Flag this transaction as initial upfront advance / mobilization fee.
+              </span>
+            </div>
+            <input
+              id="isAdvanceCheckbox"
+              type="checkbox"
+              checked={isAdvance}
+              onChange={(e) => setIsAdvance(e.target.checked)}
+              className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 dark:border-slate-700 cursor-pointer"
             />
           </div>
 

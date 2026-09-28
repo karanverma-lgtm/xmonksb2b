@@ -86,6 +86,7 @@ export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
   const [endDate, setEndDate] = useState<string>("");
   const [billingFrequency, setBillingFrequency] = useState<BillingRecord["billingFrequency"]>("monthly");
   const [amountReceived, setAmountReceived] = useState<number | string>(0);
+  const [advancePaymentAmount, setAdvancePaymentAmount] = useState<number | string>(0);
   const [status, setStatus] = useState<BillingStatus>("active");
   const [notes, setNotes] = useState<string>("");
 
@@ -130,6 +131,7 @@ export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
       setEndDate(existingRecord.endDate || "");
       setBillingFrequency(existingRecord.billingFrequency || "monthly");
       setAmountReceived(existingRecord.amountReceived || 0);
+      setAdvancePaymentAmount(existingRecord.advancePaymentAmount || 0);
       setNotes(existingRecord.notes || "");
 
       // Vendor
@@ -180,6 +182,7 @@ export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
     setStartDate(today);
     setBillingFrequency("monthly");
     setAmountReceived(0);
+    setAdvancePaymentAmount(0);
     setNotes("");
 
     setCompanyName("");
@@ -344,6 +347,7 @@ export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
 
     const pAmt = Number(projectAmount);
     const rAmt = Number(amountReceived) || 0;
+    const advAmt = Number(advancePaymentAmount) || 0;
     const dAmt = hasDefaults ? Number(defaultedAmount) || 0 : 0;
 
     const vendorInfo: VendorInfo = {
@@ -386,6 +390,8 @@ export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
       endDate: endDate || startDate,
       billingFrequency,
       amountReceived: rAmt,
+      advancePaymentAmount: advAmt,
+      credentials: existingRecord?.credentials || [],
       paymentHistory: existingRecord?.paymentHistory || [],
       hasDefaults: hasDefaults && dAmt > 0,
       defaultCount: hasDefaults && dAmt > 0 ? 1 : 0,
@@ -868,8 +874,8 @@ export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
                 </div>
               </div>
 
-              {/* Start Date, End Date, and Amount Received */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Start Date & End Date */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Tenure Start Date
@@ -893,7 +899,10 @@ export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
                     className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
                 </div>
+              </div>
 
+              {/* Amount Received Till Now & Advance Payment Received */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Amount Received Till Now (INR)
@@ -913,6 +922,32 @@ export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
                   {Number(amountReceived) > 0 && (
                     <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold block mt-1">
                       {formatINR(Number(amountReceived))} ({((Number(amountReceived) / Math.max(Number(projectAmount) || 1, 1)) * 100).toFixed(1)}% Collected)
+                    </span>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
+                    <span>Advance Payment Received (INR)</span>
+                    <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-300 dark:border-amber-800">
+                      Advance
+                    </span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2 text-xs font-bold text-amber-500">₹</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1000}
+                      value={advancePaymentAmount}
+                      onChange={(e) => setAdvancePaymentAmount(e.target.value ? Number(e.target.value) : 0)}
+                      placeholder="0"
+                      className="w-full pl-7 pr-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    />
+                  </div>
+                  {Number(advancePaymentAmount) > 0 && (
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold block mt-1">
+                      {formatINR(Number(advancePaymentAmount))} advance secured
                     </span>
                   )}
                 </div>

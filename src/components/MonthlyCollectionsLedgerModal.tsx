@@ -44,6 +44,7 @@ export const MonthlyCollectionsLedgerModal: React.FC<MonthlyCollectionsLedgerMod
       id: string;
       date: string;
       amount: number;
+      isAdvance?: boolean;
       paymentMethod: string;
       referenceNumber?: string;
       notes?: string;
@@ -60,6 +61,7 @@ export const MonthlyCollectionsLedgerModal: React.FC<MonthlyCollectionsLedgerMod
           id: p.id,
           date: p.date,
           amount: p.amount,
+          isAdvance: p.isAdvance,
           paymentMethod: p.paymentMethod,
           referenceNumber: p.referenceNumber,
           notes: p.notes,
@@ -547,8 +549,15 @@ export const MonthlyCollectionsLedgerModal: React.FC<MonthlyCollectionsLedgerMod
                             </span>
                           </td>
 
-                          <td className="p-3 text-right font-mono font-black text-emerald-600 dark:text-emerald-400 text-sm">
-                            {formatINR(tx.amount)}
+                          <td className="p-3 text-right">
+                            <span className="font-mono font-black text-emerald-600 dark:text-emerald-400 text-sm block">
+                              {formatINR(tx.amount)}
+                            </span>
+                            {tx.isAdvance && (
+                              <span className="inline-block px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-800">
+                                Advance
+                              </span>
+                            )}
                           </td>
 
                           <td className="p-3">

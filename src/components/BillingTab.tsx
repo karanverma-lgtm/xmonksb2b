@@ -42,6 +42,7 @@ import {
   Briefcase,
   Layers,
   ArrowUpRight,
+  Key,
 } from "lucide-react";
 import {
   BillingRecord,
@@ -49,6 +50,7 @@ import {
   BillingPaymentDefault,
   BillingDocument,
   BillingStatus,
+  VendorCredential,
 } from "@/types/billing";
 import { Lead } from "@/types/lead";
 import {
@@ -56,10 +58,14 @@ import {
   saveBillingRecord,
   deleteBillingRecord,
   addPaymentToBillingRecord,
+  unrecordPaymentFromBillingRecord,
   addDefaultToBillingRecord,
   resolveDefaultInBillingRecord,
   addDocumentToBillingRecord,
   removeDocumentFromBillingRecord,
+  addCredentialToBillingRecord,
+  updateCredentialInBillingRecord,
+  removeCredentialFromBillingRecord,
   exportBillingRecordsToCSV,
   migrateLeadToBilling,
   syncBillingWithLeads,
@@ -522,6 +528,29 @@ export const BillingTab: React.FC<BillingTabProps> = ({
 
   const handleRemoveDocument = (recordId: string, documentId: string) => {
     removeDocumentFromBillingRecord(recordId, documentId);
+  };
+
+  const handleUnrecordPayment = (recordId: string, paymentId: string) => {
+    unrecordPaymentFromBillingRecord(recordId, paymentId);
+  };
+
+  const handleAddCredential = (
+    recordId: string,
+    credential: Omit<VendorCredential, "id" | "createdAt" | "updatedAt">
+  ) => {
+    addCredentialToBillingRecord(recordId, credential);
+  };
+
+  const handleUpdateCredential = (
+    recordId: string,
+    credentialId: string,
+    updates: Partial<VendorCredential>
+  ) => {
+    updateCredentialInBillingRecord(recordId, credentialId, updates);
+  };
+
+  const handleRemoveCredential = (recordId: string, credentialId: string) => {
+    removeCredentialFromBillingRecord(recordId, credentialId);
   };
 
   return (
@@ -1508,6 +1537,16 @@ export const BillingTab: React.FC<BillingTabProps> = ({
                       </a>
                     )}
 
+                    {record.credentials && record.credentials.length > 0 && (
+                      <span
+                        className="inline-flex items-center space-x-1 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-md border border-indigo-200/60"
+                        title={`${record.credentials.length} platform credential(s) stored`}
+                      >
+                        <Key className="w-2.5 h-2.5 text-indigo-500 shrink-0" />
+                        <span>{record.credentials.length} Platform Login{record.credentials.length > 1 ? "s" : ""}</span>
+                      </span>
+                    )}
+
                     {record.owner && (
                       <span className="text-[10px] text-slate-400">
                         Owner: <span className="font-semibold text-slate-600 dark:text-slate-300">{record.owner}</span>
@@ -1562,9 +1601,19 @@ export const BillingTab: React.FC<BillingTabProps> = ({
 
                       <div className="text-right">
                         <span className="text-[10px] text-slate-400 uppercase font-bold block">Received</span>
-                        <span className="font-mono font-black text-emerald-600 dark:text-emerald-400 text-sm">
-                          {formatINR(record.amountReceived)}
-                        </span>
+                        <div className="flex items-center justify-end space-x-1">
+                          <span className="font-mono font-black text-emerald-600 dark:text-emerald-400 text-sm">
+                            {formatINR(record.amountReceived)}
+                          </span>
+                        </div>
+                        {Number(record.advancePaymentAmount || 0) > 0 && (
+                          <span
+                            className="text-[9px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800/80 inline-block mt-0.5"
+                            title="Advance payment received"
+                          >
+                            Adv: {formatINR(record.advancePaymentAmount || 0)}
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -1745,11 +1794,22 @@ export const BillingTab: React.FC<BillingTabProps> = ({
                         <span className="font-semibold text-slate-800 dark:text-slate-200 block truncate max-w-[200px]" title={r.projectName}>
                           {r.projectName}
                         </span>
-                        {r.contractNumber && (
-                          <span className="text-[10px] text-slate-400 font-mono">
-                            {r.contractNumber}
-                          </span>
-                        )}
+                        <div className="flex items-center space-x-1.5 mt-0.5">
+                          {r.contractNumber && (
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {r.contractNumber}
+                            </span>
+                          )}
+                          {r.credentials && r.credentials.length > 0 && (
+                            <span
+                              className="inline-flex items-center space-x-1 text-[9px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded border border-indigo-200/60"
+                              title={`${r.credentials.length} platform credential(s) stored`}
+                            >
+                              <Key className="w-2.5 h-2.5" />
+                              <span>{r.credentials.length} Login{r.credentials.length > 1 ? "s" : ""}</span>
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="p-4 text-right font-mono font-black text-slate-900 dark:text-white">
@@ -1786,11 +1846,21 @@ export const BillingTab: React.FC<BillingTabProps> = ({
                             <span className="font-mono font-black text-emerald-600 dark:text-emerald-400 block">
                               {formatINR(r.amountReceived)}
                             </span>
-                            <span className="text-[10px] text-slate-400">
-                              {r.projectAmount > 0
-                                ? `${Math.round(((r.amountReceived || 0) / r.projectAmount) * 100)}%`
-                                : "0%"}
-                            </span>
+                            <div className="flex items-center justify-end space-x-1">
+                              <span className="text-[10px] text-slate-400">
+                                {r.projectAmount > 0
+                                  ? `${Math.round(((r.amountReceived || 0) / r.projectAmount) * 100)}%`
+                                  : "0%"}
+                              </span>
+                              {Number(r.advancePaymentAmount || 0) > 0 && (
+                                <span
+                                  className="text-[9px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-200 dark:border-amber-800/80"
+                                  title="Advance payment received"
+                                >
+                                  Adv: {formatINR(r.advancePaymentAmount || 0)}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         )}
                       </td>
@@ -1924,6 +1994,10 @@ export const BillingTab: React.FC<BillingTabProps> = ({
         onResolveDefault={handleResolveDefault}
         onAddDocument={handleAddDocument}
         onRemoveDocument={handleRemoveDocument}
+        onUnrecordPayment={handleUnrecordPayment}
+        onAddCredential={handleAddCredential}
+        onUpdateCredential={handleUpdateCredential}
+        onRemoveCredential={handleRemoveCredential}
         currentUser={currentUser}
       />
 

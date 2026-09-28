@@ -8,6 +8,7 @@ export interface BillingPayment {
   notes?: string;
   recordedBy?: string;
   createdAt?: string;
+  isAdvance?: boolean; // Tagged as Advance Payment Received
 }
 
 export interface BillingPaymentDefault {
@@ -34,6 +35,17 @@ export interface BillingDocument {
   storagePath?: string;
   uploadedAt: string;
   uploadedBy: string;
+}
+
+export interface VendorCredential {
+  id: string;
+  platformUrl?: string; // URL of vendor/client platform
+  platformName?: string; // Optional friendly label e.g. "Vendor Admin Portal", "Client LMS"
+  usernameOrEmail: string; // Username or Email
+  password?: string; // Password (masked with show/hide toggle and copy)
+  description?: string; // Notes / instructions / OTP / VPN requirements
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface VendorInfo {
@@ -97,6 +109,7 @@ export interface BillingRecord {
   // 3. Amount Received Till Now
   amountReceived: number; // In INR
   pendingAmount: number; // projectAmount - amountReceived
+  advancePaymentAmount?: number; // Field to track Advance Payment Received in INR
   paymentHistory: BillingPayment[];
 
   // 4. Any Payment Defaults
@@ -111,6 +124,9 @@ export interface BillingRecord {
 
   // 6. Company Documents
   documents: BillingDocument[];
+
+  // 7. Vendor Platform Credentials (New Tab)
+  credentials?: VendorCredential[];
 
   // Audit Fields
   notes?: string;
