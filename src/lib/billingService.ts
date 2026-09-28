@@ -20,6 +20,7 @@ import { Lead } from "@/types/lead";
 
 const BILLING_COLLECTION = "b2b_billing_records";
 const BILLING_STORAGE_KEY = "xmonks_b2b_billing_records";
+const BILLING_INITIALIZED_KEY = "xmonks_b2b_billing_initialized_v2";
 
 // Initial Demo Seed Records
 export const INITIAL_BILLING_RECORDS: BillingRecord[] = [
@@ -440,21 +441,27 @@ export const INITIAL_BILLING_RECORDS: BillingRecord[] = [
 // --- LOCAL STORAGE HELPERS ---
 
 export function getStoredBillingRecords(): BillingRecord[] {
-  if (typeof window === "undefined") return INITIAL_BILLING_RECORDS;
+  if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(BILLING_STORAGE_KEY);
-    if (raw) {
+    if (raw !== null) {
       const parsed: BillingRecord[] = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+      if (Array.isArray(parsed)) {
+        return parsed; // Can be empty array [] if user deleted all records
       }
+    }
+
+    // Only seed on brand new first-time setup if never initialized
+    const isInitialized = localStorage.getItem(BILLING_INITIALIZED_KEY) === "true";
+    if (!isInitialized) {
+      localStorage.setItem(BILLING_INITIALIZED_KEY, "true");
+      saveLocalBillingRecords(INITIAL_BILLING_RECORDS);
+      return INITIAL_BILLING_RECORDS;
     }
   } catch (e) {
     console.warn("Error reading billing records from localStorage", e);
   }
-  // Initialize with seed data
-  saveLocalBillingRecords(INITIAL_BILLING_RECORDS);
-  return INITIAL_BILLING_RECORDS;
+  return [];
 }
 
 export function saveLocalBillingRecords(records: BillingRecord[]): void {
@@ -488,16 +495,33 @@ export function subscribeToBillingRecords(
             id: d.id,
             ...(d.data() as Omit<BillingRecord, "id">),
           }));
+          if (typeof window !== "undefined") {
+            localStorage.setItem(BILLING_INITIALIZED_KEY, "true");
+          }
           saveLocalBillingRecords(firestoreRecords);
           onData(firestoreRecords, true);
         } else {
-          // Seed Firestore with initial records
-          const initial = getStoredBillingRecords();
-          initial.forEach((item) => {
-            const docRef = doc(db, BILLING_COLLECTION, item.id);
-            setDoc(docRef, item, { merge: true }).catch(() => {});
-          });
-          onData(initial, true);
+          // Snapshot is empty: Check if brand-new install vs user intentionally deleted all records
+          const isInitialized =
+            typeof window !== "undefined" &&
+            localStorage.getItem(BILLING_INITIALIZED_KEY) === "true";
+
+          if (!isInitialized) {
+            // First time setup only: Seed initial records
+            if (typeof window !== "undefined") {
+              localStorage.setItem(BILLING_INITIALIZED_KEY, "true");
+            }
+            saveLocalBillingRecords(INITIAL_BILLING_RECORDS);
+            INITIAL_BILLING_RECORDS.forEach((item) => {
+              const docRef = doc(db, BILLING_COLLECTION, item.id);
+              setDoc(docRef, item, { merge: true }).catch(() => {});
+            });
+            onData(INITIAL_BILLING_RECORDS, true);
+          } else {
+            // User deleted all records: Keep it empty! DO NOT resurrect demo data!
+            saveLocalBillingRecords([]);
+            onData([], true);
+          }
         }
       },
       (error) => {
@@ -596,6 +620,11 @@ export function saveBillingRecord(
 }
 
 export function deleteBillingRecord(recordId: string): void {
+  // Ensure initialized flag is saved so empty state is never overwritten by demo records
+  if (typeof window !== "undefined") {
+    localStorage.setItem(BILLING_INITIALIZED_KEY, "true");
+  }
+
   // 1. Update local storage
   const current = getStoredBillingRecords();
   const filtered = current.filter((r) => r.id !== recordId);
@@ -610,6 +639,28 @@ export function deleteBillingRecord(recordId: string): void {
       );
     } catch (e) {
       console.warn("Firestore delete billing error:", e);
+    }
+  }
+}
+
+/**
+ * Permanently deletes multiple billing records from Firestore and localStorage without auto re-seeding.
+ */
+export async function clearAllBillingRecords(records: BillingRecord[]): Promise<void> {
+  if (typeof window !== "undefined") {
+    localStorage.setItem(BILLING_INITIALIZED_KEY, "true");
+  }
+  saveLocalBillingRecords([]);
+
+  if (typeof window !== "undefined" && records.length > 0) {
+    try {
+      const promises = records.map((r) => {
+        const docRef = doc(db, BILLING_COLLECTION, r.id);
+        return deleteDoc(docRef).catch(() => {});
+      });
+      await Promise.all(promises);
+    } catch (e) {
+      console.warn("Firestore clear billing error:", e);
     }
   }
 }

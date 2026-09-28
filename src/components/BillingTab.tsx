@@ -71,6 +71,7 @@ import {
   exportBillingRecordsToCSV,
   migrateLeadToBilling,
   syncBillingWithLeads,
+  clearAllBillingRecords,
 } from "@/lib/billingService";
 import { formatINR, formatClosureMonth } from "@/lib/formatters";
 import { getLeadSourceBadgeStyle } from "@/constants/leadSources";
@@ -558,8 +559,28 @@ export const BillingTab: React.FC<BillingTabProps> = ({
 
   const handleDeleteRecord = (id: string, name: string) => {
     if (confirm(`Are you sure you want to delete the billing project "${name}"? This action cannot be undone.`)) {
-      deleteBillingRecord(id);
+      setRecords((prev) => prev.filter((r) => r.id !== id));
       if (viewingRecord?.id === id) setViewingRecord(null);
+      deleteBillingRecord(id);
+    }
+  };
+
+  // Demo Record IDs
+  const DEMO_IDS = useMemo(() => ["bill-zenith-001", "bill-apex-002", "bill-quantum-003", "bill-nova-004"], []);
+  const hasDemoRecords = useMemo(() => records.some((r) => DEMO_IDS.includes(r.id)), [records, DEMO_IDS]);
+
+  const handleClearDemoRecords = async () => {
+    if (
+      confirm(
+        "Are you sure you want to permanently delete all sample demo billing records? This action cannot be undone."
+      )
+    ) {
+      const demoRecordsToDelete = records.filter((r) => DEMO_IDS.includes(r.id));
+      setRecords((prev) => prev.filter((r) => !DEMO_IDS.includes(r.id)));
+      if (viewingRecord && DEMO_IDS.includes(viewingRecord.id)) {
+        setViewingRecord(null);
+      }
+      await clearAllBillingRecords(demoRecordsToDelete);
     }
   };
 
@@ -675,6 +696,17 @@ export const BillingTab: React.FC<BillingTabProps> = ({
               </span>
             )}
           </button>
+
+          {canViewAllBilling && hasDemoRecords && (
+            <button
+              onClick={handleClearDemoRecords}
+              className="flex items-center space-x-1.5 px-3.5 py-2.5 bg-rose-950/80 hover:bg-rose-900 text-rose-300 hover:text-white border border-rose-800/80 rounded-xl text-xs font-bold transition shadow-sm"
+              title="Delete all initial sample demo records permanently"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+              <span>Clear Demo Data</span>
+            </button>
+          )}
 
           <button
             onClick={() =>
