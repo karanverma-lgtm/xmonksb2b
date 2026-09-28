@@ -18,12 +18,13 @@ import {
   KeyRound,
   SendHorizontal,
   Receipt,
+  Sparkles,
 } from "lucide-react";
 
 import { formatINR } from "@/lib/formatters";
 import { UserAccount } from "@/constants/users";
 
-export type NavTab = "kanban" | "table" | "outreach" | "analytics" | "email" | "billing" | "developer";
+export type NavTab = "kanban" | "table" | "outreach" | "analytics" | "email" | "prospector" | "billing" | "developer";
 
 interface NavbarProps {
   activeTab: NavTab;
@@ -148,6 +149,18 @@ export const Navbar: React.FC<NavbarProps> = ({
                 >
                   <Mail className="w-3.5 h-3.5 text-purple-500" />
                   <span>Emails</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab("prospector")}
+                  className={`flex items-center space-x-1 xl:space-x-1.5 px-2 xl:px-2.5 py-1 xl:py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                    activeTab === "prospector"
+                      ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm border border-indigo-200/50 dark:border-indigo-700/50"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>Prospector</span>
                 </button>
               </>
             )}
@@ -363,6 +376,18 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Mail className="w-3.5 h-3.5 text-purple-500" />
               <span>Emails</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("prospector")}
+              className={`flex-1 py-1.5 text-xs font-semibold text-center flex items-center justify-center space-x-1 rounded-lg ${
+                activeTab === "prospector"
+                  ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                  : "text-slate-500"
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Prospect</span>
             </button>
           </>
         )}

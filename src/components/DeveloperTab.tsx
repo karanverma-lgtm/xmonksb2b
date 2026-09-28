@@ -46,6 +46,12 @@ import {
   testGeminiApiKey,
   fetchEnvGeminiConfig,
 } from "@/lib/geminiService";
+import {
+  getStoredSalesQLKey,
+  saveSalesQLKey,
+  fetchEnvSalesQLConfig,
+  testSalesQLApiKey,
+} from "@/lib/salesqlService";
 
 export interface DeveloperTabProps {
   onOpenChangePassword?: () => void;
@@ -109,6 +115,20 @@ export const DeveloperTab: React.FC<DeveloperTabProps> = ({ onOpenChangePassword
     maskedKey: string;
   } | null>(null);
 
+  // SalesQL Integration State
+  const [salesqlKey, setSalesqlKey] = useState<string>("");
+  const [showSalesqlKey, setShowSalesqlKey] = useState<boolean>(false);
+  const [isTestingSalesql, setIsTestingSalesql] = useState<boolean>(false);
+  const [salesqlTestResult, setSalesqlTestResult] = useState<{
+    status: "idle" | "success" | "error";
+    message: string;
+  }>({ status: "idle", message: "" });
+  const [envSalesqlInfo, setEnvSalesqlInfo] = useState<{
+    hasEnvKey: boolean;
+    envKey: string;
+    maskedKey: string;
+  } | null>(null);
+
   // Subscribe to real-time Gemini Key & check .env
   useEffect(() => {
     const local = getStoredGeminiKey();
@@ -128,6 +148,19 @@ export const DeveloperTab: React.FC<DeveloperTabProps> = ({ onOpenChangePassword
     });
 
     return () => unsubGemini();
+  }, []);
+
+  // Subscribe to SalesQL Key & check .env
+  useEffect(() => {
+    const local = getStoredSalesQLKey();
+    if (local) setSalesqlKey(local);
+
+    fetchEnvSalesQLConfig().then((info) => {
+      setEnvSalesqlInfo(info);
+      if (!local && info.hasEnvKey && info.envKey) {
+        setSalesqlKey(info.envKey);
+      }
+    });
   }, []);
 
   const handleSaveGemini = () => {
@@ -185,6 +218,63 @@ export const DeveloperTab: React.FC<DeveloperTabProps> = ({ onOpenChangePassword
       setGeminiKey(envGeminiInfo.envKey);
       setGeminiTestResult({ status: "idle", message: "" });
       showToast("Loaded Gemini API key from .env file!");
+    }
+  };
+
+  const handleSaveSalesql = () => {
+    if (!salesqlKey.trim()) {
+      setSalesqlTestResult({
+        status: "error",
+        message: "Please enter a valid SalesQL API Key to save.",
+      });
+      return;
+    }
+    saveSalesQLKey(salesqlKey.trim());
+    showToast("✨ SalesQL API Key saved!");
+  };
+
+  const handleTestSalesql = async () => {
+    const keyToTest = salesqlKey.trim();
+    if (!keyToTest) {
+      setSalesqlTestResult({
+        status: "error",
+        message: "No SalesQL API Key provided. Enter a key or click 'Load from .env'.",
+      });
+      return;
+    }
+
+    setIsTestingSalesql(true);
+    setSalesqlTestResult({ status: "idle", message: "" });
+
+    try {
+      const res = await testSalesQLApiKey(keyToTest);
+      if (res.success) {
+        setSalesqlTestResult({
+          status: "success",
+          message: res.message || "SalesQL API authenticated and operational!",
+        });
+        showToast("✅ SalesQL API Key is valid and active!");
+      } else {
+        setSalesqlTestResult({
+          status: "error",
+          message: res.error || "Failed to verify SalesQL API Key.",
+        });
+      }
+    } catch (e: unknown) {
+      setSalesqlTestResult({
+        status: "error",
+        message: e instanceof Error ? e.message : "Error verifying SalesQL API Key.",
+      });
+    } finally {
+      setIsTestingSalesql(false);
+    }
+  };
+
+  const handleLoadSalesqlFromEnv = () => {
+    if (envSalesqlInfo?.envKey) {
+      setSalesqlKey(envSalesqlInfo.envKey);
+      setSalesqlTestResult({ status: "idle", message: "" });
+      showToast("Loaded SalesQL API key from .env file!");
     }
   };
 
@@ -729,6 +819,160 @@ export const DeveloperTab: React.FC<DeveloperTabProps> = ({ onOpenChangePassword
               >
                 <Save className="w-3.5 h-3.5" />
                 <span>Save Gemini Key</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* SALESQL PROSPECTING INTEGRATION CARD */}
+      <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex items-center space-x-3.5">
+            <div className="p-3 bg-gradient-to-br from-indigo-500/20 to-teal-500/20 border border-indigo-500/30 rounded-2xl text-indigo-500">
+              <Zap className="w-6 h-6 text-indigo-500" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h3 className="font-extrabold text-sm uppercase tracking-wider text-slate-900 dark:text-white flex items-center space-x-2">
+                  <span>SalesQL Prospecting Engine</span>
+                </h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/30">
+                  Powers Prospector Tab
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Integrates SalesQL API to enrich companies, uncover executive decision-maker work emails, verified direct phones, and professional backgrounds.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2 self-start sm:self-auto">
+            {salesqlKey ? (
+              <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>SalesQL Connected</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>API Key Missing</span>
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* SalesQL Test Feedback Banner */}
+        {salesqlTestResult.status === "success" && (
+          <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-semibold flex items-center justify-between animate-fadeIn">
+            <div className="flex items-center space-x-3">
+              <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+              <div>
+                <span className="font-bold text-sm block">SalesQL API Authenticated & Operational!</span>
+                <span>{salesqlTestResult.message}</span>
+              </div>
+            </div>
+            <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold">
+              v1 Live API
+            </span>
+          </div>
+        )}
+
+        {salesqlTestResult.status === "error" && (
+          <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center space-x-3 animate-fadeIn">
+            <AlertTriangle className="w-5 h-5 text-rose-500 flex-shrink-0" />
+            <div>
+              <span className="font-bold text-sm block">SalesQL Verification Failed</span>
+              <span>{salesqlTestResult.message}</span>
+            </div>
+          </div>
+        )}
+
+        {/* SalesQL API Key Form & Actions */}
+        <div className="space-y-4">
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center space-x-2">
+                <KeyRound className="w-3.5 h-3.5 text-indigo-500" />
+                <span>SalesQL API Secret Token</span>
+              </label>
+
+              {envSalesqlInfo?.hasEnvKey && (
+                <button
+                  type="button"
+                  onClick={handleLoadSalesqlFromEnv}
+                  className="text-[11px] font-semibold text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 hover:underline flex items-center space-x-1"
+                  title="Load key from project .env file (salesql_api)"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  <span>Detected in .env under salesql_api ({envSalesqlInfo.maskedKey})</span>
+                </button>
+              )}
+            </div>
+
+            <div className="relative">
+              <input
+                type={showSalesqlKey ? "text" : "password"}
+                value={salesqlKey}
+                onChange={(e) => {
+                  setSalesqlKey(e.target.value);
+                  setSalesqlTestResult({ status: "idle", message: "" });
+                }}
+                placeholder="Paste SalesQL Bearer Token (e.g. 1wQPhjdvp9I8XjF1kIPyhgJ6onxA1Vet)"
+                className="w-full pl-3.5 pr-20 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-500 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setShowSalesqlKey(!showSalesqlKey)}
+                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+                title={showSalesqlKey ? "Hide key" : "Show key"}
+              >
+                {showSalesqlKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1">
+              Token is loaded directly from your <code className="font-mono bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-teal-600 dark:text-teal-400">.env</code> (<code className="font-mono text-[10px]">salesql_api</code>) or can be updated here for the workspace.
+            </p>
+          </div>
+
+          {/* Endpoints Info & Actions */}
+          <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-800">
+            <div className="flex items-center flex-wrap gap-2 text-xs text-slate-500">
+              <span className="font-medium text-[11px]">Enabled Endpoints:</span>
+              <span className="px-2 py-0.5 rounded-md font-mono text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-750">
+                organizations/enrich
+              </span>
+              <span className="px-2 py-0.5 rounded-md font-mono text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-750">
+                persons/enrich
+              </span>
+              <span className="px-2 py-0.5 rounded-md font-mono text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-750">
+                persons/email_lookup
+              </span>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={handleTestSalesql}
+                disabled={isTestingSalesql || !salesqlKey.trim()}
+                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl transition flex items-center space-x-1.5 disabled:opacity-50"
+              >
+                {isTestingSalesql ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-500" />
+                ) : (
+                  <RefreshCw className="w-3.5 h-3.5 text-teal-500" />
+                )}
+                <span>Test SalesQL Key</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveSalesql}
+                disabled={!salesqlKey.trim()}
+                className="px-5 py-2 bg-gradient-to-r from-teal-600 to-indigo-600 hover:from-teal-700 hover:to-indigo-700 text-white font-bold text-xs rounded-xl shadow-md shadow-teal-500/20 transition flex items-center space-x-1.5 disabled:opacity-50"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>Save SalesQL Key</span>
               </button>
             </div>
           </div>
