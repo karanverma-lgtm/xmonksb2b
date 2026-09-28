@@ -28,7 +28,7 @@ import {
   RotateCcw,
   Radio,
 } from "lucide-react";
-import { ColdClient, ColdClientStatus, OutreachChannel } from "@/types/outreach";
+import { ColdClient, ColdClientStatus, ColdStatusConfig, OutreachChannel } from "@/types/outreach";
 import { COLD_STATUS_CONFIG, OUTREACH_CHANNELS, OUTREACH_INDUSTRIES } from "@/constants/outreach";
 import { UserAccount, VALID_USERS } from "@/constants/users";
 import { formatINR } from "@/lib/formatters";
@@ -80,6 +80,24 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
   onNavigateToEmailTab,
   onFilteredCountChange,
 }) => {
+  // Safe helper to resolve status config with rock-solid fallback
+  const getStatusConfig = (status?: string): ColdStatusConfig => {
+    if (status && status in COLD_STATUS_CONFIG) {
+      return COLD_STATUS_CONFIG[status as ColdClientStatus];
+    }
+    return (
+      COLD_STATUS_CONFIG.uncontacted || {
+        id: "uncontacted" as ColdClientStatus,
+        label: status || "Cold / Uncontacted",
+        badgeBg: "bg-slate-100 dark:bg-slate-800/80",
+        badgeText: "text-slate-700 dark:text-slate-300",
+        borderColor: "border-slate-300 dark:border-slate-700",
+        headerBg: "bg-slate-50 dark:bg-slate-900/50",
+        iconName: "Snowflake",
+        description: "Prospective corporate client identified.",
+      }
+    );
+  };
   const [viewMode, setViewMode] = useState<"board" | "table">("board");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
@@ -615,7 +633,16 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
         <div className="w-full overflow-x-auto pb-4">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-4 items-start min-w-[720px] 2xl:min-w-0">
           {boardColumns.map((col) => {
-            const colClients = filteredClients.filter((c) => col.statusList.includes(c.status));
+            const colClients = filteredClients.filter((c) => {
+              if (col.id === "cold") {
+                return (
+                  col.statusList.includes(c.status) ||
+                  !c.status ||
+                  !COLD_STATUS_CONFIG[c.status]
+                );
+              }
+              return col.statusList.includes(c.status);
+            });
 
             return (
               <div
@@ -642,12 +669,13 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
                     </div>
                   ) : (
                     colClients.map((client) => {
-                      const cfg = COLD_STATUS_CONFIG[client.status];
-                      const isDue =
+                      const cfg = getStatusConfig(client.status);
+                      const isDue = Boolean(
                         client.nextFollowUpDate &&
                         client.nextFollowUpDate <= todayStr &&
                         client.status !== "converted" &&
-                        client.status !== "not_interested";
+                        client.status !== "not_interested"
+                      );
 
                       return (
                         <div
@@ -747,41 +775,42 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
                   </tr>
                 ) : (
                   filteredClients.map((client) => {
-                    const cfg = COLD_STATUS_CONFIG[client.status];
-                    const isDue =
+                    const cfg = getStatusConfig(client.status);
+                    const isDue = Boolean(
                       client.nextFollowUpDate &&
                       client.nextFollowUpDate <= todayStr &&
                       client.status !== "converted" &&
-                      client.status !== "not_interested";
+                      client.status !== "not_interested"
+                    );
 
                     return (
                       <tr
-                        key={client.id}
+                        key={client.id || `${client.companyName}-${Math.random()}`}
                         className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer group"
                         onClick={() => setSelectedClient(client)}
                       >
                         {/* Company & Contact */}
                         <td className="py-3 px-4">
                           <div className="font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                            {client.companyName}
+                            {client.companyName || "Unnamed Company"}
                           </div>
                           <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                            {client.contactName} {client.designation ? `• ${client.designation}` : ""}
+                            {client.contactName || "No Contact"} {client.designation ? `• ${client.designation}` : ""}
                           </div>
                         </td>
 
                         {/* Status */}
                         <td className="py-3 px-4 whitespace-nowrap">
                           <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${cfg.badgeBg} ${cfg.badgeText} ${cfg.borderColor}`}
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${cfg?.badgeBg || "bg-slate-100"} ${cfg?.badgeText || "text-slate-700"} ${cfg?.borderColor || "border-slate-300"}`}
                           >
-                            {cfg.label}
+                            {cfg?.label || client.status || "Cold / Uncontacted"}
                           </span>
                         </td>
 
                         {/* Channel */}
                         <td className="py-3 px-4 uppercase text-[10px] font-semibold text-slate-600 dark:text-slate-400">
-                          {client.channel}
+                          {client.channel || "OUTREACH"}
                         </td>
 
                         {/* Target Offering */}
@@ -791,7 +820,7 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
 
                         {/* Potential Value */}
                         <td className="py-3 px-4 font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
-                          {formatINR(client.estimatedPotentialValue || 0)}
+                          {formatINR(Number(client.estimatedPotentialValue) || 0)}
                         </td>
 
                         {/* Next Follow-Up */}
@@ -819,7 +848,7 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
 
                         {/* Owner */}
                         <td className="py-3 px-4 text-slate-600 dark:text-slate-400 font-medium">
-                          {client.owner}
+                          {client.owner || "Unassigned"}
                         </td>
 
                         {/* Actions */}
