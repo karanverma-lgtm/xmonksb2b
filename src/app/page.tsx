@@ -326,11 +326,13 @@ export default function Home() {
   // Admin can see ALL leads. Regular users (e.g. Ruby) see ONLY their own assigned leads.
   const userScopedLeads = useMemo(() => {
     if (!currentUser) return [];
-    const isAdmin =
+    const isSuperUser =
       currentUser.username.toLowerCase() === "admin" ||
-      currentUser.role.toLowerCase().includes("admin");
+      currentUser.role.toLowerCase().includes("admin") ||
+      currentUser.username.toLowerCase() === "accounts" ||
+      currentUser.role.toLowerCase().includes("accounts");
 
-    if (isAdmin) return leads;
+    if (isSuperUser) return leads;
 
     const activeName = (currentUser.name || "").toLowerCase().trim();
     const activeUser = (currentUser.username || "").toLowerCase().trim();
@@ -826,6 +828,7 @@ export default function Home() {
         {activeTab === "billing" && (
           <BillingTab
             leads={userScopedLeads}
+            allLeads={leads}
             currentUser={currentUser}
             isAdmin={isAdmin}
           />

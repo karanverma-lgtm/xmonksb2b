@@ -149,7 +149,7 @@ export const INITIAL_BILLING_RECORDS: BillingRecord[] = [
     createdAtMs: 1768456800000,
     updatedAt: "15 Jul 2026, 04:45 pm",
     createdBy: "Ruby Dayal",
-    owner: "ruby",
+    owner: "Ruby",
   },
   {
     id: "bill-apex-002",
@@ -247,7 +247,7 @@ export const INITIAL_BILLING_RECORDS: BillingRecord[] = [
     createdAtMs: 1772346000000,
     updatedAt: "22 May 2026, 11:30 am",
     createdBy: "Amit",
-    owner: "amit",
+    owner: "Amit",
   },
   {
     id: "bill-quantum-003",
@@ -331,7 +331,7 @@ export const INITIAL_BILLING_RECORDS: BillingRecord[] = [
     createdAtMs: 1769922000000,
     updatedAt: "28 May 2026, 03:20 pm",
     createdBy: "Ruby Dayal",
-    owner: "ruby",
+    owner: "Ruby",
   },
   {
     id: "bill-nova-004",
@@ -432,8 +432,8 @@ export const INITIAL_BILLING_RECORDS: BillingRecord[] = [
     createdAt: "01 Sep 2025, 10:00 am",
     createdAtMs: 1756708800000,
     updatedAt: "26 Jun 2026, 01:10 pm",
-    createdBy: "Ruby Dayal",
-    owner: "ruby",
+    createdBy: "Gaurav",
+    owner: "Gaurav",
   },
 ];
 
@@ -886,7 +886,10 @@ export async function uploadBillingFile(
 }
 
 // Export Billing Records to CSV
-export function exportBillingRecordsToCSV(records: BillingRecord[]): void {
+export function exportBillingRecordsToCSV(
+  records: BillingRecord[],
+  filenamePrefix = "xMonks_B2B_Billing_Report"
+): void {
   if (records.length === 0) {
     alert("No billing records to export.");
     return;
@@ -913,6 +916,7 @@ export function exportBillingRecordsToCSV(records: BillingRecord[]): void {
     "Defaulted Amount (INR)",
     "Total Payments Count",
     "Total Documents Count",
+    "Account Partner",
     "Created Date",
   ];
 
@@ -943,6 +947,7 @@ export function exportBillingRecordsToCSV(records: BillingRecord[]): void {
     r.defaultedAmount || 0,
     r.paymentHistory?.length || 0,
     r.documents?.length || 0,
+    escapeCSV(r.owner || ""),
     escapeCSV(r.createdAt || ""),
   ]);
 
@@ -955,7 +960,7 @@ export function exportBillingRecordsToCSV(records: BillingRecord[]): void {
   link.setAttribute("href", encodedUri);
   link.setAttribute(
     "download",
-    `xMonks_B2B_Billing_Report_${new Date().toISOString().split("T")[0]}.csv`
+    `${filenamePrefix}_${new Date().toISOString().split("T")[0]}.csv`
   );
   document.body.appendChild(link);
   link.click();
@@ -975,6 +980,7 @@ export function migrateLeadToBilling(
     startDate?: string;
     contractNumber?: string;
     projectName?: string;
+    owner?: string;
   }
 ): BillingRecord {
   const timestamp = Date.now();
@@ -1033,7 +1039,7 @@ export function migrateLeadToBilling(
     pipelineWeightage: lead.weightage,
     approachNote: lead.approachNote,
     tags: lead.tags,
-    owner: lead.owner,
+    owner: customizations?.owner || lead.owner || "Amit",
     projectAmount: lead.dealValue || 1000000,
     tenureMonths: tenure,
     startDate: today,
@@ -1118,7 +1124,7 @@ export function syncBillingWithLeads(
       updatedVendor.designation = lead.designation;
       hasChanges = true;
     }
-    if (lead.owner && !record.owner) {
+    if (lead.owner && record.owner !== lead.owner) {
       record.owner = lead.owner;
       hasChanges = true;
     }

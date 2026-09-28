@@ -43,6 +43,8 @@ import {
   Layers,
   ArrowUpRight,
   Key,
+  Shield,
+  ShieldCheck,
 } from "lucide-react";
 import {
   BillingRecord,
@@ -81,12 +83,14 @@ import { MonthlyCollectionsLedgerModal } from "./MonthlyCollectionsLedgerModal";
 
 interface BillingTabProps {
   leads?: Lead[];
-  currentUser?: { name?: string; username?: string } | null;
+  allLeads?: Lead[];
+  currentUser?: { name?: string; username?: string; role?: string } | null;
   isAdmin?: boolean;
 }
 
 export const BillingTab: React.FC<BillingTabProps> = ({
   leads = [],
+  allLeads = [],
   currentUser,
   isAdmin = false,
 }) => {
@@ -127,7 +131,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({
   // Real-time Firestore Subscription & Auto-Sync with CRM Leads
   useEffect(() => {
     const unsub = subscribeToBillingRecords((data, isSyncing) => {
-      const synced = syncBillingWithLeads(data, leads);
+      const synced = syncBillingWithLeads(data, allLeads.length > 0 ? allLeads : leads);
       setRecords(synced);
       setIsFirebaseSyncing(isSyncing);
 
@@ -138,9 +142,64 @@ export const BillingTab: React.FC<BillingTabProps> = ({
       });
     });
     return () => unsub();
-  }, [leads]);
+  }, [leads, allLeads]);
 
-  // Aggregate monthly collection inflow across all records
+  // 1. Role-Based Visibility Control:
+  // Admin and Accounts can see ALL billing clients; Client Partners (e.g. Amit) see ONLY their own clients.
+  const isAccounts = useMemo(() => {
+    return Boolean(
+      currentUser?.username?.toLowerCase() === "accounts" ||
+      currentUser?.role?.toLowerCase().includes("accounts")
+    );
+  }, [currentUser]);
+
+  const isAdminUser = useMemo(() => {
+    return Boolean(
+      isAdmin ||
+      currentUser?.username?.toLowerCase() === "admin" ||
+      currentUser?.role?.toLowerCase().includes("admin")
+    );
+  }, [isAdmin, currentUser]);
+
+  const canViewAllBilling = isAdminUser || isAccounts;
+
+  // 2. Scoped records base: strictly restricted for Client Partners (e.g. Amit), full firm access for Admin/Accounts
+  const userScopedRecords = useMemo(() => {
+    if (!currentUser) return [];
+    if (canViewAllBilling) return records;
+
+    const activeName = (currentUser.name || "").toLowerCase().trim();
+    const activeUser = (currentUser.username || "").toLowerCase().trim();
+
+    return records.filter((r) => {
+      const recOwner = (r.owner || "").toLowerCase().trim();
+      const recCreated = (r.createdBy || "").toLowerCase().trim();
+
+      const matches = (target: string) => {
+        if (!target) return false;
+        return (
+          target === activeName ||
+          target === activeUser ||
+          (activeName.length > 0 && (target.includes(activeName) || activeName.includes(target))) ||
+          (activeUser.length > 0 && (target.includes(activeUser) || activeUser.includes(target)))
+        );
+      };
+
+      if (matches(recOwner) || matches(recCreated)) return true;
+
+      if (r.leadId) {
+        const leadPool = allLeads.length > 0 ? allLeads : leads;
+        const linkedLead = leadPool.find((l) => l.id === r.leadId);
+        if (linkedLead && matches((linkedLead.owner || "").toLowerCase().trim())) {
+          return true;
+        }
+      }
+
+      return false;
+    });
+  }, [records, canViewAllBilling, currentUser, leads, allLeads]);
+
+  // Aggregate monthly collection inflow across scoped records
   const monthlyCollectionStats = useMemo(() => {
     const map = new Map<
       string,
@@ -153,7 +212,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({
       }
     >();
 
-    records.forEach((r) => {
+    userScopedRecords.forEach((r) => {
       const projectMonths = new Set<string>();
       (r.paymentHistory || []).forEach((p) => {
         if (!p.date) return;
@@ -187,7 +246,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({
     });
 
     return Array.from(map.values()).sort((a, b) => b.monthKey.localeCompare(a.monthKey));
-  }, [records]);
+  }, [userScopedRecords]);
 
   // Available unique Owners & Programs for filters
   const availableOwners = useMemo(() => {
@@ -196,17 +255,18 @@ export const BillingTab: React.FC<BillingTabProps> = ({
       if (r.owner) set.add(r.owner.trim());
       if (r.createdBy) set.add(r.createdBy.trim());
     });
+    ["Amit", "Ruby", "Gaurav", "Preeti", "Nikhil"].forEach((p) => set.add(p));
     return Array.from(set).sort();
   }, [records]);
 
   const availablePrograms = useMemo(() => {
     const set = new Set<string>();
-    records.forEach((r) => {
+    userScopedRecords.forEach((r) => {
       if (r.program) set.add(r.program.trim());
       if (r.vendor?.program) set.add(r.vendor.program.trim());
     });
     return Array.from(set).sort();
-  }, [records]);
+  }, [userScopedRecords]);
 
   // Identify Closure/Won pipeline deals that haven't been migrated to billing yet
   const unmigratedClosureLeads = useMemo(() => {
@@ -235,9 +295,9 @@ export const BillingTab: React.FC<BillingTabProps> = ({
     setViewingRecord(created);
   };
 
-  // Filtered & Sorted Billing Records
+  // Filtered & Sorted Billing Records (Based on userScopedRecords)
   const filteredRecords = useMemo(() => {
-    const result = records.filter((r) => {
+    const result = userScopedRecords.filter((r) => {
       // 1. Show only defaults filter
       if (showOnlyDefaults && !r.hasDefaults) return false;
 
@@ -291,8 +351,8 @@ export const BillingTab: React.FC<BillingTabProps> = ({
         if (!hasMethod) return false;
       }
 
-      // 10. Owner filter
-      if (ownerFilter !== "all") {
+      // 10. Owner filter (Only active for Admin & Accounts who have firm-wide access)
+      if (canViewAllBilling && ownerFilter !== "all") {
         const matchOwner =
           (r.owner?.toLowerCase() === ownerFilter.toLowerCase()) ||
           (r.createdBy?.toLowerCase() === ownerFilter.toLowerCase());
@@ -350,7 +410,8 @@ export const BillingTab: React.FC<BillingTabProps> = ({
       return (b.createdAtMs || 0) - (a.createdAtMs || 0);
     });
   }, [
-    records,
+    userScopedRecords,
+    canViewAllBilling,
     searchTerm,
     statusFilter,
     paymentMonthFilter,
@@ -462,15 +523,15 @@ export const BillingTab: React.FC<BillingTabProps> = ({
     return paymentMonthFilter;
   }, [paymentMonthFilter, monthlyCollectionStats]);
 
-  // Executive KPI Calculations
+  // Executive KPI Calculations (Calculated from scoped records)
   const kpis = useMemo(() => {
-    const totalContractValue = records.reduce((acc, curr) => acc + (curr.projectAmount || 0), 0);
-    const totalCollected = records.reduce((acc, curr) => acc + (curr.amountReceived || 0), 0);
-    const totalPending = records.reduce((acc, curr) => acc + (curr.pendingAmount || 0), 0);
-    const defaultedProjects = records.filter((r) => r.hasDefaults);
+    const totalContractValue = userScopedRecords.reduce((acc, curr) => acc + (curr.projectAmount || 0), 0);
+    const totalCollected = userScopedRecords.reduce((acc, curr) => acc + (curr.amountReceived || 0), 0);
+    const totalPending = userScopedRecords.reduce((acc, curr) => acc + (curr.pendingAmount || 0), 0);
+    const defaultedProjects = userScopedRecords.filter((r) => r.hasDefaults);
     const totalDefaultedAmount = defaultedProjects.reduce((acc, curr) => acc + (curr.defaultedAmount || 0), 0);
-    const avgTenure = records.length > 0
-      ? (records.reduce((acc, curr) => acc + (curr.tenureMonths || 0), 0) / records.length).toFixed(1)
+    const avgTenure = userScopedRecords.length > 0
+      ? (userScopedRecords.reduce((acc, curr) => acc + (curr.tenureMonths || 0), 0) / userScopedRecords.length).toFixed(1)
       : "0";
     const collectionPercentage = totalContractValue > 0
       ? Math.round((totalCollected / totalContractValue) * 100)
@@ -485,7 +546,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({
       avgTenure,
       collectionPercentage,
     };
-  }, [records]);
+  }, [userScopedRecords]);
 
   // Handlers
   const handleSaveRecord = (
@@ -567,9 +628,26 @@ export const BillingTab: React.FC<BillingTabProps> = ({
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                 {isFirebaseSyncing ? "Live Firestore Connected" : "Local Storage Mode"}
               </span>
+              {canViewAllBilling ? (
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center space-x-1">
+                  <ShieldCheck className="w-3 h-3 text-blue-400" />
+                  <span>
+                    {isAccounts ? "Accounts Dept" : "Admin"}: Full Firm Access ({records.length} Total Projects)
+                  </span>
+                </span>
+              ) : (
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center space-x-1">
+                  <Shield className="w-3 h-3 text-emerald-400" />
+                  <span>
+                    Client Partner: {currentUser?.name || "Amit"} ({userScopedRecords.length} Assigned Project{userScopedRecords.length !== 1 ? "s" : ""})
+                  </span>
+                </span>
+              )}
             </div>
             <p className="text-xs text-emerald-200/80 mt-1 max-w-2xl leading-relaxed">
-              Track project values, contract tenures, received collections, payment defaults, vendor contact dossiers with logos/photos, and company compliance documents.
+              {canViewAllBilling
+                ? "Full firm financial control: Track all client project values, collections, payment defaults, credentials, and Cloudflare R2 invoices."
+                : `Dedicated client partner portfolio for ${currentUser?.name || "you"}: View and manage billing milestones, payment statuses, and credentials for your accounts only.`}
             </p>
           </div>
         </div>
@@ -599,9 +677,16 @@ export const BillingTab: React.FC<BillingTabProps> = ({
           </button>
 
           <button
-            onClick={() => exportBillingRecordsToCSV(records)}
+            onClick={() =>
+              exportBillingRecordsToCSV(
+                filteredRecords,
+                canViewAllBilling
+                  ? "xMonks_B2B_All_Billing_Export"
+                  : `xMonks_B2B_Billing_${currentUser?.name || "ClientPartner"}`
+              )
+            }
             className="flex items-center space-x-1.5 px-3.5 py-2.5 bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition shadow-sm"
-            title="Export all billing projects to CSV"
+            title="Export filtered billing projects to CSV"
           >
             <Download className="w-4 h-4 text-emerald-400" />
             <span className="hidden sm:inline">Export CSV</span>
@@ -637,7 +722,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({
               {formatINR(kpis.totalContractValue)}
             </span>
             <span className="text-[11px] text-slate-400 block mt-0.5">
-              Across {records.length} project commitments
+              Across {userScopedRecords.length} project commitments
             </span>
           </div>
         </div>
@@ -1076,18 +1161,25 @@ export const BillingTab: React.FC<BillingTabProps> = ({
             {/* Filter 6: Account Owner / Partner */}
             <div>
               <label className="font-bold text-slate-500 block mb-1">Account Partner / Owner</label>
-              <select
-                value={ownerFilter}
-                onChange={(e) => setOwnerFilter(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl font-semibold text-slate-800 dark:text-slate-200"
-              >
-                <option value="all">All Owners</option>
-                {availableOwners.map((own) => (
-                  <option key={own} value={own}>
-                    {own}
-                  </option>
-                ))}
-              </select>
+              {canViewAllBilling ? (
+                <select
+                  value={ownerFilter}
+                  onChange={(e) => setOwnerFilter(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl font-semibold text-slate-800 dark:text-slate-200"
+                >
+                  <option value="all">All Client Partners (All Billing)</option>
+                  {availableOwners.map((own) => (
+                    <option key={own} value={own}>
+                      {own}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="flex items-center space-x-1.5 px-2.5 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800/60 rounded-xl text-emerald-800 dark:text-emerald-300 text-xs font-bold">
+                  <User className="w-3.5 h-3.5" />
+                  <span>{currentUser?.name || "Amit"} (Only My Clients)</span>
+                </div>
+              )}
             </div>
 
             {/* Filter 7: Program / Offering */}
@@ -1751,6 +1843,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({
                   <th className="p-4 text-right">Pending</th>
                   <th className="p-4">Defaults Status</th>
                   <th className="p-4">Status</th>
+                  <th className="p-4">Partner</th>
                   <th className="p-4 text-center">Actions</th>
                 </tr>
               </thead>
@@ -1899,6 +1992,12 @@ export const BillingTab: React.FC<BillingTabProps> = ({
                         </span>
                       </td>
 
+                      <td className="p-4">
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">
+                          {r.owner || "Unassigned"}
+                        </span>
+                      </td>
+
                       <td className="p-4 text-center">
                         <div className="flex items-center justify-center space-x-1">
                           <button
@@ -2017,7 +2116,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({
       <MonthlyCollectionsLedgerModal
         isOpen={isLedgerModalOpen}
         onClose={() => setIsLedgerModalOpen(false)}
-        records={records}
+        records={userScopedRecords}
         onSelectMonthFilter={(mKey) => {
           setPaymentMonthFilter(mKey);
         }}

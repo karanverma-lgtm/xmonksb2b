@@ -37,7 +37,7 @@ interface AddBillingRecordModalProps {
   onSave: (recordData: Parameters<typeof import("@/lib/billingService").saveBillingRecord>[0]) => void;
   existingRecord?: BillingRecord | null;
   leads?: Lead[];
-  currentUser?: { name?: string; username?: string } | null;
+  currentUser?: { name?: string; username?: string; role?: string } | null;
 }
 
 export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
@@ -88,6 +88,7 @@ export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
   const [amountReceived, setAmountReceived] = useState<number | string>(0);
   const [advancePaymentAmount, setAdvancePaymentAmount] = useState<number | string>(0);
   const [status, setStatus] = useState<BillingStatus>("active");
+  const [owner, setOwner] = useState<string>(existingRecord?.owner || currentUser?.name || "Amit");
   const [notes, setNotes] = useState<string>("");
 
   // Payment Defaults Risk
@@ -132,6 +133,7 @@ export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
       setBillingFrequency(existingRecord.billingFrequency || "monthly");
       setAmountReceived(existingRecord.amountReceived || 0);
       setAdvancePaymentAmount(existingRecord.advancePaymentAmount || 0);
+      setOwner(existingRecord.owner || currentUser?.name || "Amit");
       setNotes(existingRecord.notes || "");
 
       // Vendor
@@ -411,7 +413,7 @@ export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
       vendor: vendorInfo,
       documents,
       notes: notes.trim() || undefined,
-      owner: existingRecord?.owner || currentUser?.username?.toLowerCase() || "system",
+      owner: owner.trim() || existingRecord?.owner || currentUser?.name || currentUser?.username?.toLowerCase() || "Amit",
       createdBy: existingRecord?.createdBy || currentUser?.name || currentUser?.username || "Admin",
     });
 
@@ -806,6 +808,37 @@ export const AddBillingRecordModal: React.FC<AddBillingRecordModalProps> = ({
                     <option value="defaulted">Defaulted / Payment Overdue</option>
                     <option value="on_hold">On Hold</option>
                   </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Account Partner / Owner
+                  </label>
+                  {Boolean(
+                    currentUser?.username?.toLowerCase() === "admin" ||
+                    currentUser?.role?.toLowerCase().includes("admin") ||
+                    currentUser?.username?.toLowerCase() === "accounts" ||
+                    currentUser?.role?.toLowerCase().includes("accounts")
+                  ) ? (
+                    <select
+                      value={owner}
+                      onChange={(e) => setOwner(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    >
+                      {["Amit", "Ruby", "Gaurav", "Preeti", "Nikhil"].map((partner) => (
+                        <option key={partner} value={partner}>
+                          {partner}
+                        </option>
+                      ))}
+                      {!["Amit", "Ruby", "Gaurav", "Preeti", "Nikhil"].includes(owner) && owner && (
+                        <option value={owner}>{owner}</option>
+                      )}
+                    </select>
+                  ) : (
+                    <div className="w-full px-3.5 py-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800/60 rounded-xl text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                      {currentUser?.name || "Client Partner"} (Your Portfolio)
+                    </div>
+                  )}
                 </div>
               </div>
 
