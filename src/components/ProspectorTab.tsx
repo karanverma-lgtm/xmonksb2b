@@ -1912,6 +1912,37 @@ Sundar Pichai, Alphabet`}
                           {personResult.headline}
                         </p>
                       )}
+
+                      {/* User LinkedIn Profile in Header */}
+                      {personResult.linkedin_url && (
+                        <div className="flex items-center space-x-2 mt-2">
+                          <a
+                            href={personResult.linkedin_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 text-xs font-bold transition border border-blue-500/20 group"
+                            title="Open User LinkedIn Profile"
+                          >
+                            <svg className="w-3.5 h-3.5 fill-current text-blue-600 dark:text-blue-400 flex-shrink-0" viewBox="0 0 24 24">
+                              <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z"/>
+                            </svg>
+                            <span className="truncate max-w-[200px] sm:max-w-xs">{personResult.linkedin_url}</span>
+                            <ExternalLink className="w-3 h-3 flex-shrink-0 group-hover:translate-x-0.5 transition-transform" />
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(personResult.linkedin_url!, "person-linkedin-header")}
+                            className="p-1 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                            title="Copy User LinkedIn URL"
+                          >
+                            {copiedField === "person-linkedin-header" ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-500" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1938,6 +1969,73 @@ Sundar Pichai, Alphabet`}
 
                 {/* Direct Verified Contact Details */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* User LinkedIn Profile Block (Highlighted prominently, especially when uncovered via reverse email) */}
+                  <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800 space-y-2.5 md:col-span-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center space-x-1.5">
+                        <svg className="w-3.5 h-3.5 fill-current text-blue-600 dark:text-blue-400" viewBox="0 0 24 24">
+                          <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z"/>
+                        </svg>
+                        <span>User LinkedIn Profile</span>
+                      </span>
+                      {personResult.linkedin_url ? (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                          {mode === "email_lookup" ? "Uncovered via Reverse Email" : "Direct Profile Found"}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-400 font-bold">Not Available</span>
+                      )}
+                    </div>
+
+                    {personResult.linkedin_url ? (
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-xs">
+                        <div className="min-w-0 pr-2">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Profile URL</p>
+                          <a
+                            href={personResult.linkedin_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-mono text-blue-600 dark:text-blue-400 hover:underline truncate font-semibold block"
+                            title={personResult.linkedin_url}
+                          >
+                            {personResult.linkedin_url}
+                          </a>
+                        </div>
+                        <div className="flex items-center space-x-1.5 flex-shrink-0 self-end sm:self-center">
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(personResult.linkedin_url!, "person-linkedin-contact")}
+                            className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold transition"
+                            title="Copy LinkedIn URL"
+                          >
+                            {copiedField === "person-linkedin-contact" ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                <span className="text-emerald-500 text-[11px]">Copied</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5" />
+                                <span className="text-[11px]">Copy URL</span>
+                              </>
+                            )}
+                          </button>
+                          <a
+                            href={personResult.linkedin_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-sm"
+                          >
+                            <span>Open LinkedIn</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-400 italic">No LinkedIn profile URL was returned for this contact in the SalesQL database.</p>
+                    )}
+                  </div>
+
                   {/* Emails Block */}
                   <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800 space-y-2.5">
                     <div className="flex items-center justify-between">
