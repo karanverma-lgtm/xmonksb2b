@@ -92,6 +92,10 @@ export default function Home() {
     currentUser?.username.toLowerCase() === "admin" ||
     currentUser?.role.toLowerCase().includes("admin")
   );
+  const isAccounts = Boolean(
+    currentUser?.username.toLowerCase() === "accounts" ||
+    currentUser?.role.toLowerCase().includes("accounts")
+  );
 
   // Track if user explicitly clicked/changed tabs or if initial tab was restored
   const userHasChangedTabRef = useRef<boolean>(false);
@@ -104,6 +108,12 @@ export default function Home() {
       const storedUser = localStorage.getItem("xmonks_b2b_user");
       if (storedUser) {
         const u = JSON.parse(storedUser);
+        if (
+          u?.username?.toLowerCase() === "accounts" ||
+          u?.role?.toLowerCase().includes("accounts")
+        ) {
+          return "billing";
+        }
         const userIsAdmin = Boolean(
           u?.username?.toLowerCase() === "admin" || u?.role?.toLowerCase().includes("admin")
         );
@@ -138,6 +148,12 @@ export default function Home() {
     }
     setCurrentUser(user);
     setIsAuthenticated(true);
+    if (
+      user.username.toLowerCase() === "accounts" ||
+      user.role.toLowerCase().includes("accounts")
+    ) {
+      setActiveTab("billing");
+    }
   };
 
   const handleLogout = () => {
@@ -203,8 +219,18 @@ export default function Home() {
     };
   }, []);
 
+  // Ensure accounts user always stays on the billing tab
+  useEffect(() => {
+    if (isAccounts && activeTab !== "billing") {
+      setActiveTab("billing");
+    }
+  }, [isAccounts, activeTab]);
+
   // Handlers to synchronize UI state to Firestore
   const handleTabChange = (tab: NavTab) => {
+    if (isAccounts && tab !== "billing") {
+      return;
+    }
     if (tab === "developer" && !isAdmin) {
       return;
     }
@@ -711,7 +737,7 @@ export default function Home() {
       {/* Main Container */}
       <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* KPI Dashboard Summary Bar & Filter Bar for Lead Management tabs */}
-        {(activeTab === "kanban" || activeTab === "table" || activeTab === "analytics") && (
+        {!isAccounts && (activeTab === "kanban" || activeTab === "table" || activeTab === "analytics") && (
           <>
             <DashboardStats leads={filteredLeads} />
             <FilterBar
@@ -740,7 +766,7 @@ export default function Home() {
         )}
 
         {/* Tab Views */}
-        {activeTab === "kanban" && (
+        {!isAccounts && activeTab === "kanban" && (
           <KanbanBoard
             leads={filteredLeads}
             onSelectLead={(lead) => setSelectedLead(lead)}
@@ -750,7 +776,7 @@ export default function Home() {
           />
         )}
 
-        {activeTab === "table" && (
+        {!isAccounts && activeTab === "table" && (
           <LeadTable
             leads={filteredLeads}
             onSelectLead={(lead) => setSelectedLead(lead)}
@@ -764,7 +790,7 @@ export default function Home() {
           />
         )}
 
-        {activeTab === "outreach" && (
+        {!isAccounts && activeTab === "outreach" && (
           <OutreachTab
             coldClients={userScopedColdClients}
             onAddColdClient={handleAddColdClient}
@@ -781,14 +807,14 @@ export default function Home() {
           />
         )}
 
-        {activeTab === "analytics" && (
+        {!isAccounts && activeTab === "analytics" && (
           <AnalyticsCharts
             leads={filteredLeads}
             onSelectLead={(lead) => setSelectedLead(lead)}
           />
         )}
 
-        {activeTab === "email" && (
+        {!isAccounts && activeTab === "email" && (
           <EmailCampaignTab
             leads={userScopedLeads}
             currentUser={currentUser}
@@ -805,7 +831,7 @@ export default function Home() {
           />
         )}
 
-        {activeTab === "developer" && isAdmin && (
+        {!isAccounts && activeTab === "developer" && isAdmin && (
           <DeveloperTab onOpenChangePassword={() => setIsChangePasswordModalOpen(true)} />
         )}
       </main>
@@ -846,41 +872,47 @@ export default function Home() {
         </div>
       )}
 
-      {/* Lead Detail & Customer Journey Modal */}
-      <LeadDetailModal
-        lead={selectedLead}
-        currentUser={currentUser}
-        onClose={() => setSelectedLead(null)}
-        onUpdateStage={handleUpdateStage}
-        onAddNote={handleAddNote}
-        onDeleteLead={handleDeleteLead}
-        onUpdateDealValue={handleUpdateDealValue}
-        onUpdateProgram={handleUpdateProgram}
-        onUpdateLeadSource={handleUpdateLeadSource}
-        onUpdateOwner={handleUpdateOwner}
-        onUpdateClosureMonth={handleUpdateClosureMonth}
-        onAttachApproachNote={handleAttachApproachNote}
-        onRemoveApproachNote={handleRemoveApproachNote}
-        onUpdateCompanyLogo={handleUpdateCompanyLogo}
-        onRemoveCompanyLogo={handleRemoveCompanyLogo}
-        onMoveToBilling={handleMoveLeadToBilling}
-      />
+      {/* Lead Detail & Customer Journey Modal (Disabled for Accounts) */}
+      {!isAccounts && (
+        <LeadDetailModal
+          lead={selectedLead}
+          currentUser={currentUser}
+          onClose={() => setSelectedLead(null)}
+          onUpdateStage={handleUpdateStage}
+          onAddNote={handleAddNote}
+          onDeleteLead={handleDeleteLead}
+          onUpdateDealValue={handleUpdateDealValue}
+          onUpdateProgram={handleUpdateProgram}
+          onUpdateLeadSource={handleUpdateLeadSource}
+          onUpdateOwner={handleUpdateOwner}
+          onUpdateClosureMonth={handleUpdateClosureMonth}
+          onAttachApproachNote={handleAttachApproachNote}
+          onRemoveApproachNote={handleRemoveApproachNote}
+          onUpdateCompanyLogo={handleUpdateCompanyLogo}
+          onRemoveCompanyLogo={handleRemoveCompanyLogo}
+          onMoveToBilling={handleMoveLeadToBilling}
+        />
+      )}
 
-      {/* Add New Lead Modal */}
-      <AddLeadModal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        currentUser={currentUser}
-        onSubmit={handleCreateLead}
-      />
+      {/* Add New Lead Modal (Disabled for Accounts) */}
+      {!isAccounts && (
+        <AddLeadModal
+          isOpen={isAddModalOpen}
+          onClose={() => setIsAddModalOpen(false)}
+          currentUser={currentUser}
+          onSubmit={handleCreateLead}
+        />
+      )}
 
-      {/* Bulk Upload CSV Modal */}
-      <BulkUploadModal
-        isOpen={isBulkModalOpen}
-        onClose={() => setIsBulkModalOpen(false)}
-        currentUser={currentUser}
-        onBulkImport={handleBulkImport}
-      />
+      {/* Bulk Upload CSV Modal (Disabled for Accounts) */}
+      {!isAccounts && (
+        <BulkUploadModal
+          isOpen={isBulkModalOpen}
+          onClose={() => setIsBulkModalOpen(false)}
+          currentUser={currentUser}
+          onBulkImport={handleBulkImport}
+        />
+      )}
 
       {/* Change Password Modal */}
       <ChangePasswordModal
@@ -892,8 +924,9 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 py-4 text-center text-xs text-slate-500">
         <p>
-          xMonks B2B Lead Journey CRM • Firebase Integration (`xmonksb2b2`) • Stage Weightage
-          Calculations & Real-Time Date-Time Logs
+          {isAccounts
+            ? "xMonks B2B CRM • Accounts & Billing Department Portal"
+            : "xMonks B2B Lead Journey CRM • Firebase Integration (`xmonksb2b2`) • Stage Weightage Calculations & Real-Time Date-Time Logs"}
         </p>
       </footer>
     </div>

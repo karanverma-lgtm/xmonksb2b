@@ -71,6 +71,15 @@ export async function authenticateUserFromFirestore(
       if (user.password === cleanPass || user.password.toLowerCase() === cleanPass.toLowerCase()) {
         return user;
       }
+      // If password in Firestore didn't match, but matches static configuration, update Firestore with static record
+      if (staticMatch && (staticMatch.password === cleanPass || staticMatch.password.toLowerCase() === cleanPass.toLowerCase())) {
+        try {
+          await setDoc(userDocRef, staticMatch, { merge: true });
+        } catch (syncErr) {
+          console.warn("Failed to sync static user to Firestore:", syncErr);
+        }
+        return staticMatch;
+      }
       return null;
     }
 

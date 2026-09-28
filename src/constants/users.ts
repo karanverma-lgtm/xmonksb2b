@@ -49,6 +49,13 @@ export const VALID_USERS: UserAccount[] = [
     role: "Sales Manager",
     avatarColor: "from-purple-600 to-pink-600",
   },
+  {
+    username: "accounts",
+    password: "money@xmonks",
+    name: "Accounts Department",
+    role: "Accounts",
+    avatarColor: "from-emerald-600 to-teal-700",
+  },
 ];
 
 export function authenticateUser(usernameInput: string, passwordInput: string): UserAccount | null {
