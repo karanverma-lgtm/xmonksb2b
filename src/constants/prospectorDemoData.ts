@@ -125,13 +125,76 @@ export const DEMO_ARIEL_PERSON: SalesQLPerson = {
 };
 
 /**
- * Demo Data 3: Bulk Batch with Ariel Camino + Person Not Found
+ * Demo Data 3: Amit Shelly (Assistant General Manager at BYLD Group)
+ */
+export const DEMO_AMIT_PERSON: SalesQLPerson = {
+  uuid: "5f527800-67b9-4e20-b6bc-1b9832a10126",
+  first_name: "Amit",
+  last_name: "Shelly",
+  full_name: "Amit Shelly",
+  title: "Assistant General Manager",
+  headline: "Assistant General Manager at BYLD Group",
+  image:
+    "https://salesql.s3.amazonaws.com/person/5f527800-67b9-4e20-b6bc-1b9832a10126-amit-shelly.png",
+  timestamp_work_experience_start: 1356998400000,
+  emails: [
+    {
+      email: "amit.shelly@byldgroup.com",
+      type: "Work",
+      status: "Valid",
+    },
+  ],
+  phones: [
+    {
+      phone: "+91 98110 00000",
+      type: "Work",
+      is_valid: true,
+    },
+  ],
+  organization: {
+    uuid: "byld-group-uuid",
+    name: "BYLD Group",
+    website: "https://byldgroup.com/",
+    website_domain: "byldgroup.com",
+    linkedin_url: "https://linkedin.com/company/byld-group",
+    founded_year: 2013,
+    number_of_employees: "51 - 200",
+  },
+  work_experience: [
+    {
+      title: "Assistant General Manager",
+      timestamp_start: 1356998400000,
+      is_current: true,
+      organization: {
+        uuid: "byld-group-uuid",
+        name: "BYLD Group",
+        website: "https://byldgroup.com/",
+        website_domain: "byldgroup.com",
+        linkedin_url: "https://linkedin.com/company/byld-group",
+        founded_year: 2013,
+        number_of_employees: "51 - 200",
+        type: "privately-held",
+      },
+    },
+  ],
+};
+
+/**
+ * Demo Data 4: Bulk Batch with Amit Shelly + Ariel Camino + Person Not Found
  */
 export const DEMO_BULK_RESULTS: {
   query: BulkEnrichPersonQuery;
   person?: SalesQLPerson;
   error?: string;
 }[] = [
+  {
+    query: {
+      full_name: "Amit Shelly",
+      organization_name: "BYLD Group",
+      organization_domain: "byldgroup.com",
+    },
+    person: DEMO_AMIT_PERSON,
+  },
   {
     query: {
       linkedin_url: "https://linkedin.com/in/arielcamino2",
@@ -149,3 +212,4 @@ export const DEMO_BULK_RESULTS: {
     error: "Person not found",
   },
 ];
+

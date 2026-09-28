@@ -50,6 +50,20 @@ export const PersonDossierCard: React.FC<PersonDossierCardProps> = ({
   copiedField,
 }) => {
   const [localCopied, setLocalCopied] = useState<string | null>(null);
+  const [imageError, setImageError] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
+
+  const profileImageUrl =
+    person.image ||
+    (person as any).photo ||
+    (person as any).avatar_url ||
+    (person as any).picture ||
+    (person as any).avatar;
+
+  React.useEffect(() => {
+    setImageError(false);
+    setImageLoaded(false);
+  }, [profileImageUrl]);
 
   const handleCopyText = (text: string, id: string) => {
     if (onCopy) {
@@ -98,14 +112,44 @@ export const PersonDossierCard: React.FC<PersonDossierCardProps> = ({
       {/* Top Profile Header */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-5 pb-6 border-b border-slate-100 dark:border-slate-800">
         <div className="flex items-start space-x-4">
-          {/* Avatar Initials with Gradient & Verified Badge */}
-          <div className="relative flex-shrink-0">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 text-white flex items-center justify-center font-black text-2xl shadow-xl shadow-indigo-600/25 ring-4 ring-indigo-50 dark:ring-slate-800">
-              {person.first_name?.[0] || person.full_name?.[0] || "U"}
+          {/* Profile Picture or Avatar Initials with Verified Badge */}
+          <div className="relative flex-shrink-0 group">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 text-white flex items-center justify-center font-black text-2xl sm:text-3xl shadow-xl shadow-indigo-600/25 ring-4 ring-indigo-50 dark:ring-slate-800 overflow-hidden relative">
+              {profileImageUrl && !imageError ? (
+                <>
+                  <img
+                    src={profileImageUrl}
+                    alt={person.full_name || person.first_name || "Profile picture"}
+                    className={`w-full h-full object-cover transition-all duration-300 ${
+                      imageLoaded ? "opacity-100 scale-100" : "opacity-0 scale-95"
+                    } group-hover:scale-105`}
+                    onLoad={() => setImageLoaded(true)}
+                    onError={() => setImageError(true)}
+                    loading="lazy"
+                  />
+                  {!imageLoaded && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600">
+                      <span>{person.first_name?.[0] || person.full_name?.[0] || "U"}</span>
+                    </div>
+                  )}
+                  {/* Subtle hover overlay to view full image */}
+                  <a
+                    href={profileImageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center text-white"
+                    title="Open full resolution profile image"
+                  >
+                    <ExternalLink className="w-4 h-4 drop-shadow" />
+                  </a>
+                </>
+              ) : (
+                <span>{person.first_name?.[0] || person.full_name?.[0] || "U"}</span>
+              )}
             </div>
             {person.uuid && (
               <div
-                className="absolute -bottom-1 -right-1 p-1 bg-emerald-500 text-white rounded-full ring-2 ring-white dark:ring-slate-900 shadow-sm"
+                className="absolute -bottom-1 -right-1 p-1 bg-emerald-500 text-white rounded-full ring-2 ring-white dark:ring-slate-900 shadow-sm z-10"
                 title="Verified SalesQL Record"
               >
                 <ShieldCheck className="w-3.5 h-3.5" />

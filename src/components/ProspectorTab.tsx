@@ -63,6 +63,7 @@ import { ColdClient } from "@/types/outreach";
 import {
   DEMO_APPLE_ORGANIZATION,
   DEMO_ARIEL_PERSON,
+  DEMO_AMIT_PERSON,
   DEMO_BULK_RESULTS,
 } from "@/constants/prospectorDemoData";
 import { PersonDossierCard } from "./prospector/PersonDossierCard";
@@ -1289,8 +1290,20 @@ Sundar Pichai, Alphabet`}
 
                             <td className="py-2.5 px-3">
                               <div className="flex items-center space-x-2.5">
-                                <div className="w-8 h-8 rounded-lg bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 font-bold flex items-center justify-center flex-shrink-0 text-xs">
-                                  {name[0] || "?"}
+                                <div className="w-8 h-8 rounded-lg bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 font-bold flex items-center justify-center flex-shrink-0 text-xs overflow-hidden relative border border-indigo-100 dark:border-indigo-900/50">
+                                  {p?.image ? (
+                                    <img
+                                      src={p.image}
+                                      alt={name}
+                                      className="w-full h-full object-cover"
+                                      onError={(e) => {
+                                        (e.currentTarget as HTMLElement).style.display = "none";
+                                      }}
+                                    />
+                                  ) : null}
+                                  <span className={p?.image ? "hidden" : "block"}>
+                                    {name[0] || "?"}
+                                  </span>
                                 </div>
                                 <div className="min-w-0 max-w-[200px]">
                                   <p className="font-bold text-slate-900 dark:text-white truncate">
@@ -1548,6 +1561,19 @@ Sundar Pichai, Alphabet`}
                       <button
                         type="button"
                         onClick={() => {
+                          setPersonResult(DEMO_AMIT_PERSON);
+                          setOrgResult(null);
+                          setPersonFullName("Amit Shelly");
+                          setPersonOrgDomain("byldgroup.com");
+                          showToast("Loaded Amit Shelly (BYLD Group) with Profile Picture!");
+                        }}
+                        className="text-[10px] px-2 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 font-bold shadow-sm shadow-indigo-600/20"
+                      >
+                        ⚡ Amit Shelly (BYLD Group)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
                           setPersonResult(DEMO_ARIEL_PERSON);
                           setOrgResult(null);
                           setPersonLinkedinUrl(DEMO_ARIEL_PERSON.linkedin_url || "");
@@ -1555,9 +1581,9 @@ Sundar Pichai, Alphabet`}
                           setPersonOrgDomain(DEMO_ARIEL_PERSON.organization?.website_domain || "");
                           showToast("Loaded Ariel Camino (CEO at SalesQL) Demo Dossier!");
                         }}
-                        className="text-[10px] px-2 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 font-bold shadow-sm shadow-indigo-600/20"
+                        className="text-[10px] px-2 py-1 rounded-lg bg-purple-600 text-white hover:bg-purple-700 font-bold shadow-sm shadow-purple-600/20"
                       >
-                        ⚡ Ariel Camino (CEO at SalesQL)
+                        ⚡ Ariel Camino (SalesQL)
                       </button>
                       <button
                         type="button"
@@ -1911,24 +1937,36 @@ Sundar Pichai, Alphabet`}
                           }}
                           className="p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-500 bg-slate-50/50 dark:bg-slate-950/50 cursor-pointer transition flex items-center justify-between group"
                         >
-                          <div className="min-w-0 pr-2">
-                            <div className="flex items-center space-x-1.5">
-                              <span
-                                className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase ${
-                                  item.type === "person"
-                                    ? "bg-purple-500/10 text-purple-600 dark:text-purple-400"
-                                    : "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-                                }`}
-                              >
-                                {item.type}
-                              </span>
-                              <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
-                                {displayName}
+                          <div className="flex items-center space-x-2.5 min-w-0 pr-2">
+                            {item.personData?.image && (
+                              <img
+                                src={item.personData.image}
+                                alt={displayName}
+                                className="w-8 h-8 rounded-lg object-cover flex-shrink-0 border border-slate-200 dark:border-slate-700"
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLElement).style.display = "none";
+                                }}
+                              />
+                            )}
+                            <div className="min-w-0">
+                              <div className="flex items-center space-x-1.5">
+                                <span
+                                  className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase ${
+                                    item.type === "person"
+                                      ? "bg-purple-500/10 text-purple-600 dark:text-purple-400"
+                                      : "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                                  }`}
+                                >
+                                  {item.type}
+                                </span>
+                                <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
+                                  {displayName}
+                                </p>
+                              </div>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                                {subtitle}
                               </p>
                             </div>
-                            <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                              {subtitle}
-                            </p>
                           </div>
 
                           <div className="flex items-center space-x-1">
@@ -2000,6 +2038,22 @@ Sundar Pichai, Alphabet`}
                     type="button"
                     onClick={() => {
                       setMode("person");
+                      setPersonResult(DEMO_AMIT_PERSON);
+                      setOrgResult(null);
+                      setPersonFullName("Amit Shelly");
+                      setPersonOrgDomain("byldgroup.com");
+                      showToast("Loaded Amit Shelly (BYLD Group) Demo Dossier with Profile Picture!");
+                    }}
+                    className="px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-600/20 transition flex items-center space-x-1.5"
+                  >
+                    <User className="w-3.5 h-3.5" />
+                    <span>⚡ Try Amit Shelly Demo (Profile Pic)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode("person");
                       setPersonResult(DEMO_ARIEL_PERSON);
                       setOrgResult(null);
                       setPersonLinkedinUrl("https://linkedin.com/in/arielcamino2");
@@ -2007,7 +2061,7 @@ Sundar Pichai, Alphabet`}
                       setPersonOrgDomain("salesql.com");
                       showToast("Loaded Ariel Camino (CEO at SalesQL) Demo Dossier!");
                     }}
-                    className="px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-600/20 transition flex items-center space-x-1.5"
+                    className="px-3.5 py-2 rounded-xl text-xs font-bold bg-purple-600 text-white hover:bg-purple-700 shadow-md shadow-purple-600/20 transition flex items-center space-x-1.5"
                   >
                     <User className="w-3.5 h-3.5" />
                     <span>⚡ Try Ariel Camino Demo (Person)</span>
