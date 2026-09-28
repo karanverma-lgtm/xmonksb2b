@@ -17,12 +17,13 @@ import {
   Download,
   KeyRound,
   SendHorizontal,
+  Receipt,
 } from "lucide-react";
 
 import { formatINR } from "@/lib/formatters";
 import { UserAccount } from "@/constants/users";
 
-export type NavTab = "kanban" | "table" | "outreach" | "analytics" | "email" | "developer";
+export type NavTab = "kanban" | "table" | "outreach" | "analytics" | "email" | "billing" | "developer";
 
 interface NavbarProps {
   activeTab: NavTab;
@@ -141,6 +142,18 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Mail className="w-3.5 h-3.5 text-purple-500" />
               <span>Emails</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("billing")}
+              className={`flex items-center space-x-1 xl:space-x-1.5 px-2 xl:px-2.5 py-1 xl:py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                activeTab === "billing"
+                  ? "bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-sm border border-emerald-200/50 dark:border-emerald-700/50"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+              }`}
+            >
+              <Receipt className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Billing</span>
             </button>
 
             {isAdmin && (
@@ -336,6 +349,18 @@ export const Navbar: React.FC<NavbarProps> = ({
         >
           <Mail className="w-3.5 h-3.5 text-purple-500" />
           <span>Emails</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("billing")}
+          className={`flex-1 py-1.5 text-xs font-semibold text-center flex items-center justify-center space-x-1 rounded-lg ${
+            activeTab === "billing"
+              ? "bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-sm"
+              : "text-slate-500"
+          }`}
+        >
+          <Receipt className="w-3.5 h-3.5 text-emerald-500" />
+          <span>Billing</span>
         </button>
 
         {isAdmin && (

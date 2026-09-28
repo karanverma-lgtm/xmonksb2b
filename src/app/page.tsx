@@ -32,6 +32,7 @@ import { AnalyticsCharts } from "@/components/AnalyticsCharts";
 import { EmailCampaignTab } from "@/components/EmailCampaignTab";
 import { DeveloperTab } from "@/components/DeveloperTab";
 import { OutreachTab } from "@/components/OutreachTab";
+import { BillingTab } from "@/components/BillingTab";
 import { ColdClient, ColdClientStatus, OutreachChannel } from "@/types/outreach";
 import {
   subscribeToColdClients,
@@ -106,7 +107,7 @@ export default function Home() {
         const prefs = getLocalPreferences(u.username);
         if (
           prefs?.activeTab &&
-          ["kanban", "table", "outreach", "analytics", "email", "developer"].includes(prefs.activeTab)
+          ["kanban", "table", "outreach", "analytics", "email", "billing", "developer"].includes(prefs.activeTab)
         ) {
           if (prefs.activeTab === "developer" && !userIsAdmin) {
             return "kanban";
@@ -760,6 +761,14 @@ export default function Home() {
             currentUser={currentUser}
             isAdmin={isAdmin}
             onNavigateToDeveloper={isAdmin ? () => handleTabChange("developer") : undefined}
+          />
+        )}
+
+        {activeTab === "billing" && (
+          <BillingTab
+            leads={userScopedLeads}
+            currentUser={currentUser}
+            isAdmin={isAdmin}
           />
         )}
 
