@@ -49,6 +49,7 @@ import {
 import {
   getStoredSalesQLKey,
   saveSalesQLKey,
+  subscribeToSalesQLKey,
   fetchEnvSalesQLConfig,
   testSalesQLApiKey,
 } from "@/lib/salesqlService";
@@ -161,6 +162,14 @@ export const DeveloperTab: React.FC<DeveloperTabProps> = ({ onOpenChangePassword
         setSalesqlKey(info.envKey);
       }
     });
+
+    const unsubSalesql = subscribeToSalesQLKey((syncedKey) => {
+      if (syncedKey) {
+        setSalesqlKey(syncedKey);
+      }
+    });
+
+    return () => unsubSalesql();
   }, []);
 
   const handleSaveGemini = () => {
@@ -230,7 +239,7 @@ export const DeveloperTab: React.FC<DeveloperTabProps> = ({ onOpenChangePassword
       return;
     }
     saveSalesQLKey(salesqlKey.trim());
-    showToast("✨ SalesQL API Key saved!");
+    showToast("✨ SalesQL API Key saved and shared with all team members!");
   };
 
   const handleTestSalesql = async () => {
@@ -931,7 +940,7 @@ export const DeveloperTab: React.FC<DeveloperTabProps> = ({ onOpenChangePassword
               </button>
             </div>
             <p className="text-[11px] text-slate-500 mt-1">
-              Token is loaded directly from your <code className="font-mono bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-teal-600 dark:text-teal-400">.env</code> (<code className="font-mono text-[10px]">salesql_api</code>) or can be updated here for the workspace.
+              Token is shared across the entire workspace. Once saved here, all client partners and team members (e.g. Amit, Ruby) can use Prospector without having to configure credentials.
             </p>
           </div>
 

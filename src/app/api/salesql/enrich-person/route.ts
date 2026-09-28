@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getEffectiveSalesQLToken } from "@/lib/salesqlServerHelper";
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,12 +17,7 @@ export async function POST(req: NextRequest) {
       apiKey,
     } = body;
 
-    const token =
-      apiKey?.trim() ||
-      process.env.salesql_api ||
-      process.env.SALESQL_API ||
-      process.env.SALESQL_API_KEY ||
-      "";
+    const token = await getEffectiveSalesQLToken(apiKey);
 
     if (!token) {
       return NextResponse.json(

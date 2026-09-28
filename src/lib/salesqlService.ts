@@ -31,16 +31,78 @@ export function getStoredSalesQLKey(): string {
   }
 }
 
+const SALESQL_CONFIG_COLLECTION = "b2b_salesql_config";
+
 export function saveSalesQLKey(key: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    if (!key) {
-      localStorage.removeItem(SALESQL_STORAGE_KEY);
-    } else {
-      localStorage.setItem(SALESQL_STORAGE_KEY, key.trim());
+  const clean = key ? key.trim() : "";
+  if (typeof window !== "undefined") {
+    try {
+      if (!clean) {
+        localStorage.removeItem(SALESQL_STORAGE_KEY);
+      } else {
+        localStorage.setItem(SALESQL_STORAGE_KEY, clean);
+      }
+    } catch (e) {
+      console.warn("Failed to save SalesQL key to localStorage", e);
     }
+
+    // Sync to Firestore so all users (Amit, Ruby, etc.) have access across the entire app
+    try {
+      const docRef = doc(db, SALESQL_CONFIG_COLLECTION, "default");
+      setDoc(docRef, { apiKey: clean, updatedAt: new Date().toISOString() }, { merge: true }).catch(
+        (err) => console.warn("Firestore save SalesQL key warning:", err)
+      );
+    } catch (e) {
+      console.warn("Firestore save SalesQL key error:", e);
+    }
+  }
+}
+
+export function subscribeToSalesQLKey(
+  onData: (apiKey: string, isSyncing: boolean) => void
+): () => void {
+  if (typeof window === "undefined") return () => {};
+
+  let unsubscribed = false;
+
+  try {
+    const docRef = doc(db, SALESQL_CONFIG_COLLECTION, "default");
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snap) => {
+        if (unsubscribed) return;
+        if (snap.exists()) {
+          const data = snap.data();
+          const remoteKey = data?.apiKey || "";
+          if (remoteKey) {
+            if (typeof window !== "undefined") {
+              try {
+                localStorage.setItem(SALESQL_STORAGE_KEY, remoteKey);
+              } catch {}
+            }
+            onData(remoteKey, true);
+          } else {
+            onData(getStoredSalesQLKey(), true);
+          }
+        } else {
+          onData(getStoredSalesQLKey(), false);
+        }
+      },
+      (err) => {
+        console.warn("Firestore salesql key listener warning:", err);
+        if (!unsubscribed) {
+          onData(getStoredSalesQLKey(), false);
+        }
+      }
+    );
+
+    return () => {
+      unsubscribed = true;
+      unsubscribe();
+    };
   } catch (e) {
-    console.warn("Failed to save SalesQL key to localStorage", e);
+    onData(getStoredSalesQLKey(), false);
+    return () => {};
   }
 }
 

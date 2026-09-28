@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server";
+import { getEffectiveSalesQLToken } from "@/lib/salesqlServerHelper";
 
 export async function GET() {
-  const envKey =
-    process.env.salesql_api ||
-    process.env.SALESQL_API ||
-    process.env.SALESQL_API_KEY ||
-    "";
+  const effectiveKey = await getEffectiveSalesQLToken();
 
-  if (!envKey) {
+  if (!effectiveKey) {
     return NextResponse.json({
       hasEnvKey: false,
       envKey: "",
@@ -15,7 +12,7 @@ export async function GET() {
     });
   }
 
-  const clean = envKey.trim();
+  const clean = effectiveKey.trim();
   const masked =
     clean.length > 8
       ? `${clean.slice(0, 4)}••••••••${clean.slice(-4)}`

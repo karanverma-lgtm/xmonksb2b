@@ -51,6 +51,7 @@ import {
   fetchEnvSalesQLConfig,
   getStoredSalesQLKey,
   subscribeToProspectHistory,
+  subscribeToSalesQLKey,
   saveProspectToHistory,
   deleteProspectFromHistory,
   clearAllProspectHistory,
@@ -143,8 +144,17 @@ export const ProspectorTab: React.FC<ProspectorTabProps> = ({
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  // Initial key verification
+  // Initial key verification & real-time sync across workspace
   useEffect(() => {
+    // 1. Subscribe to real-time SalesQL key synced across workspace (via Admin in Developer Tab)
+    const unsubKey = subscribeToSalesQLKey((syncedKey) => {
+      if (syncedKey && syncedKey.trim()) {
+        setApiKeyPresent(true);
+        setKeyMasked(syncedKey.slice(0, 4) + "••••••••" + syncedKey.slice(-4));
+      }
+    });
+
+    // 2. Also check local storage & server config (.env / Firestore)
     const checkKey = async () => {
       const localKey = getStoredSalesQLKey();
       if (localKey) {
@@ -155,12 +165,14 @@ export const ProspectorTab: React.FC<ProspectorTabProps> = ({
       const envConfig = await fetchEnvSalesQLConfig();
       if (envConfig.hasEnvKey) {
         setApiKeyPresent(true);
-        setKeyMasked(envConfig.maskedKey || "Configured via .env");
+        setKeyMasked(envConfig.maskedKey || "Connected");
       } else {
         setApiKeyPresent(false);
       }
     };
     checkKey();
+
+    return () => unsubKey();
   }, []);
 
   // Subscribe to history
@@ -626,7 +638,7 @@ export const ProspectorTab: React.FC<ProspectorTabProps> = ({
               <div className={`w-2 h-2 rounded-full ${apiKeyPresent ? "bg-emerald-400 shadow-sm shadow-emerald-400" : "bg-amber-400"}`} />
               <span className="text-slate-300 font-medium">SalesQL API:</span>
               <span className="font-mono font-bold text-indigo-300">
-                {apiKeyPresent ? keyMasked || "Connected" : "Not Set"}
+                {apiKeyPresent ? (isAdmin ? keyMasked || "Connected" : "Connected (Admin Set)") : "Not Configured"}
               </span>
             </div>
 
