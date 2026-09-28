@@ -1561,19 +1561,6 @@ Sundar Pichai, Alphabet`}
                       <button
                         type="button"
                         onClick={() => {
-                          setPersonResult(DEMO_AMIT_PERSON);
-                          setOrgResult(null);
-                          setPersonFullName("Amit Shelly");
-                          setPersonOrgDomain("byldgroup.com");
-                          showToast("Loaded Amit Shelly (BYLD Group) with Profile Picture!");
-                        }}
-                        className="text-[10px] px-2 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 font-bold shadow-sm shadow-indigo-600/20"
-                      >
-                        ⚡ Amit Shelly (BYLD Group)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
                           setPersonResult(DEMO_ARIEL_PERSON);
                           setOrgResult(null);
                           setPersonLinkedinUrl(DEMO_ARIEL_PERSON.linkedin_url || "");
@@ -2034,21 +2021,6 @@ Sundar Pichai, Alphabet`}
                     <span>🏢 Try Apple Demo (Public Org)</span>
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode("person");
-                      setPersonResult(DEMO_AMIT_PERSON);
-                      setOrgResult(null);
-                      setPersonFullName("Amit Shelly");
-                      setPersonOrgDomain("byldgroup.com");
-                      showToast("Loaded Amit Shelly (BYLD Group) Demo Dossier with Profile Picture!");
-                    }}
-                    className="px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-600/20 transition flex items-center space-x-1.5"
-                  >
-                    <User className="w-3.5 h-3.5" />
-                    <span>⚡ Try Amit Shelly Demo (Profile Pic)</span>
-                  </button>
 
                   <button
                     type="button"

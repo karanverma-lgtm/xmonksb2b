@@ -166,7 +166,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Sparkles,
       color: "text-amber-600 dark:text-amber-400",
       activeBg: "bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800",
-      badge: "SalesQL",
       hidden: isAccounts,
     },
   ];
