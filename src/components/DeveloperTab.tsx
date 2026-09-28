@@ -948,6 +948,9 @@ export const DeveloperTab: React.FC<DeveloperTabProps> = ({ onOpenChangePassword
               <span className="px-2 py-0.5 rounded-md font-mono text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-750">
                 persons/email_lookup
               </span>
+              <span className="px-2 py-0.5 rounded-md font-mono text-[10px] bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/30 font-bold">
+                persons/enrich/bulk (100x)
+              </span>
             </div>
 
             <div className="flex items-center space-x-2">

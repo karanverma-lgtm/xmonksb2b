@@ -12,6 +12,8 @@ import {
   SalesQLOrganization,
   SalesQLPerson,
   ProspectHistoryRecord,
+  BulkEnrichPersonQuery,
+  BulkEnrichPersonItemResult,
 } from "@/types/salesql";
 
 const SALESQL_STORAGE_KEY = "xmonks_b2b_salesql_api_key";
@@ -138,6 +140,24 @@ export async function emailLookupPerson(
     throw new Error(json.error || "Failed to lookup person by email.");
   }
   return json.data as SalesQLPerson;
+}
+
+export async function bulkEnrichPersons(
+  queries: BulkEnrichPersonQuery[],
+  apiKey?: string
+): Promise<BulkEnrichPersonItemResult[]> {
+  const activeKey = apiKey || getStoredSalesQLKey();
+  const res = await fetch("/api/salesql/enrich-person-bulk", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ queries, apiKey: activeKey }),
+  });
+
+  const json = await res.json();
+  if (!res.ok || json.error) {
+    throw new Error(json.error || "Failed to bulk enrich persons.");
+  }
+  return (json.data || []) as BulkEnrichPersonItemResult[];
 }
 
 // --- PROSPECT HISTORY (FIRESTORE + LOCAL STORAGE) ---
@@ -321,6 +341,190 @@ export function exportProspectsToCSV(
     "download",
     `${filename}_${new Date().toISOString().split("T")[0]}.csv`
   );
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+// Parse freeform text, raw URLs, emails, or CSV into BulkEnrichPersonQuery array
+export function parseTextToBulkQueries(rawText: string): BulkEnrichPersonQuery[] {
+  if (!rawText || !rawText.trim()) return [];
+
+  // Try JSON parse first
+  const trimmed = rawText.trim();
+  if ((trimmed.startsWith("[") && trimmed.endsWith("]")) || (trimmed.startsWith("{") && trimmed.endsWith("}"))) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      const arr = Array.isArray(parsed) ? parsed : [parsed];
+      return arr.map((item) => ({
+        linkedin_url: item.linkedin_url || item.linkedin || undefined,
+        email: item.email || undefined,
+        first_name: item.first_name || item.firstName || undefined,
+        last_name: item.last_name || item.lastName || undefined,
+        full_name: item.full_name || item.fullName || item.name || undefined,
+        organization_name: item.organization_name || item.company_name || item.company || undefined,
+        organization_domain: item.organization_domain || item.domain || item.company_domain || undefined,
+      }));
+    } catch {}
+  }
+
+  const lines = rawText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return [];
+
+  // Check if first line is CSV header
+  let startIndex = 0;
+  const headerLine = lines[0].toLowerCase();
+  let headers: string[] = [];
+
+  if (
+    headerLine.includes("linkedin") ||
+    headerLine.includes("email") ||
+    headerLine.includes("name") ||
+    headerLine.includes("company") ||
+    headerLine.includes("domain")
+  ) {
+    headers = lines[0].split(/[,\t]/).map((h) => h.replace(/^["']|["']$/g, "").trim().toLowerCase());
+    startIndex = 1;
+  }
+
+  const queries: BulkEnrichPersonQuery[] = [];
+
+  for (let i = startIndex; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line) continue;
+
+    // If we have CSV headers
+    if (headers.length > 0) {
+      const cols = line.split(/[,\t]/).map((c) => c.replace(/^["']|["']$/g, "").trim());
+      const query: BulkEnrichPersonQuery = {};
+      headers.forEach((h, idx) => {
+        const val = cols[idx] || "";
+        if (!val) return;
+        if (h.includes("linkedin")) query.linkedin_url = val;
+        else if (h.includes("email")) query.email = val;
+        else if (h.includes("first") && h.includes("name")) query.first_name = val;
+        else if (h.includes("last") && h.includes("name")) query.last_name = val;
+        else if (h.includes("full") || h === "name") query.full_name = val;
+        else if (h.includes("domain") || h.includes("website")) query.organization_domain = val;
+        else if (h.includes("org") || h.includes("company")) query.organization_name = val;
+      });
+
+      if (
+        query.linkedin_url ||
+        query.email ||
+        query.full_name ||
+        (query.first_name && query.last_name)
+      ) {
+        queries.push(query);
+      }
+      continue;
+    }
+
+    // Line without headers: smart detection
+    // 1. Is it a LinkedIn URL?
+    if (line.includes("linkedin.com/in/")) {
+      const match = line.match(/https?:\/\/[^\s,]+/);
+      queries.push({ linkedin_url: match ? match[0] : line });
+      continue;
+    }
+
+    // 2. Is it an email address?
+    if (line.includes("@") && !line.includes(",")) {
+      queries.push({ email: line.trim() });
+      continue;
+    }
+
+    // 3. Comma-separated: Name, Company (or Name, Domain)
+    if (line.includes(",")) {
+      const parts = line.split(",").map((p) => p.trim());
+      if (parts.length >= 2) {
+        const firstPart = parts[0];
+        const secondPart = parts[1];
+        if (secondPart.includes(".") && !secondPart.includes(" ")) {
+          queries.push({ full_name: firstPart, organization_domain: secondPart });
+        } else {
+          queries.push({ full_name: firstPart, organization_name: secondPart });
+        }
+        continue;
+      }
+    }
+
+    // 4. Fallback: single value (could be email or name)
+    if (line.includes("@")) {
+      queries.push({ email: line });
+    } else {
+      queries.push({ full_name: line });
+    }
+  }
+
+  return queries.slice(0, 100);
+}
+
+// Export Bulk Enriched Results to CSV
+export function exportBulkEnrichResultsToCSV(
+  items: { query: BulkEnrichPersonQuery; person?: SalesQLPerson; error?: string }[],
+  filename = "salesql_bulk_enriched"
+): void {
+  if (typeof window === "undefined" || !items || items.length === 0) return;
+
+  const headers = [
+    "Status",
+    "Full Name",
+    "Job Title",
+    "Organization",
+    "Work Email",
+    "All Emails",
+    "Phone Numbers",
+    "LinkedIn Profile",
+    "Website",
+    "Company Headcount",
+    "Error Details",
+  ];
+
+  const escapeCSV = (str?: string | number | null) => {
+    if (str === undefined || str === null) return '""';
+    const s = String(str).replace(/"/g, '""');
+    return `"${s}"`;
+  };
+
+  const rows = items.map((item) => {
+    const p = item.person;
+    const isFound = Boolean(p && !item.error);
+
+    const name = p?.full_name || `${p?.first_name || ""} ${p?.last_name || ""}`.trim() || item.query.full_name || "";
+    const title = p?.title || p?.headline || "";
+    const org = p?.organization?.name || item.query.organization_name || "";
+    const workEmail = p?.emails?.find((e) => e.type === "Work")?.email || p?.emails?.[0]?.email || item.query.email || "";
+    const allEmails = p?.emails?.map((e) => `${e.email} (${e.status || "unverified"})`).join("; ") || "";
+    const phones = p?.phones?.map((ph) => ph.phone).join("; ") || "";
+    const linkedin = p?.linkedin_url || item.query.linkedin_url || "";
+    const website = p?.organization?.website || p?.organization?.website_domain || item.query.organization_domain || "";
+    const headcount = p?.organization?.number_of_employees || "";
+    const err = item.error || "";
+
+    return [
+      escapeCSV(isFound ? "FOUND" : "NOT FOUND"),
+      escapeCSV(name),
+      escapeCSV(title),
+      escapeCSV(org),
+      escapeCSV(workEmail),
+      escapeCSV(allEmails),
+      escapeCSV(phones),
+      escapeCSV(linkedin),
+      escapeCSV(website),
+      escapeCSV(headcount),
+      escapeCSV(err),
+    ];
+  });
+
+  const csvContent =
+    "data:text/csv;charset=utf-8,\uFEFF" +
+    [headers.join(","), ...rows.map((row) => row.join(","))].join("\n");
+
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement("a");
+  link.setAttribute("href", encodedUri);
+  link.setAttribute("download", `${filename}_${new Date().toISOString().split("T")[0]}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

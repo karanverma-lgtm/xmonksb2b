@@ -62,3 +62,17 @@ export interface ProspectHistoryRecord {
   convertedToLeadId?: string;
   convertedToColdClientId?: string;
 }
+
+export interface BulkEnrichPersonQuery {
+  linkedin_url?: string;
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+  full_name?: string;
+  organization_name?: string;
+  organization_domain?: string;
+}
+
+export type BulkEnrichPersonItemResult =
+  | (SalesQLPerson & { error?: undefined })
+  | { error: string; [key: string]: any };
