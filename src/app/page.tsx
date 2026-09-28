@@ -20,7 +20,7 @@ import {
   removeLeadCompanyLogo,
 } from "@/lib/leadsService";
 import { exportLeadsToCSV } from "@/lib/exportService";
-import { Navbar, NavTab } from "@/components/Navbar";
+import { Sidebar, NavTab } from "@/components/Sidebar";
 import { DashboardStats } from "@/components/DashboardStats";
 import { FilterBar } from "@/components/FilterBar";
 import { KanbanBoard } from "@/components/KanbanBoard";
@@ -717,9 +717,9 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans overflow-x-hidden">
-      {/* Top Navigation */}
-      <Navbar
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col lg:flex-row font-sans">
+      {/* Sidebar Navigation */}
+      <Sidebar
         activeTab={activeTab}
         setActiveTab={handleTabChange}
         onOpenAddModal={() => setIsAddModalOpen(true)}
@@ -737,8 +737,9 @@ export default function Home() {
         totalWeightedPipeline={totalWeightedPipeline}
       />
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen overflow-x-hidden">
+        <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* KPI Dashboard Summary Bar & Filter Bar for Lead Management tabs */}
         {!isAccounts && (activeTab === "kanban" || activeTab === "table" || activeTab === "analytics") && (
           <>
@@ -935,14 +936,15 @@ export default function Home() {
         currentUser={currentUser}
       />
 
-      {/* Footer */}
-      <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 py-4 text-center text-xs text-slate-500">
-        <p>
-          {isAccounts
-            ? "xMonks B2B CRM • Accounts & Billing Department Portal"
-            : "xMonks B2B Lead Journey CRM • Firebase Integration (`xmonksb2b2`) • Stage Weightage Calculations & Real-Time Date-Time Logs"}
-        </p>
-      </footer>
+        {/* Footer */}
+        <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 py-4 text-center text-xs text-slate-500">
+          <p>
+            {isAccounts
+              ? "xMonks B2B CRM • Accounts & Billing Department Portal"
+              : "xMonks B2B Lead Journey CRM • Firebase Integration (`xmonksb2b2`) • Stage Weightage Calculations & Real-Time Date-Time Logs"}
+          </p>
+        </footer>
+      </div>
     </div>
   );
 }
