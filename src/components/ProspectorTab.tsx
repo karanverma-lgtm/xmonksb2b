@@ -60,6 +60,14 @@ import {
 import { UserAccount } from "@/constants/users";
 import { Lead } from "@/types/lead";
 import { ColdClient } from "@/types/outreach";
+import {
+  DEMO_APPLE_ORGANIZATION,
+  DEMO_ARIEL_PERSON,
+  DEMO_BULK_RESULTS,
+} from "@/constants/prospectorDemoData";
+import { PersonDossierCard } from "./prospector/PersonDossierCard";
+import { OrganizationDossierCard } from "./prospector/OrganizationDossierCard";
+import { BulkDossierModal } from "./prospector/BulkDossierModal";
 
 type ProspectorMode = "person" | "bulk_person" | "organization" | "email_lookup" | "history";
 
@@ -100,6 +108,8 @@ export const ProspectorTab: React.FC<ProspectorTabProps> = ({
   ]);
   const [bulkResults, setBulkResults] = useState<{ query: BulkEnrichPersonQuery; person?: SalesQLPerson; error?: string }[] | null>(null);
   const [selectedBulkIndices, setSelectedBulkIndices] = useState<Set<number>>(new Set());
+  const [modalInspectPerson, setModalInspectPerson] = useState<SalesQLPerson | null>(null);
+  const [bulkFilter, setBulkFilter] = useState<"all" | "found" | "not_found">("all");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Search Inputs - Organization
@@ -828,7 +838,21 @@ export const ProspectorTab: React.FC<ProspectorTabProps> = ({
                   }}
                   className="px-2.5 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/80 text-xs font-bold hover:bg-indigo-100 transition"
                 >
-                  ⚡ Load Demo Batch (4 Profiles)
+                  ⚡ Load Demo Queries
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkResults(DEMO_BULK_RESULTS);
+                    const sampleText = `https://linkedin.com/in/arielcamino2\nunknown.lead@example.com`;
+                    setBulkRawText(sampleText);
+                    setBulkInputMode("paste");
+                    showToast("Loaded Ariel Camino Demo Batch (1 Found, 1 Not Found)!");
+                  }}
+                  className="px-2.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-xs font-bold transition flex items-center space-x-1"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  <span>📦 Load Ariel Camino Batch (Success & Not Found)</span>
                 </button>
                 {bulkRawText && (
                   <button
@@ -1112,6 +1136,43 @@ Sundar Pichai, Alphabet`}
                       Select All Found ({selectedBulkIndices.size} selected)
                     </span>
                   </button>
+
+                  {/* Filter Pills */}
+                  <div className="flex items-center space-x-1 pl-2 border-l border-slate-200 dark:border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setBulkFilter("all")}
+                      className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition ${
+                        bulkFilter === "all"
+                          ? "bg-indigo-600 text-white shadow-sm"
+                          : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                      }`}
+                    >
+                      All ({bulkResults.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBulkFilter("found")}
+                      className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition ${
+                        bulkFilter === "found"
+                          ? "bg-emerald-600 text-white shadow-sm"
+                          : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                      }`}
+                    >
+                      Found ({bulkResults.filter((r) => r.person && !r.error).length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBulkFilter("not_found")}
+                      className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition ${
+                        bulkFilter === "not_found"
+                          ? "bg-amber-600 text-white shadow-sm"
+                          : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                      }`}
+                    >
+                      Not Found ({bulkResults.filter((r) => r.error || !r.person).length})
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex items-center flex-wrap gap-2">
@@ -1155,7 +1216,7 @@ Sundar Pichai, Alphabet`}
                   <thead className="bg-slate-50 dark:bg-slate-950/70 text-slate-500 uppercase text-[10px] font-bold border-b border-slate-200 dark:border-slate-800">
                     <tr>
                       <th className="py-2.5 px-3 w-10 text-center">#</th>
-                      <th className="py-2.5 px-3 w-24">Status</th>
+                      <th className="py-2.5 px-3 w-28">Status</th>
                       <th className="py-2.5 px-3">Person / Executive</th>
                       <th className="py-2.5 px-3">Current Organization</th>
                       <th className="py-2.5 px-3">Discovered Emails</th>
@@ -1164,186 +1225,212 @@ Sundar Pichai, Alphabet`}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
-                    {bulkResults.map((item, idx) => {
-                      const p = item.person;
-                      const isFound = Boolean(p && !item.error);
-                      const isSelected = selectedBulkIndices.has(idx);
+                    {bulkResults
+                      .map((item, originalIndex) => ({ item, originalIndex }))
+                      .filter(({ item }) => {
+                        if (bulkFilter === "found") return Boolean(item.person && !item.error);
+                        if (bulkFilter === "not_found") return Boolean(item.error || !item.person);
+                        return true;
+                      })
+                      .map(({ item, originalIndex }) => {
+                        const p = item.person;
+                        const isFound = Boolean(p && !item.error);
+                        const isSelected = selectedBulkIndices.has(originalIndex);
 
-                      const name =
-                        p?.full_name ||
-                        `${p?.first_name || ""} ${p?.last_name || ""}`.trim() ||
-                        item.query.full_name ||
-                        "Unknown";
-                      const title = p?.title || p?.headline || "";
-                      const org = p?.organization?.name || item.query.organization_name || "";
-                      const domain = p?.organization?.website_domain || item.query.organization_domain || "";
-                      const verifiedEmails = p?.emails || [];
-                      const directPhones = p?.phones || [];
+                        const name =
+                          p?.full_name ||
+                          `${p?.first_name || ""} ${p?.last_name || ""}`.trim() ||
+                          item.query.full_name ||
+                          item.query.email ||
+                          "Contact";
+                        const title = p?.title || p?.headline || "";
+                        const org = p?.organization?.name || item.query.organization_name || "";
+                        const domain = p?.organization?.website_domain || item.query.organization_domain || "";
+                        const verifiedEmails = p?.emails || [];
+                        const directPhones = p?.phones || [];
 
-                      return (
-                        <tr
-                          key={idx}
-                          className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition ${
-                            isSelected ? "bg-indigo-50/40 dark:bg-indigo-950/20" : ""
-                          }`}
-                        >
-                          <td className="py-2.5 px-3 text-center">
-                            {isFound ? (
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={(e) => {
-                                  const updated = new Set(selectedBulkIndices);
-                                  if (e.target.checked) updated.add(idx);
-                                  else updated.delete(idx);
-                                  setSelectedBulkIndices(updated);
-                                }}
-                                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                              />
-                            ) : (
-                              <span className="text-[10px] text-slate-400 font-mono">{idx + 1}</span>
-                            )}
-                          </td>
+                        return (
+                          <tr
+                            key={originalIndex}
+                            className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition ${
+                              isSelected ? "bg-indigo-50/40 dark:bg-indigo-950/20" : ""
+                            }`}
+                          >
+                            <td className="py-2.5 px-3 text-center">
+                              {isFound ? (
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={(e) => {
+                                    const updated = new Set(selectedBulkIndices);
+                                    if (e.target.checked) updated.add(originalIndex);
+                                    else updated.delete(originalIndex);
+                                    setSelectedBulkIndices(updated);
+                                  }}
+                                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                />
+                              ) : (
+                                <span className="text-[10px] text-slate-400 font-mono">{originalIndex + 1}</span>
+                              )}
+                            </td>
 
-                          <td className="py-2.5 px-3 whitespace-nowrap">
-                            {isFound ? (
-                              <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                                <CheckCircle2 className="w-3 h-3" />
-                                <span>Found</span>
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                                <span>Not Found</span>
-                              </span>
-                            )}
-                          </td>
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              {isFound ? (
+                                <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  <span>Found</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                                  <span>{item.error || "Not Found"}</span>
+                                </span>
+                              )}
+                            </td>
 
-                          <td className="py-2.5 px-3">
-                            <div className="flex items-center space-x-2.5">
-                              <div className="w-8 h-8 rounded-lg bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 font-bold flex items-center justify-center flex-shrink-0 text-xs">
-                                {name[0] || "?"}
+                            <td className="py-2.5 px-3">
+                              <div className="flex items-center space-x-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 font-bold flex items-center justify-center flex-shrink-0 text-xs">
+                                  {name[0] || "?"}
+                                </div>
+                                <div className="min-w-0 max-w-[200px]">
+                                  <p className="font-bold text-slate-900 dark:text-white truncate">
+                                    {name}
+                                  </p>
+                                  {title ? (
+                                    <p className="text-[11px] text-slate-500 truncate" title={title}>
+                                      {title}
+                                    </p>
+                                  ) : (
+                                    <p className="text-[10px] font-mono text-slate-400 truncate">
+                                      {item.query.linkedin_url || item.query.email || "No title recorded"}
+                                    </p>
+                                  )}
+                                </div>
                               </div>
-                              <div className="min-w-0 max-w-[200px]">
-                                <p className="font-bold text-slate-900 dark:text-white truncate">
-                                  {name}
+                            </td>
+
+                            <td className="py-2.5 px-3">
+                              <div>
+                                <p className="font-bold text-slate-800 dark:text-slate-200">
+                                  {org || "—"}
                                 </p>
-                                {title && (
-                                  <p className="text-[11px] text-slate-500 truncate" title={title}>
-                                    {title}
+                                {domain && (
+                                  <p className="text-[10px] text-slate-400 font-mono truncate">
+                                    {domain}
                                   </p>
                                 )}
                               </div>
-                            </div>
-                          </td>
+                            </td>
 
-                          <td className="py-2.5 px-3">
-                            <div>
-                              <p className="font-bold text-slate-800 dark:text-slate-200">
-                                {org || "—"}
-                              </p>
-                              {domain && (
-                                <p className="text-[10px] text-slate-400 font-mono truncate">
-                                  {domain}
-                                </p>
+                            <td className="py-2.5 px-3">
+                              {verifiedEmails.length === 0 ? (
+                                <span className="text-slate-400 italic text-[11px]">None</span>
+                              ) : (
+                                <div className="space-y-1">
+                                  {verifiedEmails.slice(0, 2).map((em, eIdx) => (
+                                    <div key={eIdx} className="flex items-center space-x-1.5 font-mono text-[11px]">
+                                      <span className="text-slate-800 dark:text-slate-200 truncate max-w-[150px]">
+                                        {em.email}
+                                      </span>
+                                      <span
+                                        className={`text-[9px] px-1 rounded font-bold ${
+                                          em.status?.toLowerCase() === "valid"
+                                            ? "bg-emerald-500/10 text-emerald-600"
+                                            : "bg-slate-200 dark:bg-slate-800 text-slate-500"
+                                        }`}
+                                      >
+                                        {em.status || "work"}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCopy(em.email, `bulk-email-${originalIndex}-${eIdx}`)}
+                                        className="p-0.5 text-slate-400 hover:text-indigo-600"
+                                      >
+                                        {copiedField === `bulk-email-${originalIndex}-${eIdx}` ? (
+                                          <Check className="w-3 h-3 text-emerald-500" />
+                                        ) : (
+                                          <Copy className="w-3 h-3" />
+                                        )}
+                                      </button>
+                                    </div>
+                                  ))}
+                                  {verifiedEmails.length > 2 && (
+                                    <span className="text-[10px] text-slate-400 font-semibold">
+                                      +{verifiedEmails.length - 2} more
+                                    </span>
+                                  )}
+                                </div>
                               )}
-                            </div>
-                          </td>
+                            </td>
 
-                          <td className="py-2.5 px-3">
-                            {verifiedEmails.length === 0 ? (
-                              <span className="text-slate-400 italic text-[11px]">None</span>
-                            ) : (
-                              <div className="space-y-1">
-                                {verifiedEmails.slice(0, 2).map((em, eIdx) => (
-                                  <div key={eIdx} className="flex items-center space-x-1.5 font-mono text-[11px]">
-                                    <span className="text-slate-800 dark:text-slate-200 truncate max-w-[150px]">
-                                      {em.email}
-                                    </span>
-                                    <span
-                                      className={`text-[9px] px-1 rounded font-bold ${
-                                        em.status?.toLowerCase() === "valid"
-                                          ? "bg-emerald-500/10 text-emerald-600"
-                                          : "bg-slate-200 dark:bg-slate-800 text-slate-500"
-                                      }`}
-                                    >
-                                      {em.status || "work"}
-                                    </span>
+                            <td className="py-2.5 px-3">
+                              {directPhones.length === 0 ? (
+                                <span className="text-slate-400 italic text-[11px]">None</span>
+                              ) : (
+                                <div className="font-mono text-[11px] text-slate-800 dark:text-slate-200 flex items-center space-x-1.5">
+                                  <span>{directPhones[0].phone}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopy(directPhones[0].phone, `bulk-phone-${originalIndex}`)}
+                                    className="p-0.5 text-slate-400 hover:text-emerald-600"
+                                  >
+                                    {copiedField === `bulk-phone-${originalIndex}` ? (
+                                      <Check className="w-3 h-3 text-emerald-500" />
+                                    ) : (
+                                      <Copy className="w-3 h-3" />
+                                    )}
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+
+                            <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                              <div className="flex items-center justify-end space-x-1.5">
+                                {p?.linkedin_url && (
+                                  <a
+                                    href={p.linkedin_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/60 transition"
+                                    title="Open User LinkedIn Profile"
+                                  >
+                                    <svg className="w-3.5 h-3.5 fill-current text-[#0A66C2]" viewBox="0 0 24 24">
+                                      <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z"/>
+                                    </svg>
+                                  </a>
+                                )}
+
+                                {isFound && (
+                                  <>
                                     <button
                                       type="button"
-                                      onClick={() => handleCopy(em.email, `bulk-email-${idx}-${eIdx}`)}
-                                      className="p-0.5 text-slate-400 hover:text-indigo-600"
+                                      onClick={() => setModalInspectPerson(p!)}
+                                      className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-400 font-bold text-[11px] transition shadow-xs"
+                                      title="Inspect Full Executive Dossier with Career Timeline"
                                     >
-                                      {copiedField === `bulk-email-${idx}-${eIdx}` ? (
-                                        <Check className="w-3 h-3 text-emerald-500" />
-                                      ) : (
-                                        <Copy className="w-3 h-3" />
-                                      )}
+                                      <Eye className="w-3.5 h-3.5" />
+                                      <span>Inspect</span>
                                     </button>
-                                  </div>
-                                ))}
-                                {verifiedEmails.length > 2 && (
-                                  <span className="text-[10px] text-slate-400 font-semibold">
-                                    +{verifiedEmails.length - 2} more
-                                  </span>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setPersonResult(p!);
+                                        setOrgResult(null);
+                                        setMode("person");
+                                      }}
+                                      className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                      title="View in Dedicated Dossier Tab"
+                                    >
+                                      <ExternalLink className="w-3.5 h-3.5" />
+                                    </button>
+                                  </>
                                 )}
                               </div>
-                            )}
-                          </td>
-
-                          <td className="py-2.5 px-3">
-                            {directPhones.length === 0 ? (
-                              <span className="text-slate-400 italic text-[11px]">None</span>
-                            ) : (
-                              <div className="font-mono text-[11px] text-slate-800 dark:text-slate-200 flex items-center space-x-1.5">
-                                <span>{directPhones[0].phone}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleCopy(directPhones[0].phone, `bulk-phone-${idx}`)}
-                                  className="p-0.5 text-slate-400 hover:text-emerald-600"
-                                >
-                                  {copiedField === `bulk-phone-${idx}` ? (
-                                    <Check className="w-3 h-3 text-emerald-500" />
-                                  ) : (
-                                    <Copy className="w-3 h-3" />
-                                  )}
-                                </button>
-                              </div>
-                            )}
-                          </td>
-
-                          <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                            <div className="flex items-center justify-end space-x-1">
-                              {p?.linkedin_url && (
-                                <a
-                                  href={p.linkedin_url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="p-1 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-100 dark:hover:bg-slate-800"
-                                  title="Open LinkedIn"
-                                >
-                                  <ExternalLink className="w-3.5 h-3.5" />
-                                </a>
-                              )}
-
-                              {isFound && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setPersonResult(p!);
-                                    setOrgResult(null);
-                                    setMode("person");
-                                  }}
-                                  className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800"
-                                  title="View Full Profile Dossier"
-                                >
-                                  <Eye className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                            </td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
               </div>
@@ -1461,13 +1548,27 @@ Sundar Pichai, Alphabet`}
                       <button
                         type="button"
                         onClick={() => {
+                          setPersonResult(DEMO_ARIEL_PERSON);
+                          setOrgResult(null);
+                          setPersonLinkedinUrl(DEMO_ARIEL_PERSON.linkedin_url || "");
+                          setPersonFullName(DEMO_ARIEL_PERSON.full_name || "");
+                          setPersonOrgDomain(DEMO_ARIEL_PERSON.organization?.website_domain || "");
+                          showToast("Loaded Ariel Camino (CEO at SalesQL) Demo Dossier!");
+                        }}
+                        className="text-[10px] px-2 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 font-bold shadow-sm shadow-indigo-600/20"
+                      >
+                        ⚡ Ariel Camino (CEO at SalesQL)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
                           setPersonLinkedinUrl("https://linkedin.com/in/tonyagarrett1");
                           setPersonFullName("Tonya Garrett");
                           setPersonOrgDomain("linkedin.com");
                         }}
                         className="text-[10px] px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 font-medium"
                       >
-                        Tonya Garrett (LinkedIn)
+                        Tonya Garrett
                       </button>
                       <button
                         type="button"
@@ -1562,10 +1663,24 @@ Sundar Pichai, Alphabet`}
                   {/* Quick Examples */}
                   <div className="pt-1">
                     <span className="text-[10px] text-slate-400 font-semibold block mb-1">
-                      Quick Examples:
+                      Quick Company Demos:
                     </span>
                     <div className="flex flex-wrap gap-1.5">
-                      {["openai.com", "stripe.com", "airbnb.com", "microsoft.com"].map((dom) => (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOrgResult(DEMO_APPLE_ORGANIZATION);
+                          setPersonResult(null);
+                          setOrgDomain(DEMO_APPLE_ORGANIZATION.website_domain || "");
+                          setOrgName(DEMO_APPLE_ORGANIZATION.name || "");
+                          setOrgLinkedinUrl(DEMO_APPLE_ORGANIZATION.linkedin_url || "");
+                          showToast("Loaded Apple (Public Tech Giant) Demo Dossier!");
+                        }}
+                        className="text-[10px] px-2 py-1 rounded-lg bg-blue-600 text-white hover:bg-blue-700 font-bold shadow-sm shadow-blue-600/20"
+                      >
+                        🏢 Apple (Public Tech Giant)
+                      </button>
+                      {["openai.com", "stripe.com", "microsoft.com"].map((dom) => (
                         <button
                           key={dom}
                           type="button"
@@ -1621,7 +1736,7 @@ Sundar Pichai, Alphabet`}
                     </label>
                     <input
                       type="email"
-                      placeholder="e.g. catherinelkent@gmail.com"
+                      placeholder="e.g. a***l@s*****l.com, catherinelkent@gmail.com"
                       value={lookupEmail}
                       onChange={(e) => setLookupEmail(e.target.value)}
                       className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white"
@@ -1633,15 +1748,29 @@ Sundar Pichai, Alphabet`}
 
                   <div className="pt-1">
                     <span className="text-[10px] text-slate-400 font-semibold block mb-1">
-                      Quick Sample:
+                      Quick Reverse Email Samples:
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => setLookupEmail("catherinelkent@gmail.com")}
-                      className="text-[10px] px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 font-medium"
-                    >
-                      catherinelkent@gmail.com
-                    </button>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPersonResult(DEMO_ARIEL_PERSON);
+                          setOrgResult(null);
+                          setLookupEmail("a***l@s*****l.com");
+                          showToast("Uncovered Ariel Camino (CEO at SalesQL) from Reverse Email!");
+                        }}
+                        className="text-[10px] px-2 py-1 rounded-lg bg-purple-600 text-white hover:bg-purple-700 font-bold shadow-sm shadow-purple-600/20"
+                      >
+                        ✉️ Ariel Camino (a***l@s*****l.com)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLookupEmail("catherinelkent@gmail.com")}
+                        className="text-[10px] px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 font-medium"
+                      >
+                        catherinelkent@gmail.com
+                      </button>
+                    </div>
                   </div>
 
                   <button
@@ -1839,46 +1968,77 @@ Sundar Pichai, Alphabet`}
           <div className="lg:col-span-7 space-y-4">
             {/* Default Empty State */}
             {!personResult && !orgResult && (
-              <div className="bg-white dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-800 rounded-2xl p-10 text-center flex flex-col items-center justify-center min-h-[420px]">
-                <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-4 shadow-inner">
-                  <Search className="w-7 h-7" />
+              <div className="bg-white dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-800 rounded-3xl p-8 sm:p-12 text-center flex flex-col items-center justify-center min-h-[460px] shadow-sm">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-500/10 to-purple-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-4 shadow-inner border border-indigo-500/20">
+                  <Search className="w-8 h-8" />
                 </div>
-                <h3 className="text-base font-black text-slate-800 dark:text-slate-200">
+                <h3 className="text-lg font-black text-slate-900 dark:text-white">
                   Awaiting Search Query
                 </h3>
-                <p className="text-xs text-slate-500 max-w-sm mt-1">
-                  Enter a LinkedIn URL, domain, or email on the left to reveal rich executive profiles, direct mobile phones, verified emails, and work experience.
+                <p className="text-xs text-slate-500 max-w-md mt-1 leading-relaxed">
+                  Enter an organization domain, person LinkedIn URL, or email address on the left to reveal rich corporate metrics, career timelines, direct phone lines, verified emails, and LinkedIn profiles.
                 </p>
-                <div className="mt-6 flex flex-wrap gap-2 justify-center">
+
+                <div className="mt-6 flex flex-wrap gap-2.5 justify-center max-w-xl">
                   <button
-                    onClick={() => {
-                      setMode("person");
-                      setPersonLinkedinUrl("https://linkedin.com/in/tonyagarrett1");
-                      setPersonFullName("Tonya Garrett");
-                      setPersonOrgDomain("linkedin.com");
-                    }}
-                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950 hover:text-indigo-600 transition"
-                  >
-                    ⚡ Try Demo Executive
-                  </button>
-                  <button
+                    type="button"
                     onClick={() => {
                       setMode("organization");
-                      setOrgDomain("openai.com");
-                      setOrgName("OpenAI");
+                      setOrgResult(DEMO_APPLE_ORGANIZATION);
+                      setPersonResult(null);
+                      setOrgDomain("apple.com");
+                      setOrgName("Apple");
+                      showToast("Loaded Apple (Public Tech Giant) Demo Dossier!");
                     }}
-                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950 hover:text-indigo-600 transition"
+                    className="px-3.5 py-2 rounded-xl text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-600/20 transition flex items-center space-x-1.5"
                   >
-                    🏢 Try Demo Company (OpenAI)
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span>🏢 Try Apple Demo (Public Org)</span>
                   </button>
+
                   <button
+                    type="button"
+                    onClick={() => {
+                      setMode("person");
+                      setPersonResult(DEMO_ARIEL_PERSON);
+                      setOrgResult(null);
+                      setPersonLinkedinUrl("https://linkedin.com/in/arielcamino2");
+                      setPersonFullName("Ariel Camino");
+                      setPersonOrgDomain("salesql.com");
+                      showToast("Loaded Ariel Camino (CEO at SalesQL) Demo Dossier!");
+                    }}
+                    className="px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-600/20 transition flex items-center space-x-1.5"
+                  >
+                    <User className="w-3.5 h-3.5" />
+                    <span>⚡ Try Ariel Camino Demo (Person)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode("email_lookup");
+                      setPersonResult(DEMO_ARIEL_PERSON);
+                      setOrgResult(null);
+                      setLookupEmail("a***l@s*****l.com");
+                      showToast("Uncovered Ariel Camino from Reverse Email Demo!");
+                    }}
+                    className="px-3.5 py-2 rounded-xl text-xs font-bold bg-purple-600 text-white hover:bg-purple-700 shadow-md shadow-purple-600/20 transition flex items-center space-x-1.5"
+                  >
+                    <Mail className="w-3.5 h-3.5" />
+                    <span>✉️ Try Reverse Email Demo</span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => {
                       setMode("bulk_person");
+                      setBulkResults(DEMO_BULK_RESULTS);
+                      showToast("Loaded Ariel Camino Bulk Batch (1 Found, 1 Not Found)!");
                     }}
-                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition flex items-center space-x-1"
+                    className="px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition flex items-center space-x-1.5"
                   >
                     <Layers className="w-3.5 h-3.5" />
-                    <span>Try Bulk Enrich (100x)</span>
+                    <span>📦 Try Bulk Batch Demo (100x)</span>
                   </button>
                 </div>
               </div>
@@ -1886,525 +2046,47 @@ Sundar Pichai, Alphabet`}
 
             {/* Person Result Dossier */}
             {personResult && (
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm space-y-6">
-                {/* Top Profile Header */}
-                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-5 border-b border-slate-100 dark:border-slate-800">
-                  <div className="flex items-start space-x-3.5">
-                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center font-black text-xl shadow-lg shadow-indigo-600/20 flex-shrink-0">
-                      {personResult.first_name?.[0] || personResult.full_name?.[0] || "U"}
-                    </div>
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <h2 className="text-lg font-black text-slate-900 dark:text-white">
-                          {personResult.full_name || `${personResult.first_name || ""} ${personResult.last_name || ""}`.trim() || "Executive"}
-                        </h2>
-                        {personResult.uuid && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 font-mono">
-                            Verified
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
-                        {personResult.title || "Professional"}
-                      </p>
-                      {personResult.headline && (
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 max-w-md line-clamp-2">
-                          {personResult.headline}
-                        </p>
-                      )}
-
-                      {/* User LinkedIn Profile in Header */}
-                      {personResult.linkedin_url && (
-                        <div className="flex items-center space-x-2 mt-2">
-                          <a
-                            href={personResult.linkedin_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 text-xs font-bold transition border border-blue-500/20 group"
-                            title="Open User LinkedIn Profile"
-                          >
-                            <svg className="w-3.5 h-3.5 fill-current text-blue-600 dark:text-blue-400 flex-shrink-0" viewBox="0 0 24 24">
-                              <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z"/>
-                            </svg>
-                            <span className="truncate max-w-[200px] sm:max-w-xs">{personResult.linkedin_url}</span>
-                            <ExternalLink className="w-3 h-3 flex-shrink-0 group-hover:translate-x-0.5 transition-transform" />
-                          </a>
-                          <button
-                            type="button"
-                            onClick={() => handleCopy(personResult.linkedin_url!, "person-linkedin-header")}
-                            className="p-1 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                            title="Copy User LinkedIn URL"
-                          >
-                            {copiedField === "person-linkedin-header" ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-500" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* 1-Click Action Buttons */}
-                  <div className="flex flex-wrap sm:flex-col gap-2 flex-shrink-0">
-                    <button
-                      onClick={() => handleConvertToPipelineLead(personResult)}
-                      className="flex items-center justify-center space-x-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-600/20 transition active:scale-95"
-                      title="Add this prospect to Active Pipeline Leads"
-                    >
-                      <PlusCircle className="w-3.5 h-3.5" />
-                      <span>Create CRM Lead</span>
-                    </button>
-                    <button
-                      onClick={() => handleAddToColdOutreach(personResult)}
-                      className="flex items-center justify-center space-x-1.5 px-3 py-2 bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-xl border border-blue-500/20 transition active:scale-95"
-                      title="Add to Cold Outreach accounts"
-                    >
-                      <SendHorizontal className="w-3.5 h-3.5" />
-                      <span>Add to Outreach</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Direct Verified Contact Details */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* User LinkedIn Profile Block (Highlighted prominently, especially when uncovered via reverse email) */}
-                  <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800 space-y-2.5 md:col-span-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center space-x-1.5">
-                        <svg className="w-3.5 h-3.5 fill-current text-blue-600 dark:text-blue-400" viewBox="0 0 24 24">
-                          <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z"/>
-                        </svg>
-                        <span>User LinkedIn Profile</span>
-                      </span>
-                      {personResult.linkedin_url ? (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                          {mode === "email_lookup" ? "Uncovered via Reverse Email" : "Direct Profile Found"}
-                        </span>
-                      ) : (
-                        <span className="text-[10px] text-slate-400 font-bold">Not Available</span>
-                      )}
-                    </div>
-
-                    {personResult.linkedin_url ? (
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-xs">
-                        <div className="min-w-0 pr-2">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Profile URL</p>
-                          <a
-                            href={personResult.linkedin_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="font-mono text-blue-600 dark:text-blue-400 hover:underline truncate font-semibold block"
-                            title={personResult.linkedin_url}
-                          >
-                            {personResult.linkedin_url}
-                          </a>
-                        </div>
-                        <div className="flex items-center space-x-1.5 flex-shrink-0 self-end sm:self-center">
-                          <button
-                            type="button"
-                            onClick={() => handleCopy(personResult.linkedin_url!, "person-linkedin-contact")}
-                            className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold transition"
-                            title="Copy LinkedIn URL"
-                          >
-                            {copiedField === "person-linkedin-contact" ? (
-                              <>
-                                <Check className="w-3.5 h-3.5 text-emerald-500" />
-                                <span className="text-emerald-500 text-[11px]">Copied</span>
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="w-3.5 h-3.5" />
-                                <span className="text-[11px]">Copy URL</span>
-                              </>
-                            )}
-                          </button>
-                          <a
-                            href={personResult.linkedin_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-sm"
-                          >
-                            <span>Open LinkedIn</span>
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-slate-400 italic">No LinkedIn profile URL was returned for this contact in the SalesQL database.</p>
-                    )}
-                  </div>
-
-                  {/* Emails Block */}
-                  <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center space-x-1.5">
-                        <Mail className="w-3.5 h-3.5 text-indigo-500" />
-                        <span>Verified Emails</span>
-                      </span>
-                      <span className="text-[10px] text-slate-500 font-bold">
-                        {personResult.emails?.length || 0} Found
-                      </span>
-                    </div>
-
-                    {(!personResult.emails || personResult.emails.length === 0) ? (
-                      <p className="text-xs text-slate-400 italic">No emails available.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {personResult.emails.map((em, idx) => (
-                          <div
-                            key={idx}
-                            className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-xs"
-                          >
-                            <div className="min-w-0 pr-2">
-                              <p className="font-mono text-slate-900 dark:text-slate-100 truncate">
-                                {em.email}
-                              </p>
-                              <div className="flex items-center space-x-1.5 mt-0.5">
-                                <span className="text-[9px] font-bold text-slate-500">
-                                  {em.type || "Email"}
-                                </span>
-                                <span
-                                  className={`text-[9px] px-1.5 py-0.2 rounded font-black ${
-                                    em.status?.toLowerCase() === "valid"
-                                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                                      : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                                  }`}
-                                >
-                                  {em.status || "Unknown"}
-                                </span>
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => handleCopy(em.email, `email-${idx}`)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                              title="Copy email"
-                            >
-                              {copiedField === `email-${idx}` ? (
-                                <Check className="w-3.5 h-3.5 text-emerald-500" />
-                              ) : (
-                                <Copy className="w-3.5 h-3.5" />
-                              )}
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Phones Block */}
-                  <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center space-x-1.5">
-                        <Phone className="w-3.5 h-3.5 text-emerald-500" />
-                        <span>Direct Phone Numbers</span>
-                      </span>
-                      <span className="text-[10px] text-slate-500 font-bold">
-                        {personResult.phones?.length || 0} Found
-                      </span>
-                    </div>
-
-                    {(!personResult.phones || personResult.phones.length === 0) ? (
-                      <p className="text-xs text-slate-400 italic">No direct phone numbers recorded.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {personResult.phones.map((ph, idx) => (
-                          <div
-                            key={idx}
-                            className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-xs"
-                          >
-                            <div className="min-w-0 pr-2">
-                              <p className="font-mono text-slate-900 dark:text-slate-100">
-                                {ph.phone}
-                              </p>
-                              <div className="flex items-center space-x-1.5 mt-0.5">
-                                <span className="text-[9px] font-bold text-slate-500">
-                                  {ph.type || "Direct"}
-                                </span>
-                                {ph.country_code && (
-                                  <span className="text-[9px] px-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold">
-                                    {ph.country_code}
-                                  </span>
-                                )}
-                                {ph.is_valid && (
-                                  <span className="text-[9px] px-1 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold">
-                                    Verified
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => handleCopy(ph.phone, `phone-${idx}`)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                              title="Copy phone"
-                            >
-                              {copiedField === `phone-${idx}` ? (
-                                <Check className="w-3.5 h-3.5 text-emerald-500" />
-                              ) : (
-                                <Copy className="w-3.5 h-3.5" />
-                              )}
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Current Organization Card */}
-                {personResult.organization && (
-                  <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center space-x-1.5">
-                        <Building2 className="w-3.5 h-3.5 text-indigo-500" />
-                        <span>Current Organization</span>
-                      </span>
-                      {personResult.organization.website_domain && (
-                        <a
-                          href={personResult.organization.website || `https://${personResult.organization.website_domain}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center space-x-1"
-                        >
-                          <span>{personResult.organization.website_domain}</span>
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                      )}
-                    </div>
-
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h4 className="text-sm font-black text-slate-900 dark:text-white">
-                          {personResult.organization.name}
-                        </h4>
-                        <div className="flex flex-wrap items-center gap-3 mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                          {personResult.organization.number_of_employees && (
-                            <span className="flex items-center space-x-1">
-                              <Users className="w-3 h-3 text-slate-400" />
-                              <span>{personResult.organization.number_of_employees} employees</span>
-                            </span>
-                          )}
-                          {personResult.organization.type && (
-                            <span className="capitalize px-1.5 py-0.2 rounded bg-slate-200/60 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-[10px]">
-                              {personResult.organization.type}
-                            </span>
-                          )}
-                          {personResult.organization.founded_year && (
-                            <span>Founded {personResult.organization.founded_year}</span>
-                          )}
-                        </div>
-                      </div>
-
-                      {personResult.organization.linkedin_url && (
-                        <a
-                          href={personResult.organization.linkedin_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 text-xs font-bold transition flex items-center space-x-1"
-                        >
-                          <span>LinkedIn</span>
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Work Experience Timeline */}
-                {personResult.work_experience && personResult.work_experience.length > 0 && (
-                  <div className="space-y-3 pt-2">
-                    <h4 className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center space-x-1.5">
-                      <Briefcase className="w-3.5 h-3.5 text-indigo-500" />
-                      <span>Work Experience & Career Progression ({personResult.work_experience.length})</span>
-                    </h4>
-
-                    <div className="relative pl-4 space-y-4 before:absolute before:left-1.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200 dark:before:bg-slate-800">
-                      {personResult.work_experience.slice(0, 6).map((exp, idx) => (
-                        <div key={idx} className="relative group">
-                          <div
-                            className={`absolute -left-[19px] top-1 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-slate-900 ${
-                              exp.is_current ? "bg-emerald-500 ring-2 ring-emerald-500/30" : "bg-slate-400"
-                            }`}
-                          />
-                          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/40 border border-slate-200/80 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 transition">
-                            <div className="flex items-start justify-between gap-2">
-                              <div>
-                                <div className="flex items-center space-x-2">
-                                  <p className="text-xs font-bold text-slate-900 dark:text-white">
-                                    {exp.title}
-                                  </p>
-                                  {exp.is_current && (
-                                    <span className="text-[9px] px-1.5 py-0.2 rounded font-black bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                                      Current
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 mt-0.5">
-                                  {exp.organization?.name || "Company"}
-                                </p>
-                              </div>
-
-                              {exp.organization?.logo && (
-                                <img
-                                  src={exp.organization.logo}
-                                  alt={exp.organization.name || "logo"}
-                                  className="w-8 h-8 rounded-lg object-contain bg-white p-1 border border-slate-200 dark:border-slate-800"
-                                  onError={(e) => {
-                                    (e.target as HTMLElement).style.display = "none";
-                                  }}
-                                />
-                              )}
-                            </div>
-
-                            <div className="flex flex-wrap items-center gap-3 mt-2 text-[10px] text-slate-400">
-                              {exp.organization?.website_domain && (
-                                <span>{exp.organization.website_domain}</span>
-                              )}
-                              {exp.organization?.number_of_employees && (
-                                <span>{exp.organization.number_of_employees} employees</span>
-                              )}
-                              {exp.organization?.type && (
-                                <span className="capitalize">{exp.organization.type}</span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+              <PersonDossierCard
+                person={personResult}
+                sourceLabel={
+                  mode === "email_lookup"
+                    ? "Uncovered via Reverse Email Lookup"
+                    : "Enriched Executive Profile"
+                }
+                sourceEmail={
+                  mode === "email_lookup" ? lookupEmail : undefined
+                }
+                onConvertToLead={(p) => handleConvertToPipelineLead(p)}
+                onAddToOutreach={(p) => handleAddToColdOutreach(p)}
+                onCopy={handleCopy}
+                copiedField={copiedField}
+              />
             )}
 
             {/* Organization Result Dossier */}
             {orgResult && (
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm space-y-6">
-                {/* Org Header */}
-                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-5 border-b border-slate-100 dark:border-slate-800">
-                  <div className="flex items-start space-x-3.5">
-                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-black text-xl shadow-lg shadow-indigo-600/20 flex-shrink-0">
-                      <Building2 className="w-7 h-7" />
-                    </div>
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <h2 className="text-lg font-black text-slate-900 dark:text-white">
-                          {orgResult.name}
-                        </h2>
-                        {orgResult.type && (
-                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
-                            {orgResult.type}
-                          </span>
-                        )}
-                      </div>
-                      {orgResult.website_domain && (
-                        <p className="text-xs font-mono font-bold text-slate-500 dark:text-slate-400 mt-0.5">
-                          {orgResult.website_domain}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* 1-Click Action Buttons */}
-                  <div className="flex flex-wrap sm:flex-col gap-2 flex-shrink-0">
-                    <button
-                      onClick={() => handleConvertToPipelineLead(undefined, orgResult)}
-                      className="flex items-center justify-center space-x-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-600/20 transition active:scale-95"
-                    >
-                      <PlusCircle className="w-3.5 h-3.5" />
-                      <span>Create CRM Lead</span>
-                    </button>
-                    <button
-                      onClick={() => handleAddToColdOutreach(undefined, orgResult)}
-                      className="flex items-center justify-center space-x-1.5 px-3 py-2 bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-xl border border-blue-500/20 transition active:scale-95"
-                    >
-                      <SendHorizontal className="w-3.5 h-3.5" />
-                      <span>Add to Outreach</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Company Metrics Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Headcount
-                    </span>
-                    <p className="text-sm font-black text-slate-900 dark:text-white mt-1">
-                      {orgResult.number_of_employees || "N/A"}
-                    </p>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Founded Year
-                    </span>
-                    <p className="text-sm font-black text-slate-900 dark:text-white mt-1">
-                      {orgResult.founded_year || "N/A"}
-                    </p>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Company Structure
-                    </span>
-                    <p className="text-sm font-black text-slate-900 dark:text-white mt-1 capitalize">
-                      {orgResult.type || "N/A"}
-                    </p>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Intel ID
-                    </span>
-                    <p className="text-xs font-mono text-slate-600 dark:text-slate-300 mt-1 truncate">
-                      {orgResult.uuid?.slice(0, 8) || "SalesQL"}...
-                    </p>
-                  </div>
-                </div>
-
-                {/* Links & Quick Actions */}
-                <div className="flex flex-wrap items-center gap-3 pt-2">
-                  {orgResult.website && (
-                    <a
-                      href={orgResult.website}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 text-xs font-bold transition"
-                    >
-                      <Globe className="w-3.5 h-3.5 text-indigo-500" />
-                      <span>Visit Website</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  )}
-
-                  {orgResult.linkedin_url && (
-                    <a
-                      href={orgResult.linkedin_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 text-xs font-bold transition"
-                    >
-                      <span>LinkedIn Company Page</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  )}
-
-                  <button
-                    onClick={() => {
-                      handleCopy(JSON.stringify(orgResult, null, 2), "raw-json");
-                      showToast("Raw company JSON copied to clipboard");
-                    }}
-                    className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 text-xs font-bold transition"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>Copy JSON Payload</span>
-                  </button>
-                </div>
-              </div>
+              <OrganizationDossierCard
+                organization={orgResult}
+                onConvertToLead={(o) => handleConvertToPipelineLead(undefined, o)}
+                onAddToOutreach={(o) => handleAddToColdOutreach(undefined, o)}
+                onCopy={handleCopy}
+                copiedField={copiedField}
+              />
             )}
           </div>
         </div>
+      )}
+
+      {/* Bulk Person Inspect Modal */}
+      {modalInspectPerson && (
+        <BulkDossierModal
+          person={modalInspectPerson}
+          onClose={() => setModalInspectPerson(null)}
+          onConvertToLead={(p) => handleConvertToPipelineLead(p)}
+          onAddToOutreach={(p) => handleAddToColdOutreach(p)}
+          onCopy={handleCopy}
+          copiedField={copiedField}
+        />
       )}
     </div>
   );
