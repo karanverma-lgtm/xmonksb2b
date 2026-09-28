@@ -918,7 +918,7 @@ export const DeveloperTab: React.FC<DeveloperTabProps> = ({ onOpenChangePassword
                   setSalesqlKey(e.target.value);
                   setSalesqlTestResult({ status: "idle", message: "" });
                 }}
-                placeholder="Paste SalesQL Bearer Token (e.g. 1wQPhjdvp9I8XjF1kIPyhgJ6onxA1Vet)"
+                placeholder="Enter SalesQL Bearer Token (e.g. your_secret_token)"
                 className="w-full pl-3.5 pr-20 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-500 focus:outline-none"
               />
               <button
