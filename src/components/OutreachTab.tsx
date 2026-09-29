@@ -211,7 +211,7 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
     const total = isStageFiltered ? filteredClients.length : baseClients.length;
 
     const inProgress = baseClients.filter((c) =>
-      ["interest", "email_sent", "follow_up_1", "follow_up_2", "discussion_stakeholders"].includes(c.status)
+      ["interest", "outreach_sent", "follow_up_in_progress", "email_sent", "follow_up_1", "follow_up_2", "discussion_stakeholders"].includes(c.status)
     ).length;
     const highIntent = baseClients.filter((c) =>
       ["call_scheduled", "replied_interested", "share_commercial", "pricing_negotiations"].includes(c.status)
@@ -279,10 +279,12 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
     document.body.removeChild(link);
   };
 
-  // Grouped for Kanban Board (8 Outreach Statuses matching user workflow)
+  // Grouped for Kanban Board (10 Outreach Statuses matching user workflow with Trigger & Next Step guidance)
   const boardColumns: {
     id: ColdClientStatus;
     title: string;
+    triggerAction: string;
+    nextStep: string;
     statusList: ColdClientStatus[];
     pillClass: string;
     accentBorder: string;
@@ -290,20 +292,44 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
     {
       id: "cold_no_answer",
       title: "Cold / No Answer",
+      triggerAction: "Fresh import from sheet or uncontacted",
+      nextStep: "Send 1st email / LinkedIn message",
       statusList: ["cold_no_answer", "uncontacted"],
       pillClass: "bg-[#FBC02D] text-[#3E2723]",
       accentBorder: "border-[#FBC02D]/40",
     },
     {
+      id: "outreach_sent",
+      title: "Outreach Sent",
+      triggerAction: "1st touch delivered",
+      nextStep: "Schedule Follow-Up date",
+      statusList: ["outreach_sent", "email_sent"],
+      pillClass: "bg-[#0288D1] text-white",
+      accentBorder: "border-[#0288D1]/40",
+    },
+    {
+      id: "follow_up_in_progress",
+      title: "Follow-up in Progress",
+      triggerAction: "2nd / 3rd touch delivered",
+      nextStep: "Wait for response or call",
+      statusList: ["follow_up_in_progress", "follow_up_1", "follow_up_2"],
+      pillClass: "bg-[#E65100] text-white",
+      accentBorder: "border-[#E65100]/40",
+    },
+    {
       id: "interest",
       title: "Interest",
-      statusList: ["interest", "email_sent", "follow_up_1", "follow_up_2", "replied_interested"],
+      triggerAction: 'Prospect replies "Tell me more", asks for deck, or agrees to connect',
+      nextStep: "Schedule discovery / stakeholder call",
+      statusList: ["interest", "replied_interested"],
       pillClass: "bg-[#6E3805] text-[#FFE8D6]",
       accentBorder: "border-[#8D4A09]/40",
     },
     {
       id: "discussion_stakeholders",
       title: "Discussion with Stakeholders",
+      triggerAction: "Meeting with decision makers & leadership",
+      nextStep: "Share proposal & commercial terms",
       statusList: ["discussion_stakeholders", "call_scheduled"],
       pillClass: "bg-[#542D7C] text-[#EADBFF]",
       accentBorder: "border-[#6E3CA0]/40",
@@ -311,6 +337,8 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
     {
       id: "share_commercial",
       title: "Share Commercial",
+      triggerAction: "Proposal & commercial pricing delivered",
+      nextStep: "Follow up on procurement / approval",
       statusList: ["share_commercial"],
       pillClass: "bg-[#005FB8] text-white",
       accentBorder: "border-[#1976D2]/40",
@@ -318,6 +346,8 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
     {
       id: "pricing_negotiations",
       title: "Pricing / Negotiations",
+      triggerAction: "Commercial terms / cohort scope in negotiation",
+      nextStep: "Final contract sign-off",
       statusList: ["pricing_negotiations"],
       pillClass: "bg-[#64DD17] text-[#123800]",
       accentBorder: "border-[#76FF03]/40",
@@ -325,6 +355,8 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
     {
       id: "closure_won",
       title: "Closure Won",
+      triggerAction: "Deal closed and won / PO received",
+      nextStep: "Graduated to CRM delivery",
       statusList: ["closure_won", "converted"],
       pillClass: "bg-[#0F511F] text-[#D1F2D9]",
       accentBorder: "border-[#1B5E20]/40",
@@ -332,6 +364,8 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
     {
       id: "future_prospect",
       title: "Future Prospect",
+      triggerAction: "Nurturing for future cohorts / quarters",
+      nextStep: "Set next quarter follow-up date",
       statusList: ["future_prospect", "unresponsive"],
       pillClass: "bg-[#4E342E] text-[#D7CCC8]",
       accentBorder: "border-[#5D4037]/40",
@@ -339,6 +373,8 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
     {
       id: "not_interested_lost",
       title: "Not Interested / Lost",
+      triggerAction: "Prospect passed or not a fit at this time",
+      nextStep: "Archive / recycle after 6 months",
       statusList: ["not_interested_lost", "not_interested"],
       pillClass: "bg-[#B71C1C] text-white",
       accentBorder: "border-[#D32F2F]/40",
@@ -664,7 +700,7 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
       {viewMode === "board" ? (
         /* Board View */
         <div className="w-full overflow-x-auto pb-6 pt-1">
-          <div className="flex gap-4 items-start min-w-[2280px]">
+          <div className="flex gap-4 items-start min-w-[2850px]">
           {boardColumns.map((col) => {
             const colClients = filteredClients.filter((c) => {
               if (col.id === "cold_no_answer") {
@@ -694,7 +730,7 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
                 className={`w-[270px] shrink-0 bg-slate-100/70 dark:bg-slate-900/40 rounded-2xl p-3 border ${col.accentBorder} flex flex-col min-h-[550px] transition-all`}
               >
                 {/* Column Header with status pill badge matching workflow */}
-                <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-200 dark:border-slate-800">
                   <div className="flex items-center space-x-2 min-w-0">
                     <span className={`px-2.5 py-1 rounded-full text-xs font-bold truncate shadow-xs ${col.pillClass}`}>
                       {col.title}
@@ -702,6 +738,18 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
                     <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shadow-xs">
                       {colClients.length}
                     </span>
+                  </div>
+                </div>
+
+                {/* Stage Guidance Card: Trigger / Action & Next Step */}
+                <div className="mb-2.5 px-2.5 py-2 rounded-xl bg-white/80 dark:bg-slate-850/80 border border-slate-200/80 dark:border-slate-800 text-[10px] space-y-1 shadow-2xs">
+                  <div className="flex items-start gap-1 leading-snug">
+                    <span className="font-bold text-slate-500 dark:text-slate-400 shrink-0">Trigger:</span>
+                    <span className="text-slate-700 dark:text-slate-300 font-medium leading-tight">{col.triggerAction}</span>
+                  </div>
+                  <div className="flex items-start gap-1 leading-snug text-blue-600 dark:text-blue-400">
+                    <span className="font-bold shrink-0">Next:</span>
+                    <span className="font-semibold leading-tight">{col.nextStep}</span>
                   </div>
                 </div>
 

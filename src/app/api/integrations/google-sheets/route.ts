@@ -64,6 +64,9 @@ function parseEstimatedValue(val: unknown): number {
 }
 
 const VALID_STATUSES: ColdClientStatus[] = [
+  "cold_no_answer",
+  "outreach_sent",
+  "follow_up_in_progress",
   "interest",
   "discussion_stakeholders",
   "share_commercial",
@@ -71,7 +74,6 @@ const VALID_STATUSES: ColdClientStatus[] = [
   "closure_won",
   "not_interested_lost",
   "future_prospect",
-  "cold_no_answer",
   "uncontacted",
   "email_sent",
   "follow_up_1",
@@ -97,12 +99,14 @@ function normalizeStatus(val?: string): ColdClientStatus {
   if (clean.includes("future")) return "future_prospect";
   if (clean.includes("lost") || clean.includes("not_interested") || clean.includes("reject") || clean.includes("drop")) return "not_interested_lost";
   if (clean.includes("interest") && !clean.includes("not")) return "interest";
+  if (clean.includes("progress") || clean.includes("cadence") || (clean.includes("follow") && clean.includes("progress"))) return "follow_up_in_progress";
+  if (clean.includes("outreach_sent") || (clean.includes("outreach") && clean.includes("sent")) || clean.includes("contacted")) return "outreach_sent";
   if (clean.includes("cold") || clean.includes("no_answer") || clean.includes("uncontacted") || clean.includes("new")) return "cold_no_answer";
 
   // Legacy mappings
-  if (clean.includes("sent") || clean.includes("mail") || clean.includes("contacted")) return "email_sent";
+  if (clean.includes("sent") || clean.includes("mail")) return "outreach_sent";
   if (clean.includes("call") || clean.includes("meeting")) return "discussion_stakeholders";
-  if (clean.includes("follow") || clean.includes("fup")) return "follow_up_1";
+  if (clean.includes("follow") || clean.includes("fup")) return "follow_up_in_progress";
   if (clean.includes("unresponsive") || clean.includes("ghost")) return "future_prospect";
 
   return "cold_no_answer";

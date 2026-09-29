@@ -1,18 +1,50 @@
 import { ColdClient, ColdClientStatus, ColdStatusConfig, OutreachChannel } from "@/types/outreach";
 
 export const PRIMARY_OUTREACH_STATUSES: ColdClientStatus[] = [
+  "cold_no_answer",
+  "outreach_sent",
+  "follow_up_in_progress",
   "interest",
   "discussion_stakeholders",
   "share_commercial",
   "pricing_negotiations",
   "closure_won",
-  "not_interested_lost",
   "future_prospect",
-  "cold_no_answer",
+  "not_interested_lost",
 ];
 
 export const COLD_STATUS_CONFIG: Record<ColdClientStatus, ColdStatusConfig> = {
   // --- New User Workflow Statuses (from Google Sheets / CRM) ---
+  cold_no_answer: {
+    id: "cold_no_answer",
+    label: "Cold / No Answer",
+    badgeBg: "bg-[#FBC02D] text-[#3E2723]",
+    badgeText: "text-[#3E2723] font-bold",
+    borderColor: "border-[#F57F17]",
+    headerBg: "bg-amber-950/20",
+    iconName: "Snowflake",
+    description: "Initial prospect identified; awaiting first connection or response.",
+  },
+  outreach_sent: {
+    id: "outreach_sent",
+    label: "Outreach Sent",
+    badgeBg: "bg-[#0288D1] text-white",
+    badgeText: "text-white",
+    borderColor: "border-[#0277BD]",
+    headerBg: "bg-sky-950/40",
+    iconName: "Send",
+    description: "1st touch delivered; introductory email or LinkedIn message sent.",
+  },
+  follow_up_in_progress: {
+    id: "follow_up_in_progress",
+    label: "Follow-up in Progress",
+    badgeBg: "bg-[#E65100] text-white",
+    badgeText: "text-white",
+    borderColor: "border-[#EF6C00]",
+    headerBg: "bg-orange-950/40",
+    iconName: "RefreshCw",
+    description: "2nd / 3rd touch delivered; awaiting response or phone connect.",
+  },
   interest: {
     id: "interest",
     label: "Interest",
@@ -82,16 +114,6 @@ export const COLD_STATUS_CONFIG: Record<ColdClientStatus, ColdStatusConfig> = {
     headerBg: "bg-stone-900/40",
     iconName: "Clock",
     description: "Nurturing for future quarters or upcoming leadership cohorts.",
-  },
-  cold_no_answer: {
-    id: "cold_no_answer",
-    label: "Cold / No Answer",
-    badgeBg: "bg-[#FBC02D] text-[#3E2723]",
-    badgeText: "text-[#3E2723] font-bold",
-    borderColor: "border-[#F57F17]",
-    headerBg: "bg-amber-950/20",
-    iconName: "Snowflake",
-    description: "Initial prospect identified; awaiting first connection or response.",
   },
 
   // --- Legacy Statuses (Kept for Full Compatibility) ---
