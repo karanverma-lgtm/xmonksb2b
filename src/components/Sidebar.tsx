@@ -29,6 +29,7 @@ import {
 
 import { formatINR } from "@/lib/formatters";
 import { UserAccount } from "@/constants/users";
+import { ThemeToggle } from "./ThemeToggle";
 
 export type NavTab =
   | "kanban"
@@ -278,6 +279,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           )}
 
+          <ThemeToggle isCollapsed showLabel={false} className="shadow-none border-slate-200 dark:border-slate-800" />
+
           {currentUser && (
             <div className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-indigo-600 dark:text-indigo-400 border border-slate-200 dark:border-slate-700">
               {currentUser.name[0] || "U"}
@@ -449,6 +452,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
               )}
             </div>
           )}
+
+          {/* Theme Mode Toggle (Dark & Normal Mode) */}
+          <div className="pt-0.5">
+            <ThemeToggle isCollapsed={isCollapsed && !isMobileOpen} showLabel={!isCollapsed || isMobileOpen} />
+          </div>
 
           {/* User Profile Capsule */}
           {currentUser && (
