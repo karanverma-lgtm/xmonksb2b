@@ -93,7 +93,7 @@ function normalizeStatus(val?: string): ColdClientStatus {
   }
   // Exact matches for the user's dropdown options:
   if (clean.includes("commercial")) return "share_commercial";
-  if (clean.includes("stakeholder") || clean.includes("discussion")) return "discussion_stakeholders";
+  if (clean.includes("stakeholder") || clean.includes("discussion") || clean.includes("meeting") || clean.includes("call")) return "interest";
   if (clean.includes("pricing") || clean.includes("negotiat")) return "pricing_negotiations";
   if (clean.includes("closure") || clean.includes("won")) return "closure_won";
   if (clean.includes("future")) return "future_prospect";
@@ -105,7 +105,6 @@ function normalizeStatus(val?: string): ColdClientStatus {
 
   // Legacy mappings
   if (clean.includes("sent") || clean.includes("mail")) return "outreach_sent";
-  if (clean.includes("call") || clean.includes("meeting")) return "discussion_stakeholders";
   if (clean.includes("follow") || clean.includes("fup")) return "follow_up_in_progress";
   if (clean.includes("unresponsive") || clean.includes("ghost")) return "future_prospect";
 

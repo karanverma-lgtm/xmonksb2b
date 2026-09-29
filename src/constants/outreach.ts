@@ -5,7 +5,6 @@ export const PRIMARY_OUTREACH_STATUSES: ColdClientStatus[] = [
   "outreach_sent",
   "follow_up_in_progress",
   "interest",
-  "discussion_stakeholders",
   "share_commercial",
   "pricing_negotiations",
   "closure_won",

@@ -321,18 +321,9 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
       title: "Interest",
       triggerAction: 'Prospect replies "Tell me more", asks for deck, or agrees to connect',
       nextStep: "Schedule discovery / stakeholder call",
-      statusList: ["interest", "replied_interested"],
+      statusList: ["interest", "discussion_stakeholders", "call_scheduled", "replied_interested"],
       pillClass: "bg-[#6E3805] text-[#FFE8D6]",
       accentBorder: "border-[#8D4A09]/40",
-    },
-    {
-      id: "discussion_stakeholders",
-      title: "Discussion with Stakeholders",
-      triggerAction: "Meeting with decision makers & leadership",
-      nextStep: "Share proposal & commercial terms",
-      statusList: ["discussion_stakeholders", "call_scheduled"],
-      pillClass: "bg-[#542D7C] text-[#EADBFF]",
-      accentBorder: "border-[#6E3CA0]/40",
     },
     {
       id: "share_commercial",
@@ -700,7 +691,7 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
       {viewMode === "board" ? (
         /* Board View */
         <div className="w-full overflow-x-auto pb-6 pt-1">
-          <div className="flex gap-4 items-start min-w-[2850px]">
+          <div className="flex gap-4 items-start min-w-[2560px]">
           {boardColumns.map((col) => {
             const colClients = filteredClients.filter((c) => {
               if (col.id === "cold_no_answer") {
