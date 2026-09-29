@@ -14,6 +14,7 @@ import {
   updateLeadOwner,
   updateLeadClosureMonth,
   attachLeadApproachNote,
+  attachLeadApproachNotes,
   removeLeadApproachNote,
   attachLeadFinancialDocuments,
   removeLeadFinancialDocument,
@@ -586,9 +587,25 @@ export default function Home() {
     }
   };
 
-  const handleRemoveApproachNote = async (leadId: string) => {
+  const handleAttachApproachNotes = async (
+    leadId: string,
+    approachNotes: ApproachNote[]
+  ) => {
+    const updated = await attachLeadApproachNotes(
+      leadId,
+      approachNotes,
+      currentUser?.name || "Client Partner"
+    );
+    if (updated) {
+      setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
+      setSelectedLead((prev) => (prev && prev.id === leadId ? updated : prev));
+    }
+  };
+
+  const handleRemoveApproachNote = async (leadId: string, noteId?: string) => {
     const updated = await removeLeadApproachNote(
       leadId,
+      noteId,
       currentUser?.name || "Client Partner"
     );
     if (updated) {
@@ -934,6 +951,7 @@ export default function Home() {
           onUpdateOwner={handleUpdateOwner}
           onUpdateClosureMonth={handleUpdateClosureMonth}
           onAttachApproachNote={handleAttachApproachNote}
+          onAttachApproachNotes={handleAttachApproachNotes}
           onRemoveApproachNote={handleRemoveApproachNote}
           onAttachFinancialDocuments={handleAttachFinancialDocuments}
           onRemoveFinancialDocument={handleRemoveFinancialDocument}

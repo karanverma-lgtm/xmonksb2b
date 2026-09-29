@@ -350,12 +350,18 @@ export const MigratePipelineLeadModal: React.FC<MigratePipelineLeadModalProps> =
                         </span>
                       )}
 
-                      {lead.approachNote && (
-                        <span className="inline-flex items-center space-x-1 text-[10px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded-md border border-rose-200">
-                          <FileText className="w-3 h-3 text-rose-500" />
-                          <span>Approach Note Included</span>
-                        </span>
-                      )}
+                      {(() => {
+                        const noteCount = lead.approachNotes?.length || (lead.approachNote ? 1 : 0);
+                        if (noteCount === 0) return null;
+                        return (
+                          <span className="inline-flex items-center space-x-1 text-[10px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded-md border border-rose-200">
+                            <FileText className="w-3 h-3 text-rose-500" />
+                            <span>
+                              {noteCount === 1 ? "Approach Note Included" : `${noteCount} Approach Notes Included`}
+                            </span>
+                          </span>
+                        );
+                      })()}
 
                       {lead.financialDocuments && lead.financialDocuments.length > 0 && (
                         <span className="inline-flex items-center space-x-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-200">

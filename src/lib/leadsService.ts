@@ -530,8 +530,16 @@ export async function deleteLead(leadId: string): Promise<boolean> {
   const localLeads = getStoredLocalLeads();
   const target = localLeads.find((l) => l.id === leadId);
 
-  // Clean up any uploaded approach note from Firebase Storage / Firestore
-  if (target?.approachNote) {
+  // Clean up any uploaded approach notes from Cloudflare R2 / Firebase Storage / Firestore
+  if (target?.approachNotes && target.approachNotes.length > 0) {
+    for (const note of target.approachNotes) {
+      if (note.storagePath) {
+        deleteApproachNoteFromFirebase(leadId, note.storagePath).catch((err) => {
+          console.warn("Could not delete approach note file during lead deletion:", err);
+        });
+      }
+    }
+  } else if (target?.approachNote) {
     try {
       await deleteApproachNoteFromFirebase(leadId, target.approachNote.storagePath);
     } catch (err) {
@@ -671,12 +679,14 @@ export async function updateLeadClosureMonth(
   return updatedLead;
 }
 
-// Attach Approach Note (PDF) to lead in Firestore & state
-export async function attachLeadApproachNote(
+// Attach Approach Notes (supports multi-upload of all formats) to lead in Firestore & state
+export async function attachLeadApproachNotes(
   leadId: string,
-  approachNote: ApproachNote,
+  newNotes: ApproachNote[],
   author: string = "Client Partner"
 ): Promise<Lead | null> {
+  if (!newNotes || newNotes.length === 0) return null;
+
   const localLeads = getStoredLocalLeads();
   const target = localLeads.find((l) => l.id === leadId);
   if (!target) return null;
@@ -685,30 +695,48 @@ export async function attachLeadApproachNote(
   const timestampIso = now.toISOString();
   const formattedDate = formatTimestamp(now);
 
-  const isReplace = Boolean(target.approachNote);
+  const existingNotes: ApproachNote[] =
+    target.approachNotes && target.approachNotes.length > 0
+      ? target.approachNotes
+      : target.approachNote
+      ? [target.approachNote]
+      : [];
 
-  // If replacing, clean up the old file in the background if paths differ
-  if (isReplace && target.approachNote?.storagePath && target.approachNote.storagePath !== approachNote.storagePath) {
-    deleteApproachNoteFromFirebase(leadId, target.approachNote.storagePath).catch((err) => {
-      console.warn("Could not delete previous approach note during replacement:", err);
-    });
-  }
+  const combinedNotes = [
+    ...newNotes,
+    ...existingNotes.filter(
+      (n) =>
+        !newNotes.some(
+          (nn) =>
+            (nn.id && n.id && nn.id === n.id) ||
+            (nn.storagePath && n.storagePath && nn.storagePath === n.storagePath)
+        )
+    ),
+  ];
+
+  const noteCount = newNotes.length;
+  const noteNames = newNotes.map((n) => n.fileName).join(", ");
 
   const noteLog: JourneyLog = {
     id: "log-" + Date.now() + "-" + Math.floor(Math.random() * 1000),
     timestamp: timestampIso,
     formattedDate: formattedDate,
     type: "approach_note",
-    title: isReplace
-      ? `Approach Note Replaced: ${approachNote.fileName}`
-      : `Approach Note Uploaded: ${approachNote.fileName}`,
-    description: `Uploaded approach note PDF (${approachNote.fileSize}) to Cloudflare R2 for client alignment.`,
-    author: author || approachNote.uploadedBy || "Client Partner",
+    title:
+      noteCount === 1
+        ? `Approach Note Attached: ${newNotes[0].fileName}`
+        : `${noteCount} Approach Notes Attached`,
+    description:
+      noteCount === 1
+        ? `Attached approach note document (${newNotes[0].fileSize}) to client record: ${newNotes[0].fileName}`
+        : `Attached ${noteCount} approach note documents to client record: ${noteNames}`,
+    author: author || newNotes[0]?.uploadedBy || "Client Partner",
   };
 
   const updatedLead: Lead = {
     ...target,
-    approachNote: approachNote,
+    approachNote: combinedNotes[0] || undefined,
+    approachNotes: combinedNotes,
     updatedAt: timestampIso,
     journeyLogs: [noteLog, ...target.journeyLogs],
   };
@@ -719,13 +747,14 @@ export async function attachLeadApproachNote(
     await updateDoc(
       docRef,
       sanitizeForFirestore({
-        approachNote: approachNote,
+        approachNote: combinedNotes[0] || null,
+        approachNotes: combinedNotes,
         updatedAt: timestampIso,
         journeyLogs: updatedLead.journeyLogs,
       })
     );
   } catch (err) {
-    console.warn("Firestore approach note update skipped, updating local state", err);
+    console.warn("Firestore approach notes update skipped, updating local state", err);
   }
 
   const updatedLeads = localLeads.map((l) => (l.id === leadId ? updatedLead : l));
@@ -734,26 +763,62 @@ export async function attachLeadApproachNote(
   return updatedLead;
 }
 
-// Remove Approach Note from lead in Firebase & state
+// Backwards-compatible single note attachment
+export async function attachLeadApproachNote(
+  leadId: string,
+  approachNote: ApproachNote,
+  author: string = "Client Partner"
+): Promise<Lead | null> {
+  return attachLeadApproachNotes(leadId, [approachNote], author);
+}
+
+// Remove Approach Note (by note ID or legacy single removal) from lead in Firebase & state
 export async function removeLeadApproachNote(
   leadId: string,
+  noteIdOrPath?: string,
   author: string = "Client Partner"
 ): Promise<Lead | null> {
   const localLeads = getStoredLocalLeads();
   const target = localLeads.find((l) => l.id === leadId);
   if (!target) return null;
-  if (!target.approachNote) return target;
+
+  const existingNotes: ApproachNote[] =
+    target.approachNotes && target.approachNotes.length > 0
+      ? target.approachNotes
+      : target.approachNote
+      ? [target.approachNote]
+      : [];
+
+  if (existingNotes.length === 0 && !target.approachNote) return target;
 
   const now = new Date();
   const timestampIso = now.toISOString();
   const formattedDate = formatTimestamp(now);
-  const oldFileName = target.approachNote.fileName;
+
+  let noteToRemove: ApproachNote | undefined;
+  let remainingNotes: ApproachNote[] = [];
+
+  if (noteIdOrPath) {
+    noteToRemove = existingNotes.find(
+      (n) => n.id === noteIdOrPath || n.storagePath === noteIdOrPath || n.fileName === noteIdOrPath
+    );
+    remainingNotes = existingNotes.filter(
+      (n) => n !== noteToRemove && n.id !== noteIdOrPath && n.storagePath !== noteIdOrPath
+    );
+  } else {
+    noteToRemove = existingNotes[0] || target.approachNote;
+    remainingNotes = [];
+  }
+
+  const oldFileName = noteToRemove?.fileName || "Approach Note";
 
   // Delete underlying file
-  try {
-    await deleteApproachNoteFromFirebase(leadId, target.approachNote.storagePath);
-  } catch (err) {
-    console.warn("Could not delete approach note file from Firebase:", err);
+  if (noteToRemove?.storagePath) {
+    try {
+      await deleteApproachNoteFromFirebase(leadId, noteToRemove.storagePath);
+    } catch (err) {
+      console.warn("Could not delete approach note file from storage:", err);
+    }
   }
 
   const removeLog: JourneyLog = {
@@ -762,13 +827,14 @@ export async function removeLeadApproachNote(
     formattedDate: formattedDate,
     type: "approach_note",
     title: `Approach Note Removed: ${oldFileName}`,
-    description: `Removed the attached approach note PDF from this lead.`,
+    description: `Removed attached approach note document (${oldFileName}) from client record.`,
     author: author,
   };
 
   const updatedLead: Lead = {
     ...target,
-    approachNote: undefined,
+    approachNote: remainingNotes[0] || undefined,
+    approachNotes: remainingNotes,
     updatedAt: timestampIso,
     journeyLogs: [removeLog, ...target.journeyLogs],
   };
@@ -776,11 +842,15 @@ export async function removeLeadApproachNote(
   // Firestore Update
   try {
     const docRef = doc(db, COLLECTION_NAME, leadId);
-    await updateDoc(docRef, {
-      approachNote: null,
-      updatedAt: timestampIso,
-      journeyLogs: updatedLead.journeyLogs,
-    });
+    await updateDoc(
+      docRef,
+      sanitizeForFirestore({
+        approachNote: remainingNotes[0] || null,
+        approachNotes: remainingNotes,
+        updatedAt: timestampIso,
+        journeyLogs: updatedLead.journeyLogs,
+      })
+    );
   } catch (err) {
     console.warn("Firestore remove approach note skipped, updating local state", err);
   }

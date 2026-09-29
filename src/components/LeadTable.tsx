@@ -432,16 +432,27 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                       ) : (
                         <span className="text-xs text-slate-400">Not Set</span>
                       )}
-                      {lead.approachNote ? (
-                        <div
-                          onClick={() => onSelectLead(lead)}
-                          className="inline-flex items-center space-x-1 mt-1 px-2 py-0.5 rounded text-[10px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/70 border border-rose-200/60 dark:border-rose-800/60 cursor-pointer hover:bg-rose-100 dark:hover:bg-rose-900/60 transition"
-                          title={`PDF: ${lead.approachNote.fileName} (${lead.approachNote.fileSize})`}
-                        >
-                          <FileText className="w-3 h-3 text-rose-500 flex-shrink-0" />
-                          <span className="truncate max-w-[100px]">PDF Attached</span>
-                        </div>
-                      ) : null}
+                      {(() => {
+                        const noteCount = lead.approachNotes?.length || (lead.approachNote ? 1 : 0);
+                        if (noteCount === 0) return null;
+                        const firstNote = lead.approachNotes?.[0] || lead.approachNote;
+                        return (
+                          <div
+                            onClick={() => onSelectLead(lead)}
+                            className="inline-flex items-center space-x-1 mt-1 px-2 py-0.5 rounded text-[10px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/70 border border-rose-200/60 dark:border-rose-800/60 cursor-pointer hover:bg-rose-100 dark:hover:bg-rose-900/60 transition"
+                            title={
+                              lead.approachNotes && lead.approachNotes.length > 0
+                                ? `${lead.approachNotes.length} Approach Notes: ${lead.approachNotes.map((n) => n.fileName).join(", ")}`
+                                : `Approach Note: ${firstNote?.fileName} (${firstNote?.fileSize})`
+                            }
+                          >
+                            <FileText className="w-3 h-3 text-rose-500 flex-shrink-0" />
+                            <span className="truncate max-w-[105px]">
+                              {noteCount === 1 ? "Approach Note" : `${noteCount} Notes`}
+                            </span>
+                          </div>
+                        );
+                      })()}
                       {lead.financialDocuments && lead.financialDocuments.length > 0 ? (
                         <div
                           onClick={() => onSelectLead(lead)}
@@ -454,7 +465,8 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                           </span>
                         </div>
                       ) : null}
-                      {!lead.approachNote && (!lead.financialDocuments || lead.financialDocuments.length === 0) ? (
+                      {(!lead.approachNote && (!lead.approachNotes || lead.approachNotes.length === 0)) &&
+                      (!lead.financialDocuments || lead.financialDocuments.length === 0) ? (
                         <div className="text-[10px] text-slate-400 mt-0.5">No docs</div>
                       ) : null}
                     </td>

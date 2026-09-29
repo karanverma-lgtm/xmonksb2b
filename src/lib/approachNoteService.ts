@@ -2,11 +2,13 @@ import { storage, db } from "./firebase";
 import { ref, deleteObject } from "firebase/storage";
 import { doc, getDoc, deleteDoc } from "firebase/firestore";
 import { ApproachNote } from "@/types/lead";
+import { getMimeType } from "./mimeUtils";
 
 const APPROACH_NOTES_COLLECTION = "b2b_approach_note_files";
 
 /**
- * Upload an Approach Note PDF for a specific lead to Cloudflare R2 bucket under b2bxmonks/
+ * Upload an Approach Note of ANY format (PDF, DOCX, XLSX, CSV, PPTX, Images, etc.)
+ * for a specific lead to Cloudflare R2 bucket under b2bxmonks/
  * Uses Direct-to-R2 Presigned Upload (bypasses all 413 Payload Too Large / Vercel 4.5MB limits)
  */
 export async function uploadApproachNoteToR2(
@@ -18,14 +20,7 @@ export async function uploadApproachNoteToR2(
     throw new Error("No file selected.");
   }
 
-  // Validate PDF format
-  const isPdf =
-    file.type === "application/pdf" ||
-    file.name.toLowerCase().endsWith(".pdf");
-
-  if (!isPdf) {
-    throw new Error("Only PDF format (.pdf) is allowed for Approach Notes.");
-  }
+  const fileType = file.type || getMimeType(file.name);
 
   // Strategy 1: Direct-to-R2 Presigned Upload (Bypasses server payload limits like Vercel 4.5MB / Nginx 1MB)
   try {
@@ -35,6 +30,7 @@ export async function uploadApproachNoteToR2(
       body: JSON.stringify({
         fileName: file.name,
         fileSizeBytes: file.size,
+        fileType,
         leadId,
         uploadedBy,
       }),
@@ -48,7 +44,7 @@ export async function uploadApproachNoteToR2(
       const r2Res = await fetch(uploadUrl, {
         method: "PUT",
         headers: {
-          "Content-Type": "application/pdf",
+          "Content-Type": fileType || "application/octet-stream",
         },
         body: file,
       });
@@ -80,7 +76,7 @@ export async function uploadApproachNoteToR2(
   if (!res.ok) {
     const errorData = await res.json().catch(() => null);
     throw new Error(
-      errorData?.error || "Failed to upload PDF file to Cloudflare R2."
+      errorData?.error || `Failed to upload "${file.name}" to Cloudflare R2.`
     );
   }
 
@@ -90,6 +86,44 @@ export async function uploadApproachNoteToR2(
 
 // Backwards-compatible alias
 export const uploadApproachNoteToFirebase = uploadApproachNoteToR2;
+
+/**
+ * Upload multiple Approach Notes concurrently or sequentially with progress callback
+ */
+export async function uploadMultipleApproachNotesToR2(
+  leadId: string,
+  files: File[],
+  uploadedBy: string,
+  onProgress?: (completed: number, total: number, currentFileName: string) => void
+): Promise<{ successful: ApproachNote[]; errors: { fileName: string; error: string }[] }> {
+  const successful: ApproachNote[] = [];
+  const errors: { fileName: string; error: string }[] = [];
+  const total = files.length;
+
+  for (let i = 0; i < total; i++) {
+    const file = files[i];
+    if (onProgress) {
+      onProgress(i, total, file.name);
+    }
+
+    try {
+      const note = await uploadApproachNoteToR2(leadId, file, uploadedBy);
+      successful.push(note);
+    } catch (err: any) {
+      console.error(`Failed to upload ${file.name}:`, err);
+      errors.push({
+        fileName: file.name,
+        error: err?.message || "Upload failed",
+      });
+    }
+
+    if (onProgress) {
+      onProgress(i + 1, total, file.name);
+    }
+  }
+
+  return { successful, errors };
+}
 
 /**
  * Delete an Approach Note from Cloudflare R2 or legacy Firebase
@@ -142,17 +176,22 @@ export const deleteApproachNoteFromFirebase = deleteApproachNoteFromR2;
  */
 export async function getApproachNoteContentUrl(
   leadId: string,
-  approachNote: ApproachNote
+  approachNote: ApproachNote,
+  download: boolean = false
 ): Promise<string> {
-  if (approachNote.downloadUrl && approachNote.downloadUrl.length > 0) {
-    return approachNote.downloadUrl;
-  }
+  let url = approachNote.downloadUrl;
 
-  // Cloudflare R2 storage path
-  if (approachNote.storagePath?.startsWith("b2bxmonks/")) {
-    return `/api/approach-notes/download?key=${encodeURIComponent(
+  if (!url && approachNote.storagePath?.startsWith("b2bxmonks/")) {
+    url = `/api/approach-notes/download?key=${encodeURIComponent(
       approachNote.storagePath
     )}`;
+  }
+
+  if (url) {
+    if (download) {
+      return url.includes("?") ? `${url}&download=1` : `${url}?download=1`;
+    }
+    return url;
   }
 
   // Legacy Firestore base64 fallback
@@ -164,9 +203,9 @@ export async function getApproachNoteContentUrl(
         return snapshot.data().base64Content;
       }
     } catch (err) {
-      console.error("Failed to load PDF from Firestore:", err);
+      console.error("Failed to load document from Firestore:", err);
     }
   }
 
-  return approachNote.downloadUrl || "";
+  return "";
 }

@@ -45,7 +45,11 @@ import { formatINR, formatClosureMonth } from "@/lib/formatters";
 import { PRESET_PROGRAMS, getProgramBadgeStyle } from "@/constants/programs";
 import { LEAD_SOURCES, getLeadSourceBadgeStyle } from "@/constants/leadSources";
 import { ApproachNote, FinancialDocument } from "@/types/lead";
-import { uploadApproachNoteToFirebase } from "@/lib/approachNoteService";
+import {
+  uploadApproachNoteToFirebase,
+  uploadMultipleApproachNotesToR2,
+  getApproachNoteContentUrl,
+} from "@/lib/approachNoteService";
 import { uploadCompanyLogoToFirebase } from "@/lib/companyLogoService";
 import {
   uploadMultipleFinancialDocumentsToR2,
@@ -70,7 +74,8 @@ interface LeadDetailModalProps {
   onUpdateOwner?: (leadId: string, newOwner: string) => void;
   onUpdateClosureMonth?: (leadId: string, closureMonth: string) => void;
   onAttachApproachNote?: (leadId: string, approachNote: ApproachNote) => void;
-  onRemoveApproachNote?: (leadId: string) => void;
+  onAttachApproachNotes?: (leadId: string, approachNotes: ApproachNote[]) => void;
+  onRemoveApproachNote?: (leadId: string, noteId?: string) => void;
   onAttachFinancialDocuments?: (leadId: string, documents: FinancialDocument[]) => void;
   onRemoveFinancialDocument?: (leadId: string, documentId: string) => void;
   onUpdateCompanyLogo?: (leadId: string, logoUrl: string) => void;
@@ -91,6 +96,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   onUpdateOwner,
   onUpdateClosureMonth,
   onAttachApproachNote,
+  onAttachApproachNotes,
   onRemoveApproachNote,
   onAttachFinancialDocuments,
   onRemoveFinancialDocument,
@@ -138,12 +144,17 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
     setEditedClosureMonth(lead?.closureMonth || "");
   }, [lead?.closureMonth]);
 
-  // Approach Note State
+  // Approach Note State (Multi-Upload & All Formats)
   const [isUploadingNote, setIsUploadingNote] = useState(false);
+  const [noteUploadProgress, setNoteUploadProgress] = useState<{
+    completed: number;
+    total: number;
+    currentFileName: string;
+  } | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
-  const [isPreviewingPdf, setIsPreviewingPdf] = useState(false);
-  const [showDeleteNoteConfirm, setShowDeleteNoteConfirm] = useState(false);
+  const [noteToDelete, setNoteToDelete] = useState<ApproachNote | null>(null);
+  const [isDraggingNote, setIsDraggingNote] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   // Financial Documents State (Multi-Upload & All Formats)
@@ -273,50 +284,81 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
     setIsEditingClosureMonth(false);
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const isPdf =
-      file.type === "application/pdf" ||
-      file.name.toLowerCase().endsWith(".pdf");
-
-    if (!isPdf) {
-      setUploadError("Only PDF format documents (.pdf) can be uploaded as Approach Notes.");
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      return;
-    }
+  // Approach Notes Handlers (Multi-Upload of Any Format)
+  const handleApproachNotesUpload = async (files: File[]) => {
+    if (!files || files.length === 0 || !lead) return;
 
     setUploadError(null);
+    setUploadSuccess(null);
     setIsUploadingNote(true);
+    setNoteUploadProgress({
+      completed: 0,
+      total: files.length,
+      currentFileName: files[0].name,
+    });
 
     try {
-      const uploaded = await uploadApproachNoteToFirebase(
+      const { successful, errors } = await uploadMultipleApproachNotesToR2(
         lead.id,
-        file,
-        currentUser?.name || "Client Partner"
+        files,
+        currentUser?.name || "Client Partner",
+        (completed, total, currentFileName) => {
+          setNoteUploadProgress({ completed, total, currentFileName });
+        }
       );
-      if (onAttachApproachNote) {
-        onAttachApproachNote(lead.id, uploaded);
+
+      if (successful.length > 0) {
+        if (onAttachApproachNotes) {
+          onAttachApproachNotes(lead.id, successful);
+        } else if (onAttachApproachNote) {
+          onAttachApproachNote(lead.id, successful[0]);
+        }
       }
-      setUploadSuccess(`"${file.name}" uploaded successfully to Cloudflare R2!`);
-      setTimeout(() => setUploadSuccess(null), 4000);
+
+      if (errors.length > 0) {
+        const errorMsg = `Uploaded ${successful.length} file(s). Failed: ${errors.map((e) => e.fileName).join(", ")}`;
+        setUploadError(errorMsg);
+      } else {
+        const successMsg =
+          successful.length === 1
+            ? `"${successful[0].fileName}" uploaded successfully to Cloudflare R2!`
+            : `All ${successful.length} approach notes uploaded successfully to Cloudflare R2!`;
+        setUploadSuccess(successMsg);
+        setTimeout(() => setUploadSuccess(null), 4000);
+      }
     } catch (err: any) {
-      setUploadError(err?.message || "Failed to upload PDF. Please check connection.");
+      setUploadError(err?.message || "Failed to upload approach notes.");
     } finally {
       setIsUploadingNote(false);
+      setNoteUploadProgress(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
-  const handleDownloadNote = () => {
-    if (!lead.approachNote?.downloadUrl) return;
-    const downloadUrl = lead.approachNote.downloadUrl.includes("?")
-      ? `${lead.approachNote.downloadUrl}&download=1`
-      : `${lead.approachNote.downloadUrl}?download=1`;
+  const handleApproachFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      handleApproachNotesUpload(files);
+    }
+  };
+
+  const handleApproachDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDraggingNote(false);
+    const files = Array.from(e.dataTransfer.files || []);
+    if (files.length > 0) {
+      handleApproachNotesUpload(files);
+    }
+  };
+
+  const handleDownloadNote = async (note?: ApproachNote) => {
+    const targetNote = note || lead.approachNote;
+    if (!targetNote) return;
+    const downloadUrl = await getApproachNoteContentUrl(lead.id, targetNote, true);
+    if (!downloadUrl) return;
     const a = document.createElement("a");
     a.href = downloadUrl;
-    a.download = lead.approachNote.fileName;
+    a.download = targetNote.fileName;
     a.target = "_blank";
     document.body.appendChild(a);
     a.click();
@@ -324,10 +366,27 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   };
 
   const handleConfirmRemoveNote = () => {
+    if (!lead) return;
     if (onRemoveApproachNote) {
-      onRemoveApproachNote(lead.id);
+      onRemoveApproachNote(lead.id, noteToDelete?.id || noteToDelete?.storagePath || noteToDelete?.fileName);
     }
-    setShowDeleteNoteConfirm(false);
+    setNoteToDelete(null);
+  };
+
+  const handleViewApproachNote = async (note: ApproachNote) => {
+    const badgeInfo = getFileTypeBadgeInfo(note.fileName, note.fileType);
+    const url = await getApproachNoteContentUrl(lead.id, note, false);
+
+    if (badgeInfo.canPreview) {
+      setPreviewDocModal({
+        fileName: note.fileName,
+        fileSize: note.fileSize,
+        downloadUrl: url,
+        fileType: note.fileType,
+      });
+    } else {
+      window.open(url, "_blank");
+    }
   };
 
   // Financial Documents Handlers (Multi-Upload of Any Format)
@@ -1161,180 +1220,286 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
             </div>
           </form>
 
-          {/* Dedicated Approach Note (PDF) Section */}
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center space-x-2.5">
-                <div className="p-2 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
-                  <FileText className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center space-x-2">
-                    <span>Approach Note (PDF)</span>
-                    {lead.approachNote ? (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center space-x-1">
-                        <FileCheck className="w-3 h-3" />
-                        <span>Attached</span>
-                      </span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
-                        Pending Upload
-                      </span>
-                    )}
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Client strategy document and presentation approach note stored in Cloudflare R2.
-                  </p>
-                </div>
-              </div>
+          {/* Dedicated Approach Notes (Multi-Upload & All Formats) Section */}
+          {(() => {
+            const approachNotesList: ApproachNote[] =
+              lead.approachNotes && lead.approachNotes.length > 0
+                ? lead.approachNotes
+                : lead.approachNote
+                ? [lead.approachNote]
+                : [];
 
-              {/* Action Buttons */}
-              <div className="flex items-center space-x-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="application/pdf,.pdf"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-
-                <button
-                  type="button"
-                  disabled={isUploadingNote}
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center space-x-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-sm transition cursor-pointer"
-                >
-                  {isUploadingNote ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Uploading to Cloudflare R2...</span>
-                    </>
-                  ) : (
-                    <>
-                      <UploadCloud className="w-3.5 h-3.5" />
-                      <span>{lead.approachNote ? "Replace PDF" : "Upload PDF Note"}</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Upload Error / Success Notifications */}
-            {uploadError && (
-              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center space-x-2">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>{uploadError}</span>
-              </div>
-            )}
-
-            {uploadSuccess && (
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-semibold flex items-center space-x-2">
-                <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-                <span>{uploadSuccess}</span>
-              </div>
-            )}
-
-            {/* Approach Note Card Display */}
-            {lead.approachNote ? (
-              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between flex-wrap gap-3">
-                <div className="flex items-center space-x-3 min-w-[240px]">
-                  <div className="w-10 h-10 rounded-xl bg-rose-600/10 border border-rose-600/20 text-rose-600 dark:text-rose-400 flex items-center justify-center flex-shrink-0 font-bold text-xs">
-                    PDF
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-xs sm:max-w-md">
-                      {lead.approachNote.fileName}
+            return (
+              <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="p-2 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                      <FileText className="w-5 h-5" />
                     </div>
-                    <div className="flex items-center space-x-2 text-[11px] text-slate-400 mt-0.5 flex-wrap">
-                      <span>{lead.approachNote.fileSize}</span>
-                      <span>•</span>
-                      <span>By: {lead.approachNote.uploadedBy || "Client Partner"}</span>
-                      <span>•</span>
-                      <span>
-                        {new Date(lead.approachNote.uploadedAt).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })}
-                      </span>
+                    <div>
+                      <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center space-x-2">
+                        <span>Approach Notes</span>
+                        {approachNotesList.length > 0 ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center space-x-1">
+                            <FileCheck className="w-3 h-3" />
+                            <span>
+                              {approachNotesList.length}{" "}
+                              {approachNotesList.length === 1 ? "Attached" : "Attached"}
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                            Pending Upload
+                          </span>
+                        )}
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Client strategy documents, presentations, proposal notes & alignment files stored in Cloudflare R2.
+                      </p>
                     </div>
                   </div>
-                </div>
 
-                <div className="flex items-center space-x-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsPreviewingPdf(true)}
-                    className="flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
-                    title="View PDF Document"
-                  >
-                    <Eye className="w-3.5 h-3.5 text-indigo-500" />
-                    <span>View</span>
-                  </button>
+                  {/* Action Buttons for Multi-upload */}
+                  <div className="flex items-center space-x-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      onChange={handleApproachFilesChange}
+                      className="hidden"
+                    />
 
-                  <button
-                    type="button"
-                    onClick={handleDownloadNote}
-                    className="flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
-                    title="Download PDF"
-                  >
-                    <Download className="w-3.5 h-3.5 text-emerald-500" />
-                    <span>Download</span>
-                  </button>
-
-                  {onRemoveApproachNote && (
                     <button
                       type="button"
-                      onClick={() => setShowDeleteNoteConfirm(true)}
-                      className="p-1.5 rounded-lg text-xs font-semibold text-rose-500 hover:bg-rose-500/10 transition"
-                      title="Remove PDF"
+                      disabled={isUploadingNote}
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center space-x-1.5 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-sm transition cursor-pointer"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      {isUploadingNote ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>
+                            {noteUploadProgress
+                              ? `Uploading ${noteUploadProgress.completed}/${noteUploadProgress.total}...`
+                              : "Uploading to Cloudflare R2..."}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <UploadCloud className="w-3.5 h-3.5" />
+                          <span>
+                            {approachNotesList.length > 0
+                              ? "+ Attach More Notes"
+                              : "Attach Approach Notes"}
+                          </span>
+                        </>
+                      )}
                     </button>
-                  )}
+                  </div>
                 </div>
-              </div>
-            ) : (
-              /* Dropzone Placeholder */
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-600 rounded-2xl p-6 text-center cursor-pointer transition bg-slate-50/50 dark:bg-slate-950/30 group"
-              >
-                <UploadCloud className="w-8 h-8 mx-auto text-slate-400 group-hover:text-indigo-500 transition mb-2" />
-                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Click to upload Approach Note PDF for this lead
-                </p>
-                <p className="text-[11px] text-slate-400 mt-1">
-                  Only .pdf files accepted • Stored securely in Cloudflare R2
-                </p>
-              </div>
-            )}
 
-            {/* Remove Confirmation Dialog */}
-            {showDeleteNoteConfirm && (
-              <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-between flex-wrap gap-2">
-                <span className="text-xs font-semibold text-rose-600 dark:text-rose-400">
-                  Remove attached approach note & delete file from Cloudflare R2?
-                </span>
-                <div className="flex items-center space-x-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowDeleteNoteConfirm(false)}
-                    className="px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
+                {/* Multi-upload Progress Bar */}
+                {isUploadingNote && noteUploadProgress && (
+                  <div className="p-3 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-200/60 dark:border-rose-800/60 space-y-1.5">
+                    <div className="flex items-center justify-between text-xs text-rose-800 dark:text-rose-300 font-semibold">
+                      <span className="truncate max-w-xs">Uploading: {noteUploadProgress.currentFileName}</span>
+                      <span>
+                        {noteUploadProgress.completed} of {noteUploadProgress.total} files
+                      </span>
+                    </div>
+                    <div className="w-full bg-rose-200/50 dark:bg-rose-900/50 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="bg-rose-600 h-1.5 rounded-full transition-all duration-300"
+                        style={{
+                          width: `${Math.round(
+                            (noteUploadProgress.completed / Math.max(1, noteUploadProgress.total)) * 100
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Upload Error / Success Notifications */}
+                {uploadError && (
+                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center space-x-2">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    <span>{uploadError}</span>
+                  </div>
+                )}
+
+                {uploadSuccess && (
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-semibold flex items-center space-x-2">
+                    <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                    <span>{uploadSuccess}</span>
+                  </div>
+                )}
+
+                {/* Approach Notes Card List */}
+                {approachNotesList.length > 0 ? (
+                  <div className="space-y-2">
+                    {approachNotesList.map((noteItem, idx) => {
+                      const badgeInfo = getFileTypeBadgeInfo(noteItem.fileName, noteItem.fileType);
+                      const keyId = noteItem.id || noteItem.storagePath || `note-${idx}`;
+
+                      return (
+                        <div
+                          key={keyId}
+                          className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between flex-wrap gap-3 hover:border-slate-300 dark:hover:border-slate-700 transition"
+                        >
+                          <div className="flex items-center space-x-3 min-w-[240px]">
+                            <div
+                              className={`w-10 h-10 rounded-xl border flex items-center justify-center flex-shrink-0 font-bold text-xs uppercase tracking-tight ${badgeInfo.bgColor} ${badgeInfo.borderColor} ${badgeInfo.color}`}
+                            >
+                              {badgeInfo.badgeText}
+                            </div>
+                            <div>
+                              <div
+                                className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-xs sm:max-w-md"
+                                title={noteItem.fileName}
+                              >
+                                {noteItem.fileName}
+                              </div>
+                              <div className="flex items-center space-x-2 text-[11px] text-slate-400 mt-0.5 flex-wrap">
+                                <span className="font-semibold text-slate-500 dark:text-slate-400">
+                                  {badgeInfo.label}
+                                </span>
+                                <span>•</span>
+                                <span>{noteItem.fileSize}</span>
+                                <span>•</span>
+                                <span>By: {noteItem.uploadedBy || "Client Partner"}</span>
+                                <span>•</span>
+                                <span>
+                                  {new Date(noteItem.uploadedAt).toLocaleDateString("en-US", {
+                                    month: "short",
+                                    day: "numeric",
+                                    year: "numeric",
+                                  })}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center space-x-2">
+                            <button
+                              type="button"
+                              onClick={() => handleViewApproachNote(noteItem)}
+                              className="flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition cursor-pointer"
+                              title="View Document"
+                            >
+                              <Eye className="w-3.5 h-3.5 text-indigo-500" />
+                              <span>View</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadNote(noteItem)}
+                              className="flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition cursor-pointer"
+                              title="Download Document"
+                            >
+                              <Download className="w-3.5 h-3.5 text-emerald-500" />
+                              <span>Download</span>
+                            </button>
+
+                            {onRemoveApproachNote && (
+                              <button
+                                type="button"
+                                onClick={() => setNoteToDelete(noteItem)}
+                                className="p-1.5 rounded-lg text-xs font-semibold text-rose-500 hover:bg-rose-500/10 transition cursor-pointer"
+                                title="Remove Document"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Additional dropzone strip for adding more approach notes */}
+                    <div
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setIsDraggingNote(true);
+                      }}
+                      onDragLeave={() => setIsDraggingNote(false)}
+                      onDrop={handleApproachDrop}
+                      onClick={() => fileInputRef.current?.click()}
+                      className={`border border-dashed rounded-xl p-3 text-center cursor-pointer transition flex items-center justify-center space-x-2 ${
+                        isDraggingNote
+                          ? "border-rose-500 bg-rose-500/10 text-rose-600"
+                          : "border-slate-200 dark:border-slate-800 hover:border-rose-400 bg-slate-50/50 dark:bg-slate-950/30 text-slate-500 hover:text-rose-600"
+                      }`}
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span className="text-xs font-semibold">
+                        Click to add more approach notes or drag & drop files here (All formats allowed)
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  /* Dropzone Placeholder for Approach Notes */
+                  <div
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsDraggingNote(true);
+                    }}
+                    onDragLeave={() => setIsDraggingNote(false)}
+                    onDrop={handleApproachDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition group ${
+                      isDraggingNote
+                        ? "border-rose-500 bg-rose-500/10 text-rose-600"
+                        : "border-slate-200 dark:border-slate-800 hover:border-rose-400 dark:hover:border-rose-600 bg-slate-50/50 dark:bg-slate-950/30"
+                    }`}
                   >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleConfirmRemoveNote}
-                    className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg shadow cursor-pointer"
-                  >
-                    Remove
-                  </button>
-                </div>
+                    <div className="w-10 h-10 rounded-2xl bg-rose-500/10 text-rose-600 mx-auto flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform">
+                      <UploadCloud className="w-5 h-5" />
+                    </div>
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      Click to select multiple approach notes or drag & drop here
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Multi-upload enabled • All formats allowed: PDF, DOCX, XLSX, CSV, PPTX, Images, and more
+                    </p>
+                    <div className="flex items-center justify-center space-x-1.5 mt-3 text-[10px] text-slate-400">
+                      <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono font-bold text-rose-500">.pdf</span>
+                      <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono font-bold text-blue-500">.docx</span>
+                      <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono font-bold text-emerald-500">.xlsx</span>
+                      <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono font-bold text-teal-500">.csv</span>
+                      <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono font-bold text-amber-500">.pptx</span>
+                      <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono font-bold text-slate-500">+any format</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Remove Confirmation Dialog */}
+                {noteToDelete && (
+                  <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+                      Remove attached &quot;{noteToDelete.fileName}&quot; from Cloudflare R2?
+                    </span>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => setNoteToDelete(null)}
+                        className="px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleConfirmRemoveNote}
+                        className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg shadow cursor-pointer"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            );
+          })()}
 
           {/* Dedicated Financial Documents (Multi-Upload & All Formats) Section */}
           <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
@@ -1673,59 +1838,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
         </div>
       </div>
 
-      {/* Approach Note PDF Document Preview Modal */}
-      {isPreviewingPdf && lead.approachNote && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-          <div className="relative w-full max-w-5xl h-[88vh] bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col">
-            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950">
-              <div className="flex items-center space-x-2 truncate">
-                <FileText className="w-5 h-5 text-rose-500 flex-shrink-0" />
-                <span className="font-bold text-sm text-slate-900 dark:text-white truncate">
-                  {lead.approachNote.fileName}
-                </span>
-                <span className="text-xs text-slate-400">({lead.approachNote.fileSize})</span>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <button
-                  type="button"
-                  onClick={handleDownloadNote}
-                  className="flex items-center space-x-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow transition cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download</span>
-                </button>
-                <a
-                  href={lead.approachNote.downloadUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="p-2 text-slate-500 hover:text-slate-800 dark:hover:text-white rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition"
-                  title="Open in new window"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                </a>
-                <button
-                  type="button"
-                  onClick={() => setIsPreviewingPdf(false)}
-                  className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 bg-slate-100 dark:bg-slate-950 relative overflow-hidden">
-              <iframe
-                src={lead.approachNote.downloadUrl}
-                title={lead.approachNote.fileName}
-                className="w-full h-full border-0"
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Financial Document Preview Modal */}
+      {/* Unified Document Preview Modal (Approach Notes & Financial Documents) */}
       {previewDocModal && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
           <div className="relative w-full max-w-5xl h-[88vh] bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col">

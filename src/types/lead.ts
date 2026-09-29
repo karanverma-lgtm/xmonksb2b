@@ -7,9 +7,11 @@ export type LeadStage =
   | "closed_lost";
 
 export interface ApproachNote {
+  id?: string; // Unique document ID
   fileName: string;
   fileSize: string;
   fileSizeBytes?: number;
+  fileType?: string; // MIME type or file extension
   uploadedAt: string;
   uploadedBy: string;
   downloadUrl: string;
@@ -68,7 +70,8 @@ export interface Lead {
   weightage: number; // Percentage e.g. 10, 25, 50, 75, 100
   expectedCloseDate: string;
   closureMonth?: string; // Target conversion deadline e.g. "2026-10"
-  approachNote?: ApproachNote; // Uploaded approach note in PDF format
+  approachNote?: ApproachNote; // Legacy single approach note
+  approachNotes?: ApproachNote[]; // Uploaded approach notes (multi-upload, all formats allowed)
   financialDocuments?: FinancialDocument[]; // Attached financial documents (multi-upload, all formats allowed)
   notes?: string;
   tags?: string[];

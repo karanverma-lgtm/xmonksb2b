@@ -1051,20 +1051,27 @@ export function migrateLeadToBilling(
 
   // Automatically migrate approach note & financial documents from pipeline into Billing Documents
   const docs: BillingDocument[] = [];
-  if (lead.approachNote) {
+  const allApproachNotes =
+    lead.approachNotes && lead.approachNotes.length > 0
+      ? lead.approachNotes
+      : lead.approachNote
+      ? [lead.approachNote]
+      : [];
+
+  allApproachNotes.forEach((note, idx) => {
     docs.push({
-      id: `doc-pipeline-${timestamp}`,
-      name: lead.approachNote.fileName || `${lead.companyName}_Approach_Note.pdf`,
+      id: `doc-pipeline-${timestamp}-${idx}`,
+      name: note.fileName || `${lead.companyName}_Approach_Note`,
       category: "proposal",
-      fileSize: lead.approachNote.fileSize || "1.2 MB",
-      fileSizeBytes: lead.approachNote.fileSizeBytes,
-      fileType: "application/pdf",
-      downloadUrl: lead.approachNote.downloadUrl || "#",
-      storagePath: lead.approachNote.storagePath,
-      uploadedAt: lead.approachNote.uploadedAt || new Date().toISOString(),
-      uploadedBy: lead.approachNote.uploadedBy || lead.owner || "Pipeline Deal Sync",
+      fileSize: note.fileSize || "1.0 MB",
+      fileSizeBytes: note.fileSizeBytes,
+      fileType: note.fileType || "application/octet-stream",
+      downloadUrl: note.downloadUrl || "#",
+      storagePath: note.storagePath,
+      uploadedAt: note.uploadedAt || new Date().toISOString(),
+      uploadedBy: note.uploadedBy || lead.owner || "Pipeline Deal Sync",
     });
-  }
+  });
 
   if (lead.financialDocuments && lead.financialDocuments.length > 0) {
     lead.financialDocuments.forEach((fd, idx) => {

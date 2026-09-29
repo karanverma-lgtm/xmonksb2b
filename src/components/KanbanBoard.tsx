@@ -238,12 +238,16 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                             </span>
                           )}
 
-                          {lead.approachNote && (
-                            <span className="inline-flex items-center space-x-1 text-[10px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded-md border border-rose-200/60 dark:border-rose-800/60">
-                              <FileText className="w-3 h-3 text-rose-500 flex-shrink-0" />
-                              <span>Approach Note</span>
-                            </span>
-                          )}
+                          {(() => {
+                            const count = lead.approachNotes?.length || (lead.approachNote ? 1 : 0);
+                            if (count === 0) return null;
+                            return (
+                              <span className="inline-flex items-center space-x-1 text-[10px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded-md border border-rose-200/60 dark:border-rose-800/60">
+                                <FileText className="w-3 h-3 text-rose-500 flex-shrink-0" />
+                                <span>{count === 1 ? "Approach Note" : `${count} Notes`}</span>
+                              </span>
+                            );
+                          })()}
 
                           {lead.financialDocuments && lead.financialDocuments.length > 0 && (
                             <span className="inline-flex items-center space-x-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-200/60 dark:border-emerald-800/60">
