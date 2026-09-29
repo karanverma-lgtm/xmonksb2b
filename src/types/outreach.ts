@@ -1,4 +1,12 @@
 export type ColdClientStatus =
+  | "interest"
+  | "discussion_stakeholders"
+  | "share_commercial"
+  | "pricing_negotiations"
+  | "closure_won"
+  | "not_interested_lost"
+  | "future_prospect"
+  | "cold_no_answer"
   | "uncontacted"
   | "email_sent"
   | "follow_up_1"

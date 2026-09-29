@@ -211,16 +211,18 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
     const total = isStageFiltered ? filteredClients.length : baseClients.length;
 
     const inProgress = baseClients.filter((c) =>
-      ["email_sent", "follow_up_1", "follow_up_2"].includes(c.status)
+      ["interest", "email_sent", "follow_up_1", "follow_up_2", "discussion_stakeholders"].includes(c.status)
     ).length;
     const highIntent = baseClients.filter((c) =>
-      ["call_scheduled", "replied_interested"].includes(c.status)
+      ["call_scheduled", "replied_interested", "share_commercial", "pricing_negotiations"].includes(c.status)
     ).length;
-    const converted = baseClients.filter((c) => c.status === "converted").length;
+    const converted = baseClients.filter((c) => ["converted", "closure_won"].includes(c.status)).length;
     const dueCount = baseClients.filter(
       (c) =>
         c.status !== "converted" &&
+        c.status !== "closure_won" &&
         c.status !== "not_interested" &&
+        c.status !== "not_interested_lost" &&
         c.nextFollowUpDate &&
         c.nextFollowUpDate <= todayStr
     ).length;
@@ -287,43 +289,43 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
   }[] = [
     {
       id: "cold",
-      title: "Cold / Uncontacted",
-      statusList: ["uncontacted"],
-      color: "border-slate-300 dark:border-slate-700",
-      badgeBg: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+      title: "Cold / No Answer",
+      statusList: ["cold_no_answer", "uncontacted"],
+      color: "border-amber-400 dark:border-amber-600",
+      badgeBg: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
     },
     {
-      id: "initial_outreach",
-      title: "1st Outreach Sent",
-      statusList: ["email_sent"],
-      color: "border-blue-400 dark:border-blue-600",
-      badgeBg: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
+      id: "interest",
+      title: "Interest & Outreach",
+      statusList: ["interest", "email_sent", "follow_up_1", "follow_up_2"],
+      color: "border-amber-700 dark:border-amber-600",
+      badgeBg: "bg-amber-900/20 text-amber-900 dark:bg-amber-900/60 dark:text-amber-100",
     },
     {
-      id: "followups",
-      title: "Follow-Ups in Motion",
-      statusList: ["follow_up_1", "follow_up_2"],
+      id: "discussion",
+      title: "Discussion with Stakeholders",
+      statusList: ["discussion_stakeholders", "call_scheduled", "replied_interested"],
       color: "border-purple-400 dark:border-purple-600",
       badgeBg: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300",
     },
     {
-      id: "engaged",
-      title: "High Intent / Calls Booked",
-      statusList: ["call_scheduled", "replied_interested"],
-      color: "border-emerald-400 dark:border-emerald-600",
-      badgeBg: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
+      id: "commercials",
+      title: "Commercials & Pricing",
+      statusList: ["share_commercial", "pricing_negotiations"],
+      color: "border-blue-400 dark:border-blue-600",
+      badgeBg: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
     },
     {
-      id: "converted",
-      title: "Converted to Pipeline",
-      statusList: ["converted"],
-      color: "border-cyan-400 dark:border-cyan-600",
-      badgeBg: "bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300",
+      id: "closure_won",
+      title: "Closure Won",
+      statusList: ["closure_won", "converted"],
+      color: "border-emerald-500 dark:border-emerald-600",
+      badgeBg: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200",
     },
     {
-      id: "dormant",
-      title: "Unresponsive / Passed",
-      statusList: ["unresponsive", "not_interested"],
+      id: "lost_future",
+      title: "Future / Lost",
+      statusList: ["future_prospect", "not_interested_lost", "not_interested", "unresponsive"],
       color: "border-rose-300 dark:border-rose-800",
       badgeBg: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
     },

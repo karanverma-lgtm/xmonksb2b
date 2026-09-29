@@ -26,9 +26,10 @@ import {
   AlertCircle,
   ExternalLink,
   Save,
+  Check,
 } from "lucide-react";
 import { ColdClient, ColdClientStatus, OutreachChannel, OutreachTouchpoint } from "@/types/outreach";
-import { COLD_STATUS_CONFIG, OUTREACH_CHANNELS, OUTREACH_INDUSTRIES } from "@/constants/outreach";
+import { COLD_STATUS_CONFIG, OUTREACH_CHANNELS, OUTREACH_INDUSTRIES, PRIMARY_OUTREACH_STATUSES } from "@/constants/outreach";
 import { PRESET_PROGRAMS } from "@/constants/programs";
 import { UserAccount, VALID_USERS } from "@/constants/users";
 import { formatINR } from "@/lib/formatters";
@@ -299,13 +300,16 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
         <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 max-h-[80vh] overflow-y-auto">
           {/* Left Column: Details & Edit Form (7 cols) */}
           <div className="lg:col-span-7 space-y-5">
-            {/* Quick Status Bar */}
-            <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-800">
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-                Update Outreach Status
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {(Object.keys(COLD_STATUS_CONFIG) as ColdClientStatus[]).map((st) => {
+            {/* Quick Status Bar with New Pill Options */}
+            <div className="p-3.5 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-800">
+              <div className="flex items-center justify-between mb-2.5">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                  Update Outreach Status
+                </label>
+                <span className="text-[10px] text-slate-400 font-medium">Click pill to change status</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {PRIMARY_OUTREACH_STATUSES.map((st) => {
                   const cfg = COLD_STATUS_CONFIG[st];
                   const isCurrent = status === st;
                   return (
@@ -313,16 +317,27 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                       key={st}
                       type="button"
                       onClick={() => handleQuickStatusChange(st)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all border ${
+                      className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all shadow-xs flex items-center gap-1.5 border ${cfg.badgeBg} ${cfg.borderColor} ${
                         isCurrent
-                          ? `${cfg.badgeBg} ${cfg.badgeText} ${cfg.borderColor} shadow-xs ring-2 ring-blue-500/20`
-                          : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-slate-300"
+                          ? "ring-2 ring-offset-2 ring-blue-500 scale-105 shadow-md font-bold"
+                          : "opacity-85 hover:opacity-100 hover:scale-102"
                       }`}
                     >
-                      {cfg.label}
+                      {isCurrent && <Check className="w-3.5 h-3.5" />}
+                      <span>{cfg.label}</span>
                     </button>
                   );
                 })}
+                {/* Fallback if lead has legacy status not in PRIMARY */}
+                {!PRIMARY_OUTREACH_STATUSES.includes(status) && status in COLD_STATUS_CONFIG && (
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 border bg-slate-200 text-slate-800 border-slate-400 ring-2 ring-blue-500"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>{COLD_STATUS_CONFIG[status].label} (Legacy)</span>
+                  </button>
+                )}
               </div>
             </div>
 

@@ -64,6 +64,14 @@ function parseEstimatedValue(val: unknown): number {
 }
 
 const VALID_STATUSES: ColdClientStatus[] = [
+  "interest",
+  "discussion_stakeholders",
+  "share_commercial",
+  "pricing_negotiations",
+  "closure_won",
+  "not_interested_lost",
+  "future_prospect",
+  "cold_no_answer",
   "uncontacted",
   "email_sent",
   "follow_up_1",
@@ -76,21 +84,28 @@ const VALID_STATUSES: ColdClientStatus[] = [
 ];
 
 function normalizeStatus(val?: string): ColdClientStatus {
-  if (!val) return "uncontacted";
-  const clean = val.toLowerCase().trim().replace(/[\s-]+/g, "_");
+  if (!val) return "cold_no_answer";
+  const clean = val.toLowerCase().trim().replace(/[\s/\\-]+/g, "_");
   if (VALID_STATUSES.includes(clean as ColdClientStatus)) {
     return clean as ColdClientStatus;
   }
-  // Common colloquial matches
-  if (clean.includes("sent") || clean.includes("mail") || clean.includes("contacted") || clean.includes("reached")) return "email_sent";
-  if (clean.includes("call") || clean.includes("meeting") || clean.includes("demo") || clean.includes("discussion")) return "call_scheduled";
-  if (clean.includes("interested") && !clean.includes("not")) return "replied_interested";
-  if (clean.includes("not_interested") || clean.includes("drop") || clean.includes("reject") || clean.includes("lost")) return "not_interested";
+  // Exact matches for the user's dropdown options:
+  if (clean.includes("commercial")) return "share_commercial";
+  if (clean.includes("stakeholder") || clean.includes("discussion")) return "discussion_stakeholders";
+  if (clean.includes("pricing") || clean.includes("negotiat")) return "pricing_negotiations";
+  if (clean.includes("closure") || clean.includes("won")) return "closure_won";
+  if (clean.includes("future")) return "future_prospect";
+  if (clean.includes("lost") || clean.includes("not_interested") || clean.includes("reject") || clean.includes("drop")) return "not_interested_lost";
+  if (clean.includes("interest") && !clean.includes("not")) return "interest";
+  if (clean.includes("cold") || clean.includes("no_answer") || clean.includes("uncontacted") || clean.includes("new")) return "cold_no_answer";
+
+  // Legacy mappings
+  if (clean.includes("sent") || clean.includes("mail") || clean.includes("contacted")) return "email_sent";
+  if (clean.includes("call") || clean.includes("meeting")) return "discussion_stakeholders";
   if (clean.includes("follow") || clean.includes("fup")) return "follow_up_1";
-  if (clean.includes("convert") || clean.includes("won") || clean.includes("client")) return "converted";
-  if (clean.includes("unresponsive") || clean.includes("no_response") || clean.includes("ghost")) return "unresponsive";
-  if (clean.includes("cold") || clean.includes("new") || clean.includes("fresh") || clean.includes("open") || clean.includes("prospect")) return "uncontacted";
-  return "uncontacted";
+  if (clean.includes("unresponsive") || clean.includes("ghost")) return "future_prospect";
+
+  return "cold_no_answer";
 }
 
 const VALID_CHANNELS: OutreachChannel[] = ["email", "linkedin", "call", "referral", "event", "other"];
