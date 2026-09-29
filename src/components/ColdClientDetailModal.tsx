@@ -31,6 +31,7 @@ import {
   UserPlus,
   Pencil,
   Star,
+  Eye,
 } from "lucide-react";
 import { ColdClient, ColdClientStatus, OutreachChannel, OutreachTouchpoint } from "@/types/outreach";
 import { ContactPerson } from "@/types/lead";
@@ -38,6 +39,13 @@ import { COLD_STATUS_CONFIG, OUTREACH_CHANNELS, OUTREACH_INDUSTRIES, PRIMARY_OUT
 import { PRESET_PROGRAMS } from "@/constants/programs";
 import { UserAccount, VALID_USERS } from "@/constants/users";
 import { formatINR } from "@/lib/formatters";
+import {
+  getAllTemplates,
+  sendEmailCampaign,
+  getAllSenderProfiles,
+  getSenderProfileForUser,
+} from "@/lib/emailService";
+import { EmailTemplate } from "@/constants/emailTemplates";
 
 interface ColdClientDetailModalProps {
   client: ColdClient | null;
@@ -122,6 +130,140 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
   const [personDesignation, setPersonDesignation] = useState("");
   const [personToDelete, setPersonToDelete] = useState<ContactPerson | null>(null);
   const [personFormError, setPersonFormError] = useState<string | null>(null);
+
+  // Email Template Selection & Sending State
+  const [availableTemplates, setAvailableTemplates] = useState<EmailTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [emailSendStatus, setEmailSendStatus] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+
+  // Email Preview Modal
+  const [isEmailPreviewModalOpen, setIsEmailPreviewModalOpen] = useState(false);
+  const [customSubject, setCustomSubject] = useState("");
+  const [customHtml, setCustomHtml] = useState("");
+
+  // Load templates on modal open
+  useEffect(() => {
+    if (isOpen) {
+      const templates = getAllTemplates();
+      setAvailableTemplates(templates);
+      if (templates.length > 0 && !selectedTemplateId) {
+        setSelectedTemplateId(templates[0].id);
+      }
+      setEmailSendStatus(null);
+    }
+  }, [isOpen]);
+
+  const selectedTemplate =
+    availableTemplates.find((t) => t.id === selectedTemplateId) || availableTemplates[0];
+
+  useEffect(() => {
+    if (selectedTemplate && client) {
+      const repName = client.contactName || "Valued Executive";
+      const compName = client.companyName || "your organization";
+      const desig = client.designation || "";
+      const ind = client.industry || "";
+      const dealVal = client.estimatedPotentialValue
+        ? formatINR(client.estimatedPotentialValue)
+        : "";
+
+      const subj = (selectedTemplate.subject || "")
+        .replace(/\{\{\s*contactName\s*\}\}|\[\s*First Name\s*\]/gi, repName)
+        .replace(/\{\{\s*name\s*\}\}/gi, repName)
+        .replace(/\{\{\s*companyName\s*\}\}|\[\s*Company Name\s*\]/gi, compName)
+        .replace(/\{\{\s*designation\s*\}\}/gi, desig)
+        .replace(/\{\{\s*industry\s*\}\}/gi, ind);
+
+      const body = (selectedTemplate.htmlContent || "")
+        .replace(/\{\{\s*contactName\s*\}\}|\[\s*First Name\s*\]/gi, repName)
+        .replace(/\{\{\s*name\s*\}\}/gi, repName)
+        .replace(/\{\{\s*companyName\s*\}\}|\[\s*Company Name\s*\]/gi, compName)
+        .replace(/\{\{\s*designation\s*\}\}/gi, desig)
+        .replace(/\{\{\s*industry\s*\}\}/gi, ind)
+        .replace(/\{\{\s*dealValue\s*\}\}/gi, dealVal);
+
+      setCustomSubject(subj);
+      setCustomHtml(body);
+    }
+  }, [selectedTemplateId, client, selectedTemplate]);
+
+  const handleSendEmailTemplate = async (overrideSubject?: string, overrideHtml?: string) => {
+    if (!client || !client.email) {
+      setEmailSendStatus({ type: "error", message: "Client does not have a valid email address." });
+      return;
+    }
+    if (!selectedTemplate) {
+      setEmailSendStatus({ type: "error", message: "Please select an email template to send." });
+      return;
+    }
+
+    setIsSendingEmail(true);
+    setEmailSendStatus(null);
+
+    try {
+      const senders = getAllSenderProfiles();
+      const senderProfile = getSenderProfileForUser(senders, currentUser);
+
+      const subjectToSend = overrideSubject || customSubject || selectedTemplate.subject;
+      const htmlToSend = overrideHtml || customHtml || selectedTemplate.htmlContent;
+
+      const payload = {
+        recipients: [
+          {
+            email: client.email,
+            contactName: client.contactName,
+            companyName: client.companyName,
+            designation: client.designation,
+            industry: client.industry,
+            dealValue: client.estimatedPotentialValue,
+          },
+        ],
+        subject: subjectToSend,
+        htmlContent: htmlToSend,
+        smtpConfig: senderProfile,
+        attachments: selectedTemplate.attachments,
+      };
+
+      const res = await sendEmailCampaign(payload);
+
+      if (res.success || (res.results && res.results[0]?.success)) {
+        setEmailSendStatus({
+          type: "success",
+          message: `Email sent to ${client.email} using "${selectedTemplate.name}"!`,
+        });
+
+        // Automatically log touchpoint in timeline
+        await onLogTouchpoint(client.id, {
+          channel: "email",
+          summary: `Sent email template "${selectedTemplate.name}" with subject: "${subjectToSend}".`,
+          author: currentUser?.name || senderProfile.senderName || "Sales Representative",
+          nextStatus:
+            client.status === "uncontacted" || client.status === "cold_no_answer"
+              ? "outreach_sent"
+              : undefined,
+        });
+
+        setIsEmailPreviewModalOpen(false);
+      } else {
+        const errMsg = res.error || res.results?.[0]?.error || "Failed to deliver email.";
+        setEmailSendStatus({
+          type: "error",
+          message: `Failed to send: ${errMsg}`,
+        });
+      }
+    } catch (err: any) {
+      console.error("Error sending template email:", err);
+      setEmailSendStatus({
+        type: "error",
+        message: err.message || "An error occurred while sending email.",
+      });
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
 
   useEffect(() => {
     if (client) {
@@ -732,16 +874,91 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                       <span>Size: {client.companySize}</span>
                     </span>
                   )}
-                  {onNavigateToEmail && (
+
+                  {/* Select Email Template & Send Action */}
+                  <div className="flex flex-wrap items-center gap-1.5 p-1 bg-purple-50/70 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/80 rounded-xl shadow-2xs">
+                    <div className="flex items-center space-x-1.5">
+                      <Mail className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 ml-1 shrink-0" />
+                      <select
+                        value={selectedTemplateId}
+                        onChange={(e) => setSelectedTemplateId(e.target.value)}
+                        className="px-2.5 py-1 text-xs font-semibold bg-white dark:bg-slate-800 text-purple-950 dark:text-purple-200 border border-purple-200 dark:border-purple-700/80 rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500 max-w-[200px] sm:max-w-[240px] truncate"
+                        title="Select email template"
+                      >
+                        {availableTemplates.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
                     <button
-                      onClick={() => onNavigateToEmail(client.email, client.contactName, client.companyName)}
-                      className="px-2.5 py-1 bg-purple-50 dark:bg-purple-950/60 border border-purple-300 dark:border-purple-800 rounded-lg text-xs font-bold text-purple-600 dark:text-purple-400 flex items-center space-x-1.5 hover:bg-purple-100 transition-colors"
+                      type="button"
+                      onClick={() => handleSendEmailTemplate()}
+                      disabled={isSendingEmail || !client.email || !selectedTemplateId}
+                      className="px-3 py-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg flex items-center space-x-1 shadow-xs transition-all hover:scale-102 active:scale-98"
+                      title={client.email ? `Send template to ${client.email}` : "Client has no email address"}
                     >
-                      <Mail className="w-3.5 h-3.5" />
-                      <span>Draft Cold Email</span>
+                      {isSendingEmail ? (
+                        <>
+                          <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          <span>Sending...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-3 h-3" />
+                          <span>Send</span>
+                        </>
+                      )}
                     </button>
-                  )}
+
+                    <button
+                      type="button"
+                      onClick={() => setIsEmailPreviewModalOpen(true)}
+                      className="p-1 text-purple-700 dark:text-purple-300 hover:bg-purple-200/50 dark:hover:bg-purple-900/60 rounded-md transition"
+                      title="Preview & customize email before sending"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                    </button>
+
+                    {onNavigateToEmail && (
+                      <button
+                        type="button"
+                        onClick={() => onNavigateToEmail(client.email, client.contactName, client.companyName)}
+                        className="p-1 text-slate-400 hover:text-purple-600 dark:hover:text-purple-300 hover:bg-purple-200/50 dark:hover:bg-purple-900/60 rounded-md transition"
+                        title="Open in Email Composer tab"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
                 </div>
+
+                {emailSendStatus && (
+                  <div
+                    className={`mt-2 p-2.5 rounded-xl text-xs font-medium flex items-center justify-between transition-all ${
+                      emailSendStatus.type === "success"
+                        ? "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                        : "bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800"
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2 min-w-0">
+                      {emailSendStatus.type === "success" ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                      )}
+                      <span className="truncate">{emailSendStatus.message}</span>
+                    </div>
+                    <button
+                      onClick={() => setEmailSendStatus(null)}
+                      className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs ml-2 shrink-0"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
 
                 {client.notes && (
                   <div className="p-3 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 text-xs">
@@ -1366,6 +1583,112 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                   className="px-4 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow cursor-pointer"
                 >
                   Confirm Remove
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Email Preview & Customization Modal */}
+        {isEmailPreviewModalOpen && selectedTemplate && (
+          <div
+            className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs"
+            onClick={() => setIsEmailPreviewModalOpen(false)}
+          >
+            <div
+              className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[88vh]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-850">
+                <div className="flex items-center space-x-2.5">
+                  <div className="p-2 rounded-xl bg-purple-100 dark:bg-purple-950/70 text-purple-600 dark:text-purple-400">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      Preview & Send Email Template
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Template: {selectedTemplate.name}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsEmailPreviewModalOpen(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                {/* Recipient info */}
+                <div className="flex items-center justify-between text-xs p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-750">
+                  <div>
+                    <span className="font-semibold text-slate-500">To: </span>
+                    <span className="font-bold text-slate-900 dark:text-white">
+                      {client.contactName} &lt;{client.email}&gt;
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-500 font-medium">{client.companyName}</span>
+                </div>
+
+                {/* Subject input */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Subject Line
+                  </label>
+                  <input
+                    type="text"
+                    value={customSubject}
+                    onChange={(e) => setCustomSubject(e.target.value)}
+                    className="w-full px-3 py-2 text-xs font-medium rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+
+                {/* Email Body Preview */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      Email Body Preview
+                    </label>
+                    <span className="text-[10px] text-slate-400 font-medium">Personalized for {client.contactName}</span>
+                  </div>
+                  <div
+                    className="p-4 rounded-xl border border-slate-200 dark:border-slate-750 bg-slate-50 dark:bg-slate-850/60 max-h-[300px] overflow-y-auto text-xs text-slate-800 dark:text-slate-200"
+                    dangerouslySetInnerHTML={{ __html: customHtml }}
+                  />
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-850">
+                <button
+                  type="button"
+                  onClick={() => setIsEmailPreviewModalOpen(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800 rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isSendingEmail}
+                  onClick={() => handleSendEmailTemplate(customSubject, customHtml)}
+                  className="px-5 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded-xl flex items-center space-x-1.5 shadow-md shadow-purple-600/30 transition-all hover:scale-102 active:scale-98"
+                >
+                  {isSendingEmail ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Sending Email...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Send Email Now</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
