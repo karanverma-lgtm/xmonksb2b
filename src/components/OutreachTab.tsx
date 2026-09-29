@@ -321,54 +321,18 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
       title: "Interest",
       triggerAction: 'Prospect replies "Tell me more", asks for deck, or agrees to connect',
       nextStep: "Schedule discovery / stakeholder call",
-      statusList: ["interest", "discussion_stakeholders", "call_scheduled", "replied_interested"],
+      statusList: [
+        "interest",
+        "discussion_stakeholders",
+        "call_scheduled",
+        "replied_interested",
+        "share_commercial",
+        "pricing_negotiations",
+        "closure_won",
+        "converted",
+      ],
       pillClass: "bg-[#6E3805] text-[#FFE8D6]",
       accentBorder: "border-[#8D4A09]/40",
-    },
-    {
-      id: "share_commercial",
-      title: "Share Commercial",
-      triggerAction: "Proposal & commercial pricing delivered",
-      nextStep: "Follow up on procurement / approval",
-      statusList: ["share_commercial"],
-      pillClass: "bg-[#005FB8] text-white",
-      accentBorder: "border-[#1976D2]/40",
-    },
-    {
-      id: "pricing_negotiations",
-      title: "Pricing / Negotiations",
-      triggerAction: "Commercial terms / cohort scope in negotiation",
-      nextStep: "Final contract sign-off",
-      statusList: ["pricing_negotiations"],
-      pillClass: "bg-[#64DD17] text-[#123800]",
-      accentBorder: "border-[#76FF03]/40",
-    },
-    {
-      id: "closure_won",
-      title: "Closure Won",
-      triggerAction: "Deal closed and won / PO received",
-      nextStep: "Graduated to CRM delivery",
-      statusList: ["closure_won", "converted"],
-      pillClass: "bg-[#0F511F] text-[#D1F2D9]",
-      accentBorder: "border-[#1B5E20]/40",
-    },
-    {
-      id: "future_prospect",
-      title: "Future Prospect",
-      triggerAction: "Nurturing for future cohorts / quarters",
-      nextStep: "Set next quarter follow-up date",
-      statusList: ["future_prospect", "unresponsive"],
-      pillClass: "bg-[#4E342E] text-[#D7CCC8]",
-      accentBorder: "border-[#5D4037]/40",
-    },
-    {
-      id: "not_interested_lost",
-      title: "Not Interested / Lost",
-      triggerAction: "Prospect passed or not a fit at this time",
-      nextStep: "Archive / recycle after 6 months",
-      statusList: ["not_interested_lost", "not_interested"],
-      pillClass: "bg-[#B71C1C] text-white",
-      accentBorder: "border-[#D32F2F]/40",
     },
   ];
 
@@ -691,7 +655,7 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
       {viewMode === "board" ? (
         /* Board View */
         <div className="w-full overflow-x-auto pb-6 pt-1">
-          <div className="flex gap-4 items-start min-w-[2560px]">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-start min-w-[760px] xl:min-w-0">
           {boardColumns.map((col) => {
             const colClients = filteredClients.filter((c) => {
               if (col.id === "cold_no_answer") {
@@ -718,7 +682,7 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
                     await onUpdateColdClient(clientId, { status: col.id });
                   }
                 }}
-                className={`w-[270px] shrink-0 bg-slate-100/70 dark:bg-slate-900/40 rounded-2xl p-3 border ${col.accentBorder} flex flex-col min-h-[550px] transition-all`}
+                className={`w-full bg-slate-100/70 dark:bg-slate-900/40 rounded-2xl p-3 border ${col.accentBorder} flex flex-col min-h-[550px] transition-all`}
               >
                 {/* Column Header with status pill badge matching workflow */}
                 <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-200 dark:border-slate-800">
