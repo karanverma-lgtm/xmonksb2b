@@ -10,6 +10,14 @@ export const metadata: Metadata = {
   title: "xMonks B2B Lead Prospecting & Journey CRM",
   description:
     "Manage B2B lead journeys, stage probability weightages (10% to 100%), and timestamped customer activity logs.",
+  icons: {
+    icon: [
+      { url: "/xmonksdotcom_logo.jpg", type: "image/jpeg" },
+      { url: "/favicon.ico" },
+    ],
+    shortcut: "/xmonksdotcom_logo.jpg",
+    apple: "/xmonksdotcom_logo.jpg",
+  },
 };
 
 export default function RootLayout({
@@ -20,6 +28,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full antialiased dark" suppressHydrationWarning>
       <head>
+        <link rel="icon" type="image/jpeg" href="/xmonksdotcom_logo.jpg" />
+        <link rel="shortcut icon" href="/xmonksdotcom_logo.jpg" />
+        <link rel="apple-touch-icon" href="/xmonksdotcom_logo.jpg" />
         <script
           dangerouslySetInnerHTML={{
             __html: `
