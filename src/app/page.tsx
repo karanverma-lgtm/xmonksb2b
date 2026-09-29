@@ -50,6 +50,8 @@ import {
   deleteColdClient,
   logOutreachTouchpoint,
   bulkAddColdClients,
+  bulkUpdateColdClients,
+  bulkDeleteColdClients,
   convertColdClientToLead,
 } from "@/lib/outreachService";
 import { STAGES } from "@/constants/stages";
@@ -827,6 +829,23 @@ export default function Home() {
     await deleteColdClient(id);
   };
 
+  const handleBulkUpdateColdClients = async (
+    clientIds: string[],
+    updates: Partial<ColdClient>,
+    touchpointNote?: string
+  ) => {
+    await bulkUpdateColdClients(
+      clientIds,
+      updates,
+      touchpointNote,
+      currentUser?.name || "Sales Representative"
+    );
+  };
+
+  const handleBulkDeleteColdClients = async (clientIds: string[]) => {
+    await bulkDeleteColdClients(clientIds);
+  };
+
   // Move / Duplicate Closure Lead to Billing
   const [billingToast, setBillingToast] = useState<{
     show: boolean;
@@ -947,6 +966,8 @@ export default function Home() {
             onAddColdClient={handleAddColdClient}
             onBulkAddColdClients={handleBulkAddColdClients}
             onUpdateColdClient={handleUpdateColdClient}
+            onBulkUpdateColdClients={handleBulkUpdateColdClients}
+            onBulkDeleteColdClients={handleBulkDeleteColdClients}
             onLogTouchpoint={handleLogOutreachTouchpoint}
             onConvertToLead={handleConvertToLead}
             onDeleteColdClient={handleDeleteColdClient}

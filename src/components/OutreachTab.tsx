@@ -28,14 +28,19 @@ import {
   RotateCcw,
   Radio,
   FileSpreadsheet,
+  CheckSquare,
+  Trash2,
+  Layers,
 } from "lucide-react";
 import { ColdClient, ColdClientStatus, ColdStatusConfig, OutreachChannel } from "@/types/outreach";
 import { COLD_STATUS_CONFIG, OUTREACH_CHANNELS, OUTREACH_INDUSTRIES } from "@/constants/outreach";
 import { UserAccount, VALID_USERS } from "@/constants/users";
 import { formatINR } from "@/lib/formatters";
+import { bulkUpdateColdClients, bulkDeleteColdClients } from "@/lib/outreachService";
 import { AddColdClientModal } from "./AddColdClientModal";
 import { ColdClientDetailModal } from "./ColdClientDetailModal";
 import { GoogleSheetsSyncModal } from "./GoogleSheetsSyncModal";
+import { BulkUpdateOutreachModal } from "./BulkUpdateOutreachModal";
 
 interface OutreachTabProps {
   coldClients: ColdClient[];
@@ -48,6 +53,12 @@ interface OutreachTabProps {
     clients: Array<Omit<ColdClient, "id" | "createdAt" | "updatedAt" | "touchpoints">>
   ) => Promise<void>;
   onUpdateColdClient: (id: string, updates: Partial<ColdClient>) => Promise<void>;
+  onBulkUpdateColdClients?: (
+    ids: string[],
+    updates: Partial<ColdClient>,
+    touchpointNote?: string
+  ) => Promise<void>;
+  onBulkDeleteColdClients?: (ids: string[]) => Promise<void>;
   onLogTouchpoint: (
     clientId: string,
     touchpoint: {
@@ -75,6 +86,8 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
   onAddColdClient,
   onBulkAddColdClients,
   onUpdateColdClient,
+  onBulkUpdateColdClients,
+  onBulkDeleteColdClients,
   onLogTouchpoint,
   onConvertToLead,
   onDeleteColdClient,
@@ -106,6 +119,10 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
   const [selectedChannel, setSelectedChannel] = useState<string>("all");
   const [selectedOwner, setSelectedOwner] = useState<string>("all");
   const [onlyDueToday, setOnlyDueToday] = useState(false);
+
+  // Multi-selection state
+  const [selectedClientIds, setSelectedClientIds] = useState<string[]>([]);
+  const [isBulkUpdateModalOpen, setIsBulkUpdateModalOpen] = useState(false);
 
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -229,6 +246,69 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
 
     return { total, inProgress, highIntent, converted, dueCount };
   }, [baseClients, filteredClients, selectedStatus, onlyDueToday, todayStr]);
+
+  // Selection helpers
+  const toggleSelectClient = (id: string) => {
+    setSelectedClientIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllFiltered = () => {
+    const allFilteredIds = filteredClients.map((c) => c.id);
+    const isAllSelected =
+      allFilteredIds.length > 0 &&
+      allFilteredIds.every((id) => selectedClientIds.includes(id));
+
+    if (isAllSelected) {
+      setSelectedClientIds((prev) => prev.filter((id) => !allFilteredIds.includes(id)));
+    } else {
+      setSelectedClientIds((prev) => Array.from(new Set([...prev, ...allFilteredIds])));
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedClientIds([]);
+  };
+
+  const isAllFilteredSelected =
+    filteredClients.length > 0 &&
+    filteredClients.every((c) => selectedClientIds.includes(c.id));
+
+  const isSomeFilteredSelected =
+    filteredClients.some((c) => selectedClientIds.includes(c.id)) && !isAllFilteredSelected;
+
+  const handleExecuteBulkUpdate = async (
+    ids: string[],
+    updates: Partial<ColdClient>,
+    touchpointNote?: string
+  ) => {
+    if (onBulkUpdateColdClients) {
+      await onBulkUpdateColdClients(ids, updates, touchpointNote);
+    } else {
+      await bulkUpdateColdClients(
+        ids,
+        updates,
+        touchpointNote,
+        currentUser?.name || "Sales Representative"
+      );
+    }
+    setSelectedClientIds([]);
+  };
+
+  const handleExecuteBulkDelete = async () => {
+    if (selectedClientIds.length === 0) return;
+    const count = selectedClientIds.length;
+    const confirmMsg = `Are you sure you want to delete ${count} selected lead${count > 1 ? "s" : ""}? This action cannot be undone.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    if (onBulkDeleteColdClients) {
+      await onBulkDeleteColdClients(selectedClientIds);
+    } else {
+      await bulkDeleteColdClients(selectedClientIds);
+    }
+    setSelectedClientIds([]);
+  };
 
   // Export to CSV
   const handleExportCSV = () => {
@@ -640,6 +720,18 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
             </span>
           </button>
 
+          {/* Multi-Update Button when leads are selected */}
+          {selectedClientIds.length > 0 && (
+            <button
+              onClick={() => setIsBulkUpdateModalOpen(true)}
+              className="px-3 py-1.5 rounded-xl border border-blue-500 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-xs font-bold text-blue-700 dark:text-blue-300 transition-all flex items-center space-x-1.5 shadow-xs animate-in fade-in"
+              title="Multi-update selected leads"
+            >
+              <Edit3 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span>Multi-Update ({selectedClientIds.length})</span>
+            </button>
+          )}
+
           {/* + Add Cold Prospect Button */}
           <button
             onClick={() => setIsAddModalOpen(true)}
@@ -716,6 +808,7 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
                     </div>
                   ) : (
                     colClients.map((client) => {
+                      const isSelected = selectedClientIds.includes(client.id);
                       const cfg = getStatusConfig(client.status);
                       const isDue = Boolean(
                         client.nextFollowUpDate &&
@@ -734,27 +827,48 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
                             e.dataTransfer.setData("text/plain", client.id);
                           }}
                           onClick={() => setSelectedClient(client)}
-                          className="p-3.5 bg-white dark:bg-slate-850 rounded-xl border border-slate-200/80 dark:border-slate-750 hover:border-blue-400 dark:hover:border-blue-500 shadow-xs hover:shadow-md transition-all cursor-pointer group space-y-2.5 active:cursor-grabbing"
+                          className={`p-3.5 bg-white dark:bg-slate-850 rounded-xl border ${
+                            isSelected
+                              ? "border-blue-500 ring-2 ring-blue-500/30 bg-blue-50/20 dark:bg-blue-950/20"
+                              : "border-slate-200/80 dark:border-slate-750 hover:border-blue-400 dark:hover:border-blue-500"
+                          } shadow-xs hover:shadow-md transition-all cursor-pointer group space-y-2.5 active:cursor-grabbing`}
                         >
-                          {/* Card Top: Company & Channel */}
+                          {/* Card Top: Checkbox, Company & Channel */}
                           <div className="flex items-start justify-between gap-1.5">
-                            <div className="min-w-0">
-                              <h4 className="text-xs font-bold text-slate-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                                {client.companyName}
-                              </h4>
-                              <div className="flex items-center space-x-1.5 flex-wrap">
-                                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                                  {client.contactName}
-                                </p>
-                                {client.additionalContacts && client.additionalContacts.length > 0 && (
-                                  <span
-                                    className="inline-flex items-center space-x-0.5 px-1 py-0.2 rounded-full text-[9px] font-bold bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/60"
-                                    title={`${client.additionalContacts.length} additional contact(s): ${client.additionalContacts.map((c) => c.name).join(", ")}`}
-                                  >
-                                    <Users className="w-2.5 h-2.5" />
-                                    <span>+{client.additionalContacts.length}</span>
-                                  </span>
-                                )}
+                            <div className="flex items-start gap-2 min-w-0 flex-1">
+                              <div
+                                className="pt-0.5 shrink-0"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={(e) => {
+                                    e.stopPropagation();
+                                    toggleSelectClient(client.id);
+                                  }}
+                                  className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 border-slate-300 dark:border-slate-700 dark:bg-slate-800 cursor-pointer"
+                                  title="Select lead for multi-update"
+                                />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <h4 className="text-xs font-bold text-slate-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                                  {client.companyName}
+                                </h4>
+                                <div className="flex items-center space-x-1.5 flex-wrap">
+                                  <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                                    {client.contactName}
+                                  </p>
+                                  {client.additionalContacts && client.additionalContacts.length > 0 && (
+                                    <span
+                                      className="inline-flex items-center space-x-0.5 px-1 py-0.2 rounded-full text-[9px] font-bold bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/60"
+                                      title={`${client.additionalContacts.length} additional contact(s): ${client.additionalContacts.map((c) => c.name).join(", ")}`}
+                                    >
+                                      <Users className="w-2.5 h-2.5" />
+                                      <span>+{client.additionalContacts.length}</span>
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
                             <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 uppercase tracking-wider flex-shrink-0">
@@ -825,6 +939,18 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  <th className="py-3 px-3 w-10 text-center" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={isAllFilteredSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = isSomeFilteredSelected;
+                      }}
+                      onChange={handleSelectAllFiltered}
+                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 dark:border-slate-700 dark:bg-slate-800 cursor-pointer"
+                      title={isAllFilteredSelected ? "Deselect all" : "Select all filtered"}
+                    />
+                  </th>
                   <th className="py-3 px-4">Company & Contact</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4">Channel</th>
@@ -838,12 +964,13 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
                 {filteredClients.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-slate-400">
+                    <td colSpan={9} className="py-12 text-center text-slate-400">
                       No cold prospects found matching the current filters.
                     </td>
                   </tr>
                 ) : (
                   filteredClients.map((client) => {
+                    const isSelected = selectedClientIds.includes(client.id);
                     const cfg = getStatusConfig(client.status);
                     const isDue = Boolean(
                       client.nextFollowUpDate &&
@@ -855,9 +982,26 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
                     return (
                       <tr
                         key={client.id || `${client.companyName}-${Math.random()}`}
-                        className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer group"
+                        className={`transition-colors cursor-pointer group ${
+                          isSelected
+                            ? "bg-blue-50/70 dark:bg-blue-950/40 hover:bg-blue-100/60 dark:hover:bg-blue-900/50"
+                            : "hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                        }`}
                         onClick={() => setSelectedClient(client)}
                       >
+                        {/* Row Selection Checkbox */}
+                        <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              toggleSelectClient(client.id);
+                            }}
+                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 dark:border-slate-700 dark:bg-slate-800 cursor-pointer"
+                          />
+                        </td>
+
                         {/* Company & Contact */}
                         <td className="py-3 px-4">
                           <div className="font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
@@ -990,6 +1134,68 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
         onClose={() => setIsSheetsModalOpen(false)}
         currentUser={currentUser}
       />
+
+      {/* Multi-Update Leads Modal */}
+      <BulkUpdateOutreachModal
+        isOpen={isBulkUpdateModalOpen}
+        onClose={() => setIsBulkUpdateModalOpen(false)}
+        selectedIds={selectedClientIds}
+        clients={coldClients}
+        platformOwners={platformOwners}
+        currentUser={currentUser}
+        onConfirmBulkUpdate={handleExecuteBulkUpdate}
+      />
+
+      {/* Sticky Multi-Action Bar for Selected Leads */}
+      {selectedClientIds.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-auto max-w-[95vw] animate-in slide-in-from-bottom-5 duration-200">
+          <div className="flex items-center gap-2.5 sm:gap-3 px-3.5 sm:px-4 py-2 sm:py-2.5 bg-slate-900/95 dark:bg-slate-800/95 text-white rounded-2xl shadow-2xl border border-slate-700/80 backdrop-blur-md">
+            {/* Selection count badge */}
+            <div className="flex items-center space-x-2 pl-1 pr-2 border-r border-slate-700">
+              <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+              <span className="text-xs font-bold whitespace-nowrap">
+                {selectedClientIds.length} Selected
+              </span>
+            </div>
+
+            {/* Select all filtered shortcut */}
+            {!isAllFilteredSelected && filteredClients.length > selectedClientIds.length && (
+              <button
+                onClick={handleSelectAllFiltered}
+                className="text-xs text-blue-400 hover:text-blue-300 font-semibold underline underline-offset-2 whitespace-nowrap px-1 hidden sm:inline"
+              >
+                Select all {filteredClients.length}
+              </button>
+            )}
+
+            {/* Multi-Update Button */}
+            <button
+              onClick={() => setIsBulkUpdateModalOpen(true)}
+              className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-blue-600/30 transition-all hover:scale-102 active:scale-98 whitespace-nowrap"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>Multi-Update Leads</span>
+            </button>
+
+            {/* Delete Button */}
+            <button
+              onClick={handleExecuteBulkDelete}
+              className="p-1.5 rounded-xl text-rose-400 hover:text-rose-300 hover:bg-rose-950/50 transition"
+              title="Delete Selected Leads"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+
+            {/* Clear selection */}
+            <button
+              onClick={handleClearSelection}
+              className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded-lg hover:bg-slate-800 transition whitespace-nowrap"
+            >
+              Deselect
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

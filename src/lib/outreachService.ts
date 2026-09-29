@@ -348,6 +348,98 @@ export async function bulkAddColdClients(
   return newClients.length;
 }
 
+// Bulk Update Cold Clients
+export async function bulkUpdateColdClients(
+  clientIds: string[],
+  updates: Partial<ColdClient>,
+  touchpointNote?: string,
+  author?: string
+): Promise<number> {
+  if (clientIds.length === 0) return 0;
+  const now = new Date();
+  const timestampIso = now.toISOString();
+  const formattedDate = formatTimestamp(now);
+  const current = getStoredLocalColdClients();
+
+  const idSet = new Set(clientIds);
+  const updatedClients: ColdClient[] = [];
+
+  const updatedLocal = current.map((client) => {
+    if (!idSet.has(client.id)) return client;
+
+    const clientUpdates: Partial<ColdClient> = {
+      ...updates,
+      updatedAt: timestampIso,
+    };
+
+    if (touchpointNote && touchpointNote.trim()) {
+      const tpChannel = (updates.channel as OutreachChannel) || client.channel || "note";
+      const newTp: OutreachTouchpoint = {
+        id: "tp-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
+        timestamp: timestampIso,
+        formattedDate: formattedDate,
+        channel: tpChannel,
+        summary: touchpointNote.trim(),
+        author: author || updates.owner || client.owner || "Sales Representative",
+      };
+      clientUpdates.touchpoints = [newTp, ...(client.touchpoints || [])];
+      clientUpdates.lastContactDate = timestampIso.split("T")[0];
+    }
+
+    const merged: ColdClient = { ...client, ...clientUpdates };
+    updatedClients.push(merged);
+    return merged;
+  });
+
+  // 1. Local update
+  saveStoredLocalColdClients(updatedLocal);
+
+  // 2. Firestore batch write in chunks
+  try {
+    const CHUNK_SIZE = 400;
+    for (let i = 0; i < updatedClients.length; i += CHUNK_SIZE) {
+      const chunk = updatedClients.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+      for (const client of chunk) {
+        const docRef = doc(db, COLLECTION_NAME, client.id);
+        const { id, ...docData } = client;
+        batch.set(docRef, sanitizeForFirestore(docData), { merge: true });
+      }
+      await batch.commit();
+    }
+  } catch (error) {
+    console.warn("Updated bulk cold clients locally (Firestore offline)", error);
+  }
+
+  return updatedClients.length;
+}
+
+// Bulk Delete Cold Clients
+export async function bulkDeleteColdClients(clientIds: string[]): Promise<number> {
+  if (clientIds.length === 0) return 0;
+  const idSet = new Set(clientIds);
+  const current = getStoredLocalColdClients();
+  const filtered = current.filter((c) => !idSet.has(c.id));
+  saveStoredLocalColdClients(filtered);
+
+  try {
+    const CHUNK_SIZE = 400;
+    for (let i = 0; i < clientIds.length; i += CHUNK_SIZE) {
+      const chunk = clientIds.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+      for (const id of chunk) {
+        const docRef = doc(db, COLLECTION_NAME, id);
+        batch.delete(docRef);
+      }
+      await batch.commit();
+    }
+  } catch (error) {
+    console.warn("Deleted bulk cold clients locally (Firestore offline)", error);
+  }
+
+  return clientIds.length;
+}
+
 // Convert Cold Client to Active Pipeline Lead
 export async function convertColdClientToLead(
   coldClient: ColdClient,
