@@ -23,6 +23,8 @@ import {
   removeLeadCompanyLogo,
   addLeadContact,
   removeLeadContact,
+  updateLeadPrimaryContact,
+  editLeadContact,
 } from "@/lib/leadsService";
 import { exportLeadsToCSV } from "@/lib/exportService";
 import { Sidebar, NavTab } from "@/components/Sidebar";
@@ -713,6 +715,48 @@ export default function Home() {
     }
   };
 
+  const handleUpdatePrimaryContact = async (
+    leadId: string,
+    contactData: {
+      contactName: string;
+      contactPhone?: string;
+      contactEmail: string;
+      designation?: string;
+    }
+  ) => {
+    const updated = await updateLeadPrimaryContact(
+      leadId,
+      contactData,
+      currentUser?.name || "Client Partner"
+    );
+    if (updated) {
+      setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
+      setSelectedLead((prev) => (prev && prev.id === leadId ? updated : prev));
+    }
+  };
+
+  const handleEditLeadContact = async (
+    leadId: string,
+    contactId: string,
+    contactData: {
+      name: string;
+      contactNumber?: string;
+      email?: string;
+      designation?: string;
+    }
+  ) => {
+    const updated = await editLeadContact(
+      leadId,
+      contactId,
+      contactData,
+      currentUser?.name || "Client Partner"
+    );
+    if (updated) {
+      setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
+      setSelectedLead((prev) => (prev && prev.id === leadId ? updated : prev));
+    }
+  };
+
   const handleExportLeads = () => {
     // Export all active leads in the system for admin
     exportLeadsToCSV(leads, "xMonks_B2B_All_Clients_Export");
@@ -993,6 +1037,8 @@ export default function Home() {
           onRemoveCompanyLogo={handleRemoveCompanyLogo}
           onAddContact={handleAddLeadContact}
           onRemoveContact={handleRemoveLeadContact}
+          onUpdatePrimaryContact={handleUpdatePrimaryContact}
+          onEditContact={handleEditLeadContact}
           onMoveToBilling={handleMoveLeadToBilling}
         />
       )}

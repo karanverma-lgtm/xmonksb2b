@@ -91,6 +91,25 @@ interface LeadDetailModalProps {
     }
   ) => void;
   onRemoveContact?: (leadId: string, contactId: string) => void;
+  onUpdatePrimaryContact?: (
+    leadId: string,
+    contactData: {
+      contactName: string;
+      designation?: string;
+      contactEmail: string;
+      contactPhone?: string;
+    }
+  ) => void;
+  onEditContact?: (
+    leadId: string,
+    contactId: string,
+    contactData: {
+      name: string;
+      contactNumber?: string;
+      email?: string;
+      designation?: string;
+    }
+  ) => void;
   onUpdateCompanyLogo?: (leadId: string, logoUrl: string) => void;
   onRemoveCompanyLogo?: (leadId: string) => void;
   onMoveToBilling?: (lead: Lead) => void;
@@ -115,6 +134,8 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   onRemoveFinancialDocument,
   onAddContact,
   onRemoveContact,
+  onUpdatePrimaryContact,
+  onEditContact,
   onUpdateCompanyLogo,
   onRemoveCompanyLogo,
   onMoveToBilling,
@@ -129,7 +150,9 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   const [customProgramInput, setCustomProgramInput] = useState("");
 
   // People / Contacts State (Multi-people support for client card)
-  const [showAddPersonModal, setShowAddPersonModal] = useState(false);
+  const [showContactPersonModal, setShowContactPersonModal] = useState(false);
+  const [contactModalMode, setContactModalMode] = useState<"new" | "primary" | "additional">("new");
+  const [editingContactId, setEditingContactId] = useState<string | null>(null);
   const [personName, setPersonName] = useState("");
   const [personContactNumber, setPersonContactNumber] = useState("");
   const [personEmail, setPersonEmail] = useState("");
@@ -375,14 +398,39 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
     }
   };
 
-  // Contact Stakeholder Handlers (Add more people to client card)
+  // Contact Stakeholder Handlers (Add & Edit people in client card)
   const handleOpenAddPerson = () => {
+    setContactModalMode("new");
+    setEditingContactId(null);
     setPersonName("");
     setPersonContactNumber("");
     setPersonEmail("");
     setPersonDesignation("");
     setPersonFormError(null);
-    setShowAddPersonModal(true);
+    setShowContactPersonModal(true);
+  };
+
+  const handleOpenEditPrimaryContact = () => {
+    if (!lead) return;
+    setContactModalMode("primary");
+    setEditingContactId("primary");
+    setPersonName(lead.contactName || "");
+    setPersonContactNumber(lead.contactPhone || "");
+    setPersonEmail(lead.contactEmail || "");
+    setPersonDesignation(lead.designation || "");
+    setPersonFormError(null);
+    setShowContactPersonModal(true);
+  };
+
+  const handleOpenEditAdditionalContact = (contact: ContactPerson) => {
+    setContactModalMode("additional");
+    setEditingContactId(contact.id);
+    setPersonName(contact.name || "");
+    setPersonContactNumber(contact.contactNumber || "");
+    setPersonEmail(contact.email || "");
+    setPersonDesignation(contact.designation || "");
+    setPersonFormError(null);
+    setShowContactPersonModal(true);
   };
 
   const handleSavePerson = (e: React.FormEvent) => {
@@ -393,16 +441,36 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
     }
     if (!lead) return;
 
-    if (onAddContact) {
-      onAddContact(lead.id, {
-        name: personName.trim(),
-        contactNumber: personContactNumber.trim() || undefined,
-        email: personEmail.trim() || undefined,
-        designation: personDesignation.trim() || undefined,
-      });
+    if (contactModalMode === "primary") {
+      if (onUpdatePrimaryContact) {
+        onUpdatePrimaryContact(lead.id, {
+          contactName: personName.trim(),
+          contactPhone: personContactNumber.trim() || undefined,
+          contactEmail: personEmail.trim(),
+          designation: personDesignation.trim() || undefined,
+        });
+      }
+    } else if (contactModalMode === "additional" && editingContactId) {
+      if (onEditContact) {
+        onEditContact(lead.id, editingContactId, {
+          name: personName.trim(),
+          contactNumber: personContactNumber.trim() || undefined,
+          email: personEmail.trim() || undefined,
+          designation: personDesignation.trim() || undefined,
+        });
+      }
+    } else {
+      if (onAddContact) {
+        onAddContact(lead.id, {
+          name: personName.trim(),
+          contactNumber: personContactNumber.trim() || undefined,
+          email: personEmail.trim() || undefined,
+          designation: personDesignation.trim() || undefined,
+        });
+      }
     }
 
-    setShowAddPersonModal(false);
+    setShowContactPersonModal(false);
   };
 
   const handleConfirmRemovePerson = () => {
@@ -777,6 +845,16 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                     <span className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950 px-1.5 py-0.5 rounded border border-indigo-200/60 dark:border-indigo-800/60">
                       {lead.designation}
                     </span>
+                  )}
+                  {onUpdatePrimaryContact && (
+                    <button
+                      type="button"
+                      onClick={handleOpenEditPrimaryContact}
+                      className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950 transition cursor-pointer"
+                      title="Edit primary contact"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
                   )}
                 </span>
                 <span>•</span>
@@ -1337,6 +1415,18 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                       )}
                     </div>
                   </div>
+
+                  {onUpdatePrimaryContact && (
+                    <button
+                      type="button"
+                      onClick={handleOpenEditPrimaryContact}
+                      className="flex items-center space-x-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/80 shadow-2xs transition cursor-pointer flex-shrink-0"
+                      title="Edit Primary Contact"
+                    >
+                      <Pencil className="w-3 h-3" />
+                      <span>Edit</span>
+                    </button>
+                  )}
                 </div>
 
                 <div className="space-y-1 pt-1 border-t border-slate-100 dark:border-slate-800 text-[11px]">
@@ -1396,14 +1486,26 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setPersonToDelete(person)}
-                      className="p-1 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition opacity-0 group-hover:opacity-100"
-                      title="Remove contact"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center space-x-1">
+                      {onEditContact && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditAdditionalContact(person)}
+                          className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition opacity-0 group-hover:opacity-100 cursor-pointer"
+                          title="Edit contact"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setPersonToDelete(person)}
+                        className="p-1 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition opacity-0 group-hover:opacity-100 cursor-pointer"
+                        title="Remove contact"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="space-y-1 pt-1 border-t border-slate-100 dark:border-slate-800 text-[11px]">
@@ -2070,27 +2172,39 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
         </div>
       </div>
 
-      {/* Add Contact Person Modal */}
-      {showAddPersonModal && (
+      {/* Add / Edit Contact Person Modal */}
+      {showContactPersonModal && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs">
           <div className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 space-y-5">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center space-x-2.5">
                 <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
-                  <UserPlus className="w-5 h-5" />
+                  {contactModalMode === "new" ? (
+                    <UserPlus className="w-5 h-5" />
+                  ) : (
+                    <Pencil className="w-5 h-5" />
+                  )}
                 </div>
                 <div>
                   <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-                    Add Contact Person
+                    {contactModalMode === "primary"
+                      ? "Edit Primary Contact"
+                      : contactModalMode === "additional"
+                      ? "Edit Contact Person"
+                      : "Add Contact Person"}
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    Add a key stakeholder to {lead.companyName}
+                    {contactModalMode === "primary"
+                      ? `Update primary contact details for ${lead.companyName}`
+                      : contactModalMode === "additional"
+                      ? `Update stakeholder details for ${lead.companyName}`
+                      : `Add a key stakeholder to ${lead.companyName}`}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setShowAddPersonModal(false)}
+                onClick={() => setShowContactPersonModal(false)}
                 className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
               >
                 <X className="w-4 h-4" />
@@ -2173,7 +2287,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
               <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setShowAddPersonModal(false)}
+                  onClick={() => setShowContactPersonModal(false)}
                   className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
                 >
                   Cancel
@@ -2182,8 +2296,17 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                   type="submit"
                   className="px-5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-md shadow-indigo-500/20 transition flex items-center space-x-1.5 cursor-pointer"
                 >
-                  <UserPlus className="w-3.5 h-3.5" />
-                  <span>Save Person</span>
+                  {contactModalMode === "new" ? (
+                    <>
+                      <UserPlus className="w-3.5 h-3.5" />
+                      <span>Save Person</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>{contactModalMode === "primary" ? "Update Primary Contact" : "Save Changes"}</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>

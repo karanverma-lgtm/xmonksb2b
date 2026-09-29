@@ -29,6 +29,7 @@ import {
   Check,
   Users,
   UserPlus,
+  Pencil,
 } from "lucide-react";
 import { ColdClient, ColdClientStatus, OutreachChannel, OutreachTouchpoint } from "@/types/outreach";
 import { ContactPerson } from "@/types/lead";
@@ -110,7 +111,9 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
   const [convertClosureMonth, setConvertClosureMonth] = useState(new Date().toISOString().slice(0, 7));
 
   // People / Contacts state (Multi-people support for client card)
-  const [showAddPersonModal, setShowAddPersonModal] = useState(false);
+  const [showContactPersonModal, setShowContactPersonModal] = useState(false);
+  const [contactModalMode, setContactModalMode] = useState<"new" | "primary" | "additional">("new");
+  const [editingContactId, setEditingContactId] = useState<string | null>(null);
   const [personName, setPersonName] = useState("");
   const [personContactNumber, setPersonContactNumber] = useState("");
   const [personEmail, setPersonEmail] = useState("");
@@ -234,14 +237,39 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
     }
   };
 
-  // Contact Stakeholder Handlers (Add more people to cold client card)
+  // Contact Stakeholder Handlers (Add & Edit people in cold client card)
   const handleOpenAddPerson = () => {
+    setContactModalMode("new");
+    setEditingContactId(null);
     setPersonName("");
     setPersonContactNumber("");
     setPersonEmail("");
     setPersonDesignation("");
     setPersonFormError(null);
-    setShowAddPersonModal(true);
+    setShowContactPersonModal(true);
+  };
+
+  const handleOpenEditPrimaryContact = () => {
+    if (!client) return;
+    setContactModalMode("primary");
+    setEditingContactId("primary");
+    setPersonName(client.contactName || "");
+    setPersonContactNumber(client.phone || "");
+    setPersonEmail(client.email || "");
+    setPersonDesignation(client.designation || "");
+    setPersonFormError(null);
+    setShowContactPersonModal(true);
+  };
+
+  const handleOpenEditAdditionalContact = (contact: ContactPerson) => {
+    setContactModalMode("additional");
+    setEditingContactId(contact.id);
+    setPersonName(contact.name || "");
+    setPersonContactNumber(contact.contactNumber || "");
+    setPersonEmail(contact.email || "");
+    setPersonDesignation(contact.designation || "");
+    setPersonFormError(null);
+    setShowContactPersonModal(true);
   };
 
   const handleSavePerson = async (e: React.FormEvent) => {
@@ -252,23 +280,48 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
     }
     if (!client) return;
 
-    const newContact: ContactPerson = {
-      id: `contact-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      name: personName.trim(),
-      contactNumber: personContactNumber.trim() || undefined,
-      email: personEmail.trim() || undefined,
-      designation: personDesignation.trim() || undefined,
-      addedAt: new Date().toISOString(),
-    };
+    if (contactModalMode === "primary") {
+      await onUpdateClient(client.id, {
+        contactName: personName.trim(),
+        phone: personContactNumber.trim() || undefined,
+        email: personEmail.trim().toLowerCase(),
+        designation: personDesignation.trim() || undefined,
+      });
+    } else if (contactModalMode === "additional" && editingContactId) {
+      const existingContacts = client.additionalContacts || [];
+      const updatedContacts = existingContacts.map((c) =>
+        c.id === editingContactId
+          ? {
+              ...c,
+              name: personName.trim(),
+              contactNumber: personContactNumber.trim() || undefined,
+              email: personEmail.trim() || undefined,
+              designation: personDesignation.trim() || undefined,
+            }
+          : c
+      );
+      await onUpdateClient(client.id, {
+        additionalContacts: updatedContacts,
+      });
+    } else {
+      const newContact: ContactPerson = {
+        id: `contact-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        name: personName.trim(),
+        contactNumber: personContactNumber.trim() || undefined,
+        email: personEmail.trim() || undefined,
+        designation: personDesignation.trim() || undefined,
+        addedAt: new Date().toISOString(),
+      };
 
-    const existingContacts = client.additionalContacts || [];
-    const updatedContacts = [...existingContacts, newContact];
+      const existingContacts = client.additionalContacts || [];
+      const updatedContacts = [...existingContacts, newContact];
 
-    await onUpdateClient(client.id, {
-      additionalContacts: updatedContacts,
-    });
+      await onUpdateClient(client.id, {
+        additionalContacts: updatedContacts,
+      });
+    }
 
-    setShowAddPersonModal(false);
+    setShowContactPersonModal(false);
   };
 
   const handleConfirmRemovePerson = async () => {
@@ -676,23 +729,35 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {/* Primary Contact */}
                 <div className="p-3 rounded-lg border border-blue-200/80 dark:border-blue-900/60 bg-blue-50/30 dark:bg-blue-950/20 space-y-2">
-                  <div className="flex items-center space-x-2 min-w-0">
-                    <div className="w-7 h-7 rounded-full bg-blue-600 text-white font-bold text-[11px] flex items-center justify-center shrink-0">
-                      {client.contactName ? client.contactName.slice(0, 2).toUpperCase() : "PC"}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center space-x-1">
-                        <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                          {client.contactName}
-                        </span>
-                        <span className="px-1 py-0.2 rounded text-[9px] font-extrabold uppercase bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
-                          Primary
-                        </span>
+                  <div className="flex items-center justify-between gap-1.5">
+                    <div className="flex items-center space-x-2 min-w-0">
+                      <div className="w-7 h-7 rounded-full bg-blue-600 text-white font-bold text-[11px] flex items-center justify-center shrink-0">
+                        {client.contactName ? client.contactName.slice(0, 2).toUpperCase() : "PC"}
                       </div>
-                      <p className="text-[10px] text-slate-500 truncate">
-                        {client.designation || "Stakeholder"}
-                      </p>
+                      <div className="min-w-0">
+                        <div className="flex items-center space-x-1">
+                          <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                            {client.contactName}
+                          </span>
+                          <span className="px-1 py-0.2 rounded text-[9px] font-extrabold uppercase bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
+                            Primary
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 truncate">
+                          {client.designation || "Stakeholder"}
+                        </p>
+                      </div>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={handleOpenEditPrimaryContact}
+                      className="flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-bold text-blue-600 dark:text-blue-400 bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-950/60 border border-blue-200 dark:border-blue-800 transition cursor-pointer shrink-0"
+                      title="Edit Primary Contact"
+                    >
+                      <Pencil className="w-3 h-3" />
+                      <span>Edit</span>
+                    </button>
                   </div>
 
                   <div className="pt-1.5 border-t border-slate-200/60 dark:border-slate-800 space-y-1 text-[11px]">
@@ -742,14 +807,24 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => setPersonToDelete(person)}
-                        className="p-1 rounded text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition opacity-0 group-hover:opacity-100"
-                        title="Remove contact"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center space-x-1">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditAdditionalContact(person)}
+                          className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition opacity-0 group-hover:opacity-100 cursor-pointer"
+                          title="Edit contact"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPersonToDelete(person)}
+                          className="p-1 rounded text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition opacity-0 group-hover:opacity-100 cursor-pointer"
+                          title="Remove contact"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
 
                     <div className="pt-1.5 border-t border-slate-100 dark:border-slate-800 space-y-1 text-[11px]">
@@ -1003,27 +1078,39 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
           </div>
         )}
 
-        {/* Add Contact Person Modal */}
-        {showAddPersonModal && (
+        {/* Add / Edit Contact Person Modal */}
+        {showContactPersonModal && (
           <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs">
             <div className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 space-y-5 animate-scaleUp">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center space-x-2.5">
                   <div className="p-2 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                    <UserPlus className="w-5 h-5" />
+                    {contactModalMode === "new" ? (
+                      <UserPlus className="w-5 h-5" />
+                    ) : (
+                      <Pencil className="w-5 h-5" />
+                    )}
                   </div>
                   <div>
                     <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-                      Add Contact Person
+                      {contactModalMode === "primary"
+                        ? "Edit Primary Contact"
+                        : contactModalMode === "additional"
+                        ? "Edit Contact Person"
+                        : "Add Contact Person"}
                     </h3>
                     <p className="text-[11px] text-slate-500">
-                      Add a key stakeholder to {client.companyName}
+                      {contactModalMode === "primary"
+                        ? `Update primary contact details for ${client.companyName}`
+                        : contactModalMode === "additional"
+                        ? `Update stakeholder details for ${client.companyName}`
+                        : `Add a key stakeholder to ${client.companyName}`}
                     </p>
                   </div>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setShowAddPersonModal(false)}
+                  onClick={() => setShowContactPersonModal(false)}
                   className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
                 >
                   <X className="w-4 h-4" />
@@ -1106,7 +1193,7 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                 <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100 dark:border-slate-800">
                   <button
                     type="button"
-                    onClick={() => setShowAddPersonModal(false)}
+                    onClick={() => setShowContactPersonModal(false)}
                     className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
                   >
                     Cancel
@@ -1115,8 +1202,17 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                     type="submit"
                     className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md shadow-blue-500/20 transition flex items-center space-x-1.5 cursor-pointer"
                   >
-                    <UserPlus className="w-3.5 h-3.5" />
-                    <span>Save Person</span>
+                    {contactModalMode === "new" ? (
+                      <>
+                        <UserPlus className="w-3.5 h-3.5" />
+                        <span>Save Person</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>{contactModalMode === "primary" ? "Update Primary Contact" : "Save Changes"}</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </form>

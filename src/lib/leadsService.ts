@@ -1255,3 +1255,146 @@ export async function updateLeadContacts(
   return updatedLead;
 }
 
+// Update primary contact on a Lead
+export async function updateLeadPrimaryContact(
+  leadId: string,
+  contactData: {
+    contactName: string;
+    designation?: string;
+    contactEmail: string;
+    contactPhone?: string;
+  },
+  author: string = "Client Partner"
+): Promise<Lead | null> {
+  const localLeads = getStoredLocalLeads();
+  const target = localLeads.find((l) => l.id === leadId);
+  if (!target) return null;
+
+  const now = new Date();
+  const timestampIso = now.toISOString();
+  const formattedDate = formatTimestamp(now);
+
+  const contactLog: JourneyLog = {
+    id: "log-" + Date.now() + "-" + Math.floor(Math.random() * 1000),
+    timestamp: timestampIso,
+    formattedDate: formattedDate,
+    type: "contact_update",
+    title: `Primary Contact Updated: ${contactData.contactName}`,
+    description: `Updated primary contact details for ${contactData.contactName} (${contactData.designation || "No title"}).`,
+    author: author,
+  };
+
+  const updatedLead: Lead = {
+    ...target,
+    contactName: contactData.contactName.trim(),
+    designation: contactData.designation?.trim() || undefined,
+    contactEmail: contactData.contactEmail.trim(),
+    contactPhone: contactData.contactPhone?.trim() || undefined,
+    updatedAt: timestampIso,
+    journeyLogs: [contactLog, ...target.journeyLogs],
+  };
+
+  // Firestore Update
+  try {
+    const docRef = doc(db, COLLECTION_NAME, leadId);
+    await updateDoc(
+      docRef,
+      sanitizeForFirestore({
+        contactName: updatedLead.contactName,
+        designation: updatedLead.designation || null,
+        contactEmail: updatedLead.contactEmail,
+        contactPhone: updatedLead.contactPhone || null,
+        updatedAt: timestampIso,
+        journeyLogs: updatedLead.journeyLogs,
+      })
+    );
+  } catch (err) {
+    console.warn("Firestore update primary contact skipped, updating local state", err);
+  }
+
+  const updatedLeads = localLeads.map((l) => (l.id === leadId ? updatedLead : l));
+  saveStoredLocalLeads(updatedLeads);
+
+  return updatedLead;
+}
+
+// Edit a specific additional contact on a Lead
+export async function editLeadContact(
+  leadId: string,
+  contactId: string,
+  updatedData: Partial<ContactPerson>,
+  author: string = "Client Partner"
+): Promise<Lead | null> {
+  const localLeads = getStoredLocalLeads();
+  const target = localLeads.find((l) => l.id === leadId);
+  if (!target) return null;
+
+  const existingContacts = target.additionalContacts || [];
+  const contactIndex = existingContacts.findIndex((c) => c.id === contactId);
+  if (contactIndex === -1) return target;
+
+  const now = new Date();
+  const timestampIso = now.toISOString();
+  const formattedDate = formatTimestamp(now);
+
+  const oldContact = existingContacts[contactIndex];
+  const updatedContact: ContactPerson = {
+    ...oldContact,
+    ...updatedData,
+    name: (updatedData.name !== undefined ? updatedData.name : oldContact.name).trim(),
+    contactNumber:
+      updatedData.contactNumber !== undefined
+        ? updatedData.contactNumber?.trim() || undefined
+        : oldContact.contactNumber,
+    email:
+      updatedData.email !== undefined
+        ? updatedData.email?.trim() || undefined
+        : oldContact.email,
+    designation:
+      updatedData.designation !== undefined
+        ? updatedData.designation?.trim() || undefined
+        : oldContact.designation,
+  };
+
+  const updatedContacts = [...existingContacts];
+  updatedContacts[contactIndex] = updatedContact;
+
+  const editLog: JourneyLog = {
+    id: "log-" + Date.now() + "-" + Math.floor(Math.random() * 1000),
+    timestamp: timestampIso,
+    formattedDate: formattedDate,
+    type: "contact_update",
+    title: `Stakeholder Updated: ${updatedContact.name}`,
+    description: `Updated contact details for ${updatedContact.name} (${updatedContact.designation || "Stakeholder"}).`,
+    author: author,
+  };
+
+  const updatedLead: Lead = {
+    ...target,
+    additionalContacts: updatedContacts,
+    updatedAt: timestampIso,
+    journeyLogs: [editLog, ...target.journeyLogs],
+  };
+
+  // Firestore Update
+  try {
+    const docRef = doc(db, COLLECTION_NAME, leadId);
+    await updateDoc(
+      docRef,
+      sanitizeForFirestore({
+        additionalContacts: updatedContacts,
+        updatedAt: timestampIso,
+        journeyLogs: updatedLead.journeyLogs,
+      })
+    );
+  } catch (err) {
+    console.warn("Firestore edit contact skipped, updating local state", err);
+  }
+
+  const updatedLeads = localLeads.map((l) => (l.id === leadId ? updatedLead : l));
+  saveStoredLocalLeads(updatedLeads);
+
+  return updatedLead;
+}
+
+
