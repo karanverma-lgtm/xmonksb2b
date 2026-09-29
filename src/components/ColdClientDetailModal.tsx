@@ -543,6 +543,12 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                       <span>{client.city}</span>
                     </span>
                   )}
+                  {client.companySize && (
+                    <span className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-600 dark:text-slate-400 flex items-center space-x-1">
+                      <Building2 className="w-3.5 h-3.5 text-blue-500" />
+                      <span>Size: {client.companySize}</span>
+                    </span>
+                  )}
                   {onNavigateToEmail && (
                     <button
                       onClick={() => onNavigateToEmail(client.email, client.contactName, client.companyName)}

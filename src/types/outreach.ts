@@ -44,6 +44,7 @@ export interface ColdClient {
   convertedLeadId?: string; // Lead ID if converted to pipeline
   sheetRowNumber?: number; // Row index in synced Google Sheet
   sourceSheet?: string; // Google Sheet name or spreadsheet ID
+  companySize?: string; // Company headcount / employee size (from sheets)
   createdAt: string;
   updatedAt: string;
 }

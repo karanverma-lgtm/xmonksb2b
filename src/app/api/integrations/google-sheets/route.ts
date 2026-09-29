@@ -82,12 +82,14 @@ function normalizeStatus(val?: string): ColdClientStatus {
     return clean as ColdClientStatus;
   }
   // Common colloquial matches
-  if (clean.includes("sent") || clean.includes("mail")) return "email_sent";
-  if (clean.includes("call") || clean.includes("meeting")) return "call_scheduled";
+  if (clean.includes("sent") || clean.includes("mail") || clean.includes("contacted") || clean.includes("reached")) return "email_sent";
+  if (clean.includes("call") || clean.includes("meeting") || clean.includes("demo") || clean.includes("discussion")) return "call_scheduled";
   if (clean.includes("interested") && !clean.includes("not")) return "replied_interested";
-  if (clean.includes("not_interested")) return "not_interested";
+  if (clean.includes("not_interested") || clean.includes("drop") || clean.includes("reject") || clean.includes("lost")) return "not_interested";
   if (clean.includes("follow") || clean.includes("fup")) return "follow_up_1";
-  if (clean.includes("convert") || clean.includes("won") || clean.includes("deal")) return "converted";
+  if (clean.includes("convert") || clean.includes("won") || clean.includes("client")) return "converted";
+  if (clean.includes("unresponsive") || clean.includes("no_response") || clean.includes("ghost")) return "unresponsive";
+  if (clean.includes("cold") || clean.includes("new") || clean.includes("fresh") || clean.includes("open") || clean.includes("prospect")) return "uncontacted";
   return "uncontacted";
 }
 
@@ -100,7 +102,7 @@ function normalizeChannel(val?: string): OutreachChannel {
     return clean as OutreachChannel;
   }
   if (clean.includes("in") || clean.includes("link")) return "linkedin";
-  if (clean.includes("phone") || clean.includes("call")) return "call";
+  if (clean.includes("phone") || clean.includes("call") || clean.includes("contact")) return "call";
   if (clean.includes("event") || clean.includes("summit") || clean.includes("conf")) return "event";
   if (clean.includes("ref")) return "referral";
   return "email";
@@ -120,7 +122,6 @@ function mapRowToColdClient(
       });
     } else {
       // Default fallback column positions:
-      // [CRM ID, Company, Contact, Email, Designation, Phone, City, Industry, Program, Value, Status, Channel, Owner, Notes]
       const defaultHeaders = [
         "id",
         "companyName",
@@ -163,21 +164,96 @@ function mapRowToColdClient(
   };
 
   const id = findVal("crmid", "leadid", "id", "clientid", "documentid");
-  const companyName = findVal("companyname", "company", "organization", "account", "client") || "Unknown Organization";
-  const contactName = findVal("contactname", "contactperson", "contact", "name", "fullname", "leadname") || "Prospect Contact";
-  const email = (findVal("email", "contactemail", "emailaddress", "mail") || "").toLowerCase().trim();
-  const phone = findVal("phone", "contactphone", "mobile", "phonenumber", "telephone", "cell");
+  const companyName =
+    findVal("companyname", "company", "organization", "account", "client", "accountname") ||
+    "Unknown Organization";
+
+  // Contact Person: supports First Name + Last Name, or single Contact Person / Full Name
+  const firstName = findVal("firstname", "first", "fname");
+  const lastName = findVal("lastname", "last", "lname", "surname");
+  let contactName = [firstName, lastName].filter(Boolean).join(" ").trim();
+
+  if (!contactName) {
+    contactName =
+      findVal("contactperson", "contactname", "fullname", "name", "leadname", "decisionmaker") || "";
+  }
+
+  // Fallback check on 'contact' header only if it doesn't look like a phone number
+  if (!contactName) {
+    const rawContact = findVal("contact");
+    if (rawContact && !/[0-9]{4,}/.test(rawContact)) {
+      contactName = rawContact;
+    }
+  }
+  if (!contactName) contactName = "Prospect Contact";
+
+  // Email / Mail Id: supports 'Mail Id', 'Email', 'Email Id', 'Email Address', etc.
+  const email = (
+    findVal(
+      "mailid",
+      "emailid",
+      "email",
+      "contactemail",
+      "emailaddress",
+      "mail",
+      "workemail",
+      "primaryemail"
+    ) || ""
+  )
+    .toLowerCase()
+    .trim();
+
+  // Phone / Contact: supports 'Contact', 'Phone', 'Mobile', 'Contact No', 'Phone Number', etc.
+  const phone = findVal(
+    "contact",
+    "contactno",
+    "contactnumber",
+    "phone",
+    "phonenumber",
+    "mobile",
+    "mobileno",
+    "mobilenumber",
+    "contactphone",
+    "telephone",
+    "cell",
+    "tel"
+  );
+
   const designation = findVal("designation", "title", "jobtitle", "role", "position");
-  const city = findVal("city", "location", "headquarters", "hq");
+  
+  // Location / City: supports 'Location', 'City', 'Headquarters', 'HQ', 'Address', 'Region'
+  const city = findVal("location", "city", "headquarters", "hq", "address", "region", "state");
+  
   const industry = findVal("industry", "sector", "domain") || "Technology & SaaS";
   const targetProgram = findVal("targetprogram", "program", "offering", "service") || "Executive Coaching";
   const linkedinUrl = findVal("linkedinurl", "linkedin", "profile");
   const website = findVal("website", "domain", "companywebsite", "web");
   const owner = cleanOwner(findVal("owner", "assignedto", "salesrep", "rep", "executive"));
-  const status = normalizeStatus(findVal("status", "leadstatus", "stage"));
+  
+  // Status: supports 'Account Status', 'Status', 'Lead Status', 'Stage'
+  const status = normalizeStatus(
+    findVal("accountstatus", "status", "leadstatus", "stage", "accountstate")
+  );
+  
   const channel = normalizeChannel(findVal("channel", "source", "outreachchannel"));
-  const initialNote = findVal("initialnote", "notes", "note", "comment", "comments", "remarks");
-  const rawValue = normalizedKeys["estimatedvalue"] ?? normalizedKeys["dealvalue"] ?? normalizedKeys["value"] ?? normalizedKeys["potentialvalue"] ?? normalizedKeys["estimatedpotentialvalue"];
+
+  // Company Size: supports 'Company Size', 'Size', 'Employees', 'Headcount'
+  const companySize = findVal("companysize", "size", "employees", "headcount", "teamsize");
+
+  // Comments / Notes: supports 'Comments', 'Comment', 'Notes', 'Note', 'Initial Note', 'Remarks'
+  const comments = findVal("comments", "comment", "initialnote", "notes", "note", "remarks", "description");
+
+  let initialNote = comments || "";
+  if (companySize && !initialNote.includes(companySize)) {
+    initialNote = initialNote ? `${initialNote} (Company Size: ${companySize})` : `Company Size: ${companySize}`;
+  }
+
+  const rawValue =
+    normalizedKeys["estimatedvalue"] ??
+    normalizedKeys["dealvalue"] ??
+    normalizedKeys["value"] ??
+    normalizedKeys["potentialvalue"] ??
+    normalizedKeys["estimatedpotentialvalue"];
   const estimatedPotentialValue = parseEstimatedValue(rawValue);
 
   return {
@@ -195,6 +271,7 @@ function mapRowToColdClient(
     owner,
     status,
     channel,
+    companySize,
     estimatedPotentialValue,
     initialNote,
     notes: initialNote,
@@ -253,6 +330,7 @@ async function upsertColdClient(
       channel: clientData.channel || existingClient.channel,
       estimatedPotentialValue: clientData.estimatedPotentialValue ?? existingClient.estimatedPotentialValue,
       notes: clientData.initialNote || existingClient.notes,
+      companySize: clientData.companySize || existingClient.companySize,
       sheetRowNumber: sourceMeta?.sheetRowNumber ?? existingClient.sheetRowNumber,
       sourceSheet: sourceMeta?.sheetName ?? existingClient.sourceSheet,
       updatedAt: nowIso,
@@ -294,6 +372,7 @@ async function upsertColdClient(
       channel: clientData.channel || "email",
       estimatedPotentialValue: clientData.estimatedPotentialValue || 500000,
       notes: clientData.initialNote || "",
+      companySize: clientData.companySize || undefined,
       touchpoints,
       sheetRowNumber: sourceMeta?.sheetRowNumber,
       sourceSheet: sourceMeta?.sheetName,

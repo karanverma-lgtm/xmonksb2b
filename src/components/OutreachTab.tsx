@@ -716,10 +716,15 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
                           </div>
 
                           {/* Role & Target Program */}
-                          <div className="flex flex-wrap gap-1">
+                          <div className="flex flex-wrap items-center gap-1">
                             {client.designation && (
                               <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate block max-w-full">
                                 {client.designation}
+                              </span>
+                            )}
+                            {client.companySize && (
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium">
+                                {client.companySize}
                               </span>
                             )}
                           </div>

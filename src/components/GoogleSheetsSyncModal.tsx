@@ -550,54 +550,100 @@ function sendToCrm(payload) {
 
           {/* TAB 2: TEMPLATE & COLUMNS */}
           {activeTab === "template" && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                    Recommended Column Order
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    The webhook supports automatic column matching. For best results, use these header names in Row 1:
-                  </p>
+            <div className="space-y-5">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Supported Column Header Formats
+                </h3>
+                <p className="text-xs text-slate-500">
+                  The webhook automatically recognizes, maps, and normalizes both standard CRM headers and custom team headers without needing any renaming!
+                </p>
+              </div>
+
+              {/* Format A: Team / Custom Headers */}
+              <div className="p-4 rounded-xl border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/40 dark:bg-emerald-950/20 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                    Your Team Format (First Name + Last Name + Contact + Mail Id)
+                  </span>
+                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300">
+                    Fully Supported
+                  </span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => copyToClipboard(sampleCsvContent, "template")}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center gap-1.5"
-                  >
-                    {copiedCsvTemplate ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                    {copiedCsvTemplate ? "Copied CSV" : "Copy CSV Text"}
-                  </button>
-                  <button
-                    onClick={handleDownloadCsv}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 shadow-sm"
-                  >
-                    <FileSpreadsheet className="w-3.5 h-3.5" />
-                    Download CSV Template
-                  </button>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    "Company Name",
+                    "First Name",
+                    "Last Name",
+                    "Designation",
+                    "Contact (Phone)",
+                    "Mail Id (Email)",
+                    "Industry",
+                    "Location (City)",
+                    "Account Status",
+                    "Company Size",
+                    "Comments",
+                  ].map((col, idx) => (
+                    <div
+                      key={col}
+                      className="p-2 rounded-lg border border-emerald-200/80 dark:border-emerald-800/40 bg-white/80 dark:bg-slate-900/60 text-xs flex items-center gap-1.5"
+                    >
+                      <span className="w-4 h-4 rounded bg-emerald-100 dark:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300 flex items-center justify-center font-mono font-bold text-[9px]">
+                        {idx + 1}
+                      </span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200 truncate text-[11px]">
+                        {col}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {standardHeaders.map((col, idx) => (
-                  <div
-                    key={col}
-                    className="p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 text-xs flex items-center gap-2"
-                  >
-                    <span className="w-5 h-5 rounded bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center font-mono font-bold text-[10px]">
-                      {String.fromCharCode(65 + idx)}
-                    </span>
-                    <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
-                      {col}
-                    </span>
+              {/* Format B: Classic Standard CRM Headers */}
+              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Classic Standard Format
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => copyToClipboard(sampleCsvContent, "template")}
+                      className="px-2.5 py-1 rounded-lg text-xs font-semibold border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center gap-1"
+                    >
+                      {copiedCsvTemplate ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copiedCsvTemplate ? "Copied" : "Copy CSV"}
+                    </button>
+                    <button
+                      onClick={handleDownloadCsv}
+                      className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 shadow-sm"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5" />
+                      Download CSV
+                    </button>
                   </div>
-                ))}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {standardHeaders.map((col, idx) => (
+                    <div
+                      key={col}
+                      className="p-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs flex items-center gap-1.5"
+                    >
+                      <span className="w-4 h-4 rounded bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center font-mono font-bold text-[9px]">
+                        {String.fromCharCode(65 + idx)}
+                      </span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200 truncate text-[11px]">
+                        {col}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div className="p-3.5 rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/20 text-xs text-blue-800 dark:text-blue-300 flex items-start gap-2.5">
                 <Info className="w-4 h-4 shrink-0 mt-0.5 text-blue-500" />
                 <div>
-                  <strong>Two-way deduplication &amp; CRM ID backfilling:</strong> Column A is for <code>CRM ID</code>. When you add a new prospect row in Google Sheets, the CRM webhook will automatically generate a unique ID and write it back to Column A. Future edits to that row will reliably update that exact lead in the CRM rather than creating duplicates!
+                  <strong>Smart Column Auto-Detection:</strong> You do <em>not</em> need to change your existing sheet columns. The system automatically combines <code>First Name</code> + <code>Last Name</code>, extracts phone numbers from <code>Contact</code>, emails from <code>Mail Id</code>, city from <code>Location</code>, and notes from <code>Comments</code>!
                 </div>
               </div>
             </div>
