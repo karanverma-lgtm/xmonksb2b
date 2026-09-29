@@ -279,55 +279,69 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
     document.body.removeChild(link);
   };
 
-  // Grouped for Kanban Board
+  // Grouped for Kanban Board (8 Outreach Statuses matching user workflow)
   const boardColumns: {
-    id: string;
+    id: ColdClientStatus;
     title: string;
     statusList: ColdClientStatus[];
-    color: string;
-    badgeBg: string;
+    pillClass: string;
+    accentBorder: string;
   }[] = [
     {
-      id: "cold",
+      id: "cold_no_answer",
       title: "Cold / No Answer",
       statusList: ["cold_no_answer", "uncontacted"],
-      color: "border-amber-400 dark:border-amber-600",
-      badgeBg: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
+      pillClass: "bg-[#FBC02D] text-[#3E2723]",
+      accentBorder: "border-[#FBC02D]/40",
     },
     {
       id: "interest",
-      title: "Interest & Outreach",
-      statusList: ["interest", "email_sent", "follow_up_1", "follow_up_2"],
-      color: "border-amber-700 dark:border-amber-600",
-      badgeBg: "bg-amber-900/20 text-amber-900 dark:bg-amber-900/60 dark:text-amber-100",
+      title: "Interest",
+      statusList: ["interest", "email_sent", "follow_up_1", "follow_up_2", "replied_interested"],
+      pillClass: "bg-[#6E3805] text-[#FFE8D6]",
+      accentBorder: "border-[#8D4A09]/40",
     },
     {
-      id: "discussion",
+      id: "discussion_stakeholders",
       title: "Discussion with Stakeholders",
-      statusList: ["discussion_stakeholders", "call_scheduled", "replied_interested"],
-      color: "border-purple-400 dark:border-purple-600",
-      badgeBg: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300",
+      statusList: ["discussion_stakeholders", "call_scheduled"],
+      pillClass: "bg-[#542D7C] text-[#EADBFF]",
+      accentBorder: "border-[#6E3CA0]/40",
     },
     {
-      id: "commercials",
-      title: "Commercials & Pricing",
-      statusList: ["share_commercial", "pricing_negotiations"],
-      color: "border-blue-400 dark:border-blue-600",
-      badgeBg: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
+      id: "share_commercial",
+      title: "Share Commercial",
+      statusList: ["share_commercial"],
+      pillClass: "bg-[#005FB8] text-white",
+      accentBorder: "border-[#1976D2]/40",
+    },
+    {
+      id: "pricing_negotiations",
+      title: "Pricing / Negotiations",
+      statusList: ["pricing_negotiations"],
+      pillClass: "bg-[#64DD17] text-[#123800]",
+      accentBorder: "border-[#76FF03]/40",
     },
     {
       id: "closure_won",
       title: "Closure Won",
       statusList: ["closure_won", "converted"],
-      color: "border-emerald-500 dark:border-emerald-600",
-      badgeBg: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200",
+      pillClass: "bg-[#0F511F] text-[#D1F2D9]",
+      accentBorder: "border-[#1B5E20]/40",
     },
     {
-      id: "lost_future",
-      title: "Future / Lost",
-      statusList: ["future_prospect", "not_interested_lost", "not_interested", "unresponsive"],
-      color: "border-rose-300 dark:border-rose-800",
-      badgeBg: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
+      id: "future_prospect",
+      title: "Future Prospect",
+      statusList: ["future_prospect", "unresponsive"],
+      pillClass: "bg-[#4E342E] text-[#D7CCC8]",
+      accentBorder: "border-[#5D4037]/40",
+    },
+    {
+      id: "not_interested_lost",
+      title: "Not Interested / Lost",
+      statusList: ["not_interested_lost", "not_interested"],
+      pillClass: "bg-[#B71C1C] text-white",
+      accentBorder: "border-[#D32F2F]/40",
     },
   ];
 
@@ -649,11 +663,11 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
       {/* Main View: Board or Table */}
       {viewMode === "board" ? (
         /* Board View */
-        <div className="w-full overflow-x-auto pb-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-4 items-start min-w-[720px] 2xl:min-w-0">
+        <div className="w-full overflow-x-auto pb-6 pt-1">
+          <div className="flex gap-4 items-start min-w-[2280px]">
           {boardColumns.map((col) => {
             const colClients = filteredClients.filter((c) => {
-              if (col.id === "cold") {
+              if (col.id === "cold_no_answer") {
                 return (
                   col.statusList.includes(c.status) ||
                   !c.status ||
@@ -666,15 +680,26 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
             return (
               <div
                 key={col.id}
-                className="bg-slate-100/70 dark:bg-slate-900/40 rounded-2xl p-3 border border-slate-200/80 dark:border-slate-800 flex flex-col min-h-[500px]"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                }}
+                onDrop={async (e) => {
+                  e.preventDefault();
+                  const clientId = e.dataTransfer.getData("text/plain");
+                  if (clientId) {
+                    await onUpdateColdClient(clientId, { status: col.id });
+                  }
+                }}
+                className={`w-[270px] shrink-0 bg-slate-100/70 dark:bg-slate-900/40 rounded-2xl p-3 border ${col.accentBorder} flex flex-col min-h-[550px] transition-all`}
               >
-                {/* Column Header */}
+                {/* Column Header with status pill badge matching workflow */}
                 <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-200 dark:border-slate-800">
-                  <div className="flex items-center space-x-1.5">
-                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  <div className="flex items-center space-x-2 min-w-0">
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold truncate shadow-xs ${col.pillClass}`}>
                       {col.title}
                     </span>
-                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${col.badgeBg}`}>
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shadow-xs">
                       {colClients.length}
                     </span>
                   </div>
@@ -693,14 +718,20 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
                         client.nextFollowUpDate &&
                         client.nextFollowUpDate <= todayStr &&
                         client.status !== "converted" &&
-                        client.status !== "not_interested"
+                        client.status !== "closure_won" &&
+                        client.status !== "not_interested" &&
+                        client.status !== "not_interested_lost"
                       );
 
                       return (
                         <div
                           key={client.id}
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData("text/plain", client.id);
+                          }}
                           onClick={() => setSelectedClient(client)}
-                          className="p-3.5 bg-white dark:bg-slate-850 rounded-xl border border-slate-200/80 dark:border-slate-750 hover:border-blue-400 dark:hover:border-blue-500 shadow-xs hover:shadow-md transition-all cursor-pointer group space-y-2.5"
+                          className="p-3.5 bg-white dark:bg-slate-850 rounded-xl border border-slate-200/80 dark:border-slate-750 hover:border-blue-400 dark:hover:border-blue-500 shadow-xs hover:shadow-md transition-all cursor-pointer group space-y-2.5 active:cursor-grabbing"
                         >
                           {/* Card Top: Company & Channel */}
                           <div className="flex items-start justify-between gap-1.5">
