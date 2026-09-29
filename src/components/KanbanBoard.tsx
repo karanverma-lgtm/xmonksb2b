@@ -244,6 +244,16 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                               <span>Approach Note</span>
                             </span>
                           )}
+
+                          {lead.financialDocuments && lead.financialDocuments.length > 0 && (
+                            <span className="inline-flex items-center space-x-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-200/60 dark:border-emerald-800/60">
+                              <Receipt className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+                              <span>
+                                {lead.financialDocuments.length} Fin{" "}
+                                {lead.financialDocuments.length === 1 ? "Doc" : "Docs"}
+                              </span>
+                            </span>
+                          )}
                         </div>
 
                         {/* Deal Value & Weightage breakdown */}

@@ -34,15 +34,25 @@ import {
   Image as ImageIcon,
   Link2,
   Receipt,
+  FileSpreadsheet,
+  Plus,
+  Files,
+  Paperclip,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
 import { formatINR, formatClosureMonth } from "@/lib/formatters";
 import { PRESET_PROGRAMS, getProgramBadgeStyle } from "@/constants/programs";
 import { LEAD_SOURCES, getLeadSourceBadgeStyle } from "@/constants/leadSources";
-import { ApproachNote } from "@/types/lead";
+import { ApproachNote, FinancialDocument } from "@/types/lead";
 import { uploadApproachNoteToFirebase } from "@/lib/approachNoteService";
 import { uploadCompanyLogoToFirebase } from "@/lib/companyLogoService";
+import {
+  uploadMultipleFinancialDocumentsToR2,
+  deleteFinancialDocumentFromR2,
+  getFinancialDocumentContentUrl,
+} from "@/lib/financialDocumentService";
+import { getFileTypeBadgeInfo } from "@/lib/mimeUtils";
 import { GoogleCalendarDatePicker } from "./GoogleCalendarDatePicker";
 
 import { UserAccount, VALID_USERS } from "@/constants/users";
@@ -61,6 +71,8 @@ interface LeadDetailModalProps {
   onUpdateClosureMonth?: (leadId: string, closureMonth: string) => void;
   onAttachApproachNote?: (leadId: string, approachNote: ApproachNote) => void;
   onRemoveApproachNote?: (leadId: string) => void;
+  onAttachFinancialDocuments?: (leadId: string, documents: FinancialDocument[]) => void;
+  onRemoveFinancialDocument?: (leadId: string, documentId: string) => void;
   onUpdateCompanyLogo?: (leadId: string, logoUrl: string) => void;
   onRemoveCompanyLogo?: (leadId: string) => void;
   onMoveToBilling?: (lead: Lead) => void;
@@ -80,6 +92,8 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   onUpdateClosureMonth,
   onAttachApproachNote,
   onRemoveApproachNote,
+  onAttachFinancialDocuments,
+  onRemoveFinancialDocument,
   onUpdateCompanyLogo,
   onRemoveCompanyLogo,
   onMoveToBilling,
@@ -131,6 +145,27 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   const [isPreviewingPdf, setIsPreviewingPdf] = useState(false);
   const [showDeleteNoteConfirm, setShowDeleteNoteConfirm] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  // Financial Documents State (Multi-Upload & All Formats)
+  const [isUploadingFinancialDocs, setIsUploadingFinancialDocs] = useState(false);
+  const [financialUploadProgress, setFinancialUploadProgress] = useState<{
+    completed: number;
+    total: number;
+    currentFileName: string;
+  } | null>(null);
+  const [financialUploadError, setFinancialUploadError] = useState<string | null>(null);
+  const [financialUploadSuccess, setFinancialUploadSuccess] = useState<string | null>(null);
+  const [documentToDelete, setDocumentToDelete] = useState<FinancialDocument | null>(null);
+  const [isDraggingFinancial, setIsDraggingFinancial] = useState(false);
+  const financialFileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  // Unified Document Preview State for financial documents and approach note
+  const [previewDocModal, setPreviewDocModal] = useState<{
+    fileName: string;
+    fileSize: string;
+    downloadUrl: string;
+    fileType?: string;
+  } | null>(null);
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -293,6 +328,105 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
       onRemoveApproachNote(lead.id);
     }
     setShowDeleteNoteConfirm(false);
+  };
+
+  // Financial Documents Handlers (Multi-Upload of Any Format)
+  const handleFinancialFilesUpload = async (files: File[]) => {
+    if (!files || files.length === 0 || !lead) return;
+
+    setFinancialUploadError(null);
+    setFinancialUploadSuccess(null);
+    setIsUploadingFinancialDocs(true);
+    setFinancialUploadProgress({
+      completed: 0,
+      total: files.length,
+      currentFileName: files[0].name,
+    });
+
+    try {
+      const { successful, errors } = await uploadMultipleFinancialDocumentsToR2(
+        lead.id,
+        files,
+        currentUser?.name || "Client Partner",
+        (completed, total, currentFileName) => {
+          setFinancialUploadProgress({ completed, total, currentFileName });
+        }
+      );
+
+      if (successful.length > 0 && onAttachFinancialDocuments) {
+        onAttachFinancialDocuments(lead.id, successful);
+      }
+
+      if (errors.length > 0) {
+        const errorMsg = `Uploaded ${successful.length} file(s). Failed: ${errors.map((e) => e.fileName).join(", ")}`;
+        setFinancialUploadError(errorMsg);
+      } else {
+        const successMsg =
+          successful.length === 1
+            ? `"${successful[0].fileName}" uploaded successfully to Cloudflare R2!`
+            : `All ${successful.length} financial documents uploaded successfully to Cloudflare R2!`;
+        setFinancialUploadSuccess(successMsg);
+        setTimeout(() => setFinancialUploadSuccess(null), 4000);
+      }
+    } catch (err: any) {
+      setFinancialUploadError(err?.message || "Failed to upload financial documents.");
+    } finally {
+      setIsUploadingFinancialDocs(false);
+      setFinancialUploadProgress(null);
+      if (financialFileInputRef.current) financialFileInputRef.current.value = "";
+    }
+  };
+
+  const handleFinancialFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      handleFinancialFilesUpload(files);
+    }
+  };
+
+  const handleFinancialDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDraggingFinancial(false);
+    const files = Array.from(e.dataTransfer.files || []);
+    if (files.length > 0) {
+      handleFinancialFilesUpload(files);
+    }
+  };
+
+  const handleDownloadFinancialDoc = (doc: FinancialDocument) => {
+    const url = getFinancialDocumentContentUrl(doc, true);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = doc.fileName;
+    a.target = "_blank";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const handleConfirmDeleteFinancialDoc = () => {
+    if (!documentToDelete || !lead) return;
+    if (onRemoveFinancialDocument) {
+      onRemoveFinancialDocument(lead.id, documentToDelete.id);
+    }
+    setDocumentToDelete(null);
+  };
+
+  const handleViewFinancialDoc = (doc: FinancialDocument) => {
+    const badgeInfo = getFileTypeBadgeInfo(doc.fileName, doc.fileType);
+    const url = getFinancialDocumentContentUrl(doc, false);
+
+    if (badgeInfo.canPreview) {
+      setPreviewDocModal({
+        fileName: doc.fileName,
+        fileSize: doc.fileSize,
+        downloadUrl: url,
+        fileType: doc.fileType,
+      });
+    } else {
+      // Direct open / download in new window
+      window.open(url, "_blank");
+    }
   };
 
   const formatCurrency = (val: number) => formatINR(val);
@@ -1186,14 +1320,282 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowDeleteNoteConfirm(false)}
-                    className="px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg"
+                    className="px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
                     onClick={handleConfirmRemoveNote}
-                    className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg shadow"
+                    className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg shadow cursor-pointer"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Dedicated Financial Documents (Multi-Upload & All Formats) Section */}
+          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                  <Receipt className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center space-x-2">
+                    <span>Financial Documents</span>
+                    {lead.financialDocuments && lead.financialDocuments.length > 0 ? (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center space-x-1">
+                        <FileCheck className="w-3 h-3" />
+                        <span>
+                          {lead.financialDocuments.length}{" "}
+                          {lead.financialDocuments.length === 1 ? "Attached" : "Attached"}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                        Pending Upload
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Client commercial agreements, financial proposals, rate cards, invoices & spreadsheets stored in Cloudflare R2.
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Buttons for Multi-upload */}
+              <div className="flex items-center space-x-2">
+                <input
+                  ref={financialFileInputRef}
+                  type="file"
+                  multiple
+                  onChange={handleFinancialFilesChange}
+                  className="hidden"
+                />
+
+                <button
+                  type="button"
+                  disabled={isUploadingFinancialDocs}
+                  onClick={() => financialFileInputRef.current?.click()}
+                  className="flex items-center space-x-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-sm transition cursor-pointer"
+                >
+                  {isUploadingFinancialDocs ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>
+                        {financialUploadProgress
+                          ? `Uploading ${financialUploadProgress.completed}/${financialUploadProgress.total}...`
+                          : "Uploading to Cloudflare R2..."}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud className="w-3.5 h-3.5" />
+                      <span>
+                        {lead.financialDocuments && lead.financialDocuments.length > 0
+                          ? "+ Attach More Docs"
+                          : "Attach Financial Documents"}
+                      </span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Multi-upload Progress Bar */}
+            {isUploadingFinancialDocs && financialUploadProgress && (
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl border border-emerald-200/60 dark:border-emerald-800/60 space-y-1.5">
+                <div className="flex items-center justify-between text-xs text-emerald-800 dark:text-emerald-300 font-semibold">
+                  <span className="truncate max-w-xs">Uploading: {financialUploadProgress.currentFileName}</span>
+                  <span>
+                    {financialUploadProgress.completed} of {financialUploadProgress.total} files
+                  </span>
+                </div>
+                <div className="w-full bg-emerald-200/50 dark:bg-emerald-900/50 rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className="bg-emerald-600 h-1.5 rounded-full transition-all duration-300"
+                    style={{
+                      width: `${Math.round(
+                        (financialUploadProgress.completed / Math.max(1, financialUploadProgress.total)) * 100
+                      )}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Error / Success Notifications */}
+            {financialUploadError && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center space-x-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{financialUploadError}</span>
+              </div>
+            )}
+
+            {financialUploadSuccess && (
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-semibold flex items-center space-x-2">
+                <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                <span>{financialUploadSuccess}</span>
+              </div>
+            )}
+
+            {/* Attached Financial Documents List */}
+            {lead.financialDocuments && lead.financialDocuments.length > 0 ? (
+              <div className="space-y-2">
+                {lead.financialDocuments.map((docItem) => {
+                  const badgeInfo = getFileTypeBadgeInfo(docItem.fileName, docItem.fileType);
+                  return (
+                    <div
+                      key={docItem.id}
+                      className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between flex-wrap gap-3 hover:border-slate-300 dark:hover:border-slate-700 transition"
+                    >
+                      <div className="flex items-center space-x-3 min-w-[240px]">
+                        <div
+                          className={`w-10 h-10 rounded-xl border flex items-center justify-center flex-shrink-0 font-bold text-xs uppercase tracking-tight ${badgeInfo.bgColor} ${badgeInfo.borderColor} ${badgeInfo.color}`}
+                        >
+                          {badgeInfo.badgeText}
+                        </div>
+                        <div>
+                          <div
+                            className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-xs sm:max-w-md"
+                            title={docItem.fileName}
+                          >
+                            {docItem.fileName}
+                          </div>
+                          <div className="flex items-center space-x-2 text-[11px] text-slate-400 mt-0.5 flex-wrap">
+                            <span className="font-semibold text-slate-500 dark:text-slate-400">
+                              {badgeInfo.label}
+                            </span>
+                            <span>•</span>
+                            <span>{docItem.fileSize}</span>
+                            <span>•</span>
+                            <span>By: {docItem.uploadedBy || "Client Partner"}</span>
+                            <span>•</span>
+                            <span>
+                              {new Date(docItem.uploadedAt).toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              })}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => handleViewFinancialDoc(docItem)}
+                          className="flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition cursor-pointer"
+                          title="View Document"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-indigo-500" />
+                          <span>View</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadFinancialDoc(docItem)}
+                          className="flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition cursor-pointer"
+                          title="Download Document"
+                        >
+                          <Download className="w-3.5 h-3.5 text-emerald-500" />
+                          <span>Download</span>
+                        </button>
+
+                        {onRemoveFinancialDocument && (
+                          <button
+                            type="button"
+                            onClick={() => setDocumentToDelete(docItem)}
+                            className="p-1.5 rounded-lg text-xs font-semibold text-rose-500 hover:bg-rose-500/10 transition cursor-pointer"
+                            title="Remove Document"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Additional dropzone strip for adding more */}
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDraggingFinancial(true);
+                  }}
+                  onDragLeave={() => setIsDraggingFinancial(false)}
+                  onDrop={handleFinancialDrop}
+                  onClick={() => financialFileInputRef.current?.click()}
+                  className={`border border-dashed rounded-xl p-3 text-center cursor-pointer transition flex items-center justify-center space-x-2 ${
+                    isDraggingFinancial
+                      ? "border-emerald-500 bg-emerald-500/10 text-emerald-600"
+                      : "border-slate-200 dark:border-slate-800 hover:border-emerald-400 bg-slate-50/50 dark:bg-slate-950/30 text-slate-500 hover:text-emerald-600"
+                  }`}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span className="text-xs font-semibold">
+                    Click to add more financial documents or drag & drop files here (All formats allowed)
+                  </span>
+                </div>
+              </div>
+            ) : (
+              /* Dropzone Placeholder for Financial Documents */
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDraggingFinancial(true);
+                }}
+                onDragLeave={() => setIsDraggingFinancial(false)}
+                onDrop={handleFinancialDrop}
+                onClick={() => financialFileInputRef.current?.click()}
+                className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition group ${
+                  isDraggingFinancial
+                    ? "border-emerald-500 bg-emerald-500/10 text-emerald-600"
+                    : "border-slate-200 dark:border-slate-800 hover:border-emerald-400 dark:hover:border-emerald-600 bg-slate-50/50 dark:bg-slate-950/30"
+                }`}
+              >
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-600 mx-auto flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform">
+                  <UploadCloud className="w-5 h-5" />
+                </div>
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Click to select multiple financial documents or drag & drop here
+                </p>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Multi-upload enabled • All formats allowed: PDF, DOCX, XLSX, CSV, PPTX, Images, and more
+                </p>
+                <div className="flex items-center justify-center space-x-1.5 mt-3 text-[10px] text-slate-400">
+                  <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono font-bold text-rose-500">.pdf</span>
+                  <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono font-bold text-blue-500">.docx</span>
+                  <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono font-bold text-emerald-500">.xlsx</span>
+                  <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono font-bold text-teal-500">.csv</span>
+                  <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono font-bold text-amber-500">.pptx</span>
+                  <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono font-bold text-slate-500">+any format</span>
+                </div>
+              </div>
+            )}
+
+            {/* Document Delete Confirmation Dialog */}
+            {documentToDelete && (
+              <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-between flex-wrap gap-2">
+                <span className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+                  Remove attached &quot;{documentToDelete.fileName}&quot; from Cloudflare R2?
+                </span>
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setDocumentToDelete(null)}
+                    className="px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmDeleteFinancialDoc}
+                    className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg shadow cursor-pointer"
                   >
                     Remove
                   </button>
@@ -1216,6 +1618,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
               {lead.journeyLogs?.map((log) => {
                 const isApproachNoteLog = log.type === "approach_note";
                 const isClosureMonthLog = log.type === "closure_month_update";
+                const isFinancialDocLog = log.type === "financial_document";
 
                 return (
                   <div key={log.id} className="relative group">
@@ -1226,6 +1629,8 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                           ? "bg-rose-500"
                           : isClosureMonthLog
                           ? "bg-amber-500"
+                          : isFinancialDocLog
+                          ? "bg-emerald-500"
                           : "bg-indigo-600"
                       }`}
                     />
@@ -1236,6 +1641,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                         <div className="flex items-center space-x-2">
                           {isApproachNoteLog && <FileText className="w-3.5 h-3.5 text-rose-500" />}
                           {isClosureMonthLog && <Calendar className="w-3.5 h-3.5 text-amber-500" />}
+                          {isFinancialDocLog && <Receipt className="w-3.5 h-3.5 text-emerald-500" />}
                           <h4 className="font-bold text-xs text-slate-900 dark:text-white">
                             {log.title}
                           </h4>
@@ -1267,7 +1673,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
         </div>
       </div>
 
-      {/* PDF Document Preview Modal */}
+      {/* Approach Note PDF Document Preview Modal */}
       {isPreviewingPdf && lead.approachNote && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
           <div className="relative w-full max-w-5xl h-[88vh] bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col">
@@ -1284,7 +1690,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                 <button
                   type="button"
                   onClick={handleDownloadNote}
-                  className="flex items-center space-x-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow transition"
+                  className="flex items-center space-x-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow transition cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Download</span>
@@ -1301,7 +1707,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsPreviewingPdf(false)}
-                  className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition"
+                  className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1314,6 +1720,68 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                 title={lead.approachNote.fileName}
                 className="w-full h-full border-0"
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Financial Document Preview Modal */}
+      {previewDocModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+          <div className="relative w-full max-w-5xl h-[88vh] bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950">
+              <div className="flex items-center space-x-2 truncate">
+                <Receipt className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                <span className="font-bold text-sm text-slate-900 dark:text-white truncate">
+                  {previewDocModal.fileName}
+                </span>
+                <span className="text-xs text-slate-400">({previewDocModal.fileSize})</span>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <a
+                  href={previewDocModal.downloadUrl.includes("?") ? `${previewDocModal.downloadUrl}&download=1` : `${previewDocModal.downloadUrl}?download=1`}
+                  download={previewDocModal.fileName}
+                  className="flex items-center space-x-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow transition cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download</span>
+                </a>
+                <a
+                  href={previewDocModal.downloadUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="p-2 text-slate-500 hover:text-slate-800 dark:hover:text-white rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition"
+                  title="Open in new window"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewDocModal(null)}
+                  className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 bg-slate-100 dark:bg-slate-950 relative overflow-hidden flex items-center justify-center">
+              {previewDocModal.fileName.match(/\.(png|jpe?g|webp|svg|gif)$/i) || previewDocModal.fileType?.startsWith("image/") ? (
+                <div className="p-4 flex items-center justify-center max-w-full max-h-full overflow-auto">
+                  <img
+                    src={previewDocModal.downloadUrl}
+                    alt={previewDocModal.fileName}
+                    className="max-w-full max-h-[75vh] object-contain rounded-xl shadow-lg border border-slate-200 dark:border-slate-800"
+                  />
+                </div>
+              ) : (
+                <iframe
+                  src={previewDocModal.downloadUrl}
+                  title={previewDocModal.fileName}
+                  className="w-full h-full border-0"
+                />
+              )}
             </div>
           </div>
         </div>

@@ -41,6 +41,8 @@ export function exportLeadsToCSV(leads: Lead[], filenamePrefix: string = "xMonks
     "Assigned Account Owner",
     "Approach Note Name",
     "Approach Note URL",
+    "Financial Documents Count",
+    "Financial Document Names",
     "Created Date",
     "Last Updated Date",
     "Total Journey Logs Count",
@@ -50,6 +52,7 @@ export function exportLeadsToCSV(leads: Lead[], filenamePrefix: string = "xMonks
     const stageInfo = STAGES[lead.stage];
     const weightage = stageInfo?.weightage ?? lead.weightage ?? 0;
     const weightedVal = (lead.dealValue || 0) * (weightage / 100);
+    const finDocs = lead.financialDocuments || [];
 
     return [
       escapeCSVField(lead.id),
@@ -72,6 +75,8 @@ export function exportLeadsToCSV(leads: Lead[], filenamePrefix: string = "xMonks
       escapeCSVField(lead.owner || "Unassigned"),
       escapeCSVField(lead.approachNote?.fileName || ""),
       escapeCSVField(lead.approachNote?.downloadUrl || ""),
+      escapeCSVField(finDocs.length),
+      escapeCSVField(finDocs.map((d) => d.fileName).join("; ")),
       escapeCSVField(lead.createdAt ? new Date(lead.createdAt).toISOString().split("T")[0] : ""),
       escapeCSVField(lead.updatedAt ? new Date(lead.updatedAt).toISOString().split("T")[0] : ""),
       escapeCSVField(lead.journeyLogs?.length || 0),

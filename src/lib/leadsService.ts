@@ -10,10 +10,11 @@ import {
   orderBy,
   writeBatch,
 } from "firebase/firestore";
-import { Lead, LeadStage, JourneyLog, ApproachNote } from "@/types/lead";
+import { Lead, LeadStage, JourneyLog, ApproachNote, FinancialDocument } from "@/types/lead";
 import { STAGES } from "@/constants/stages";
 import { formatINR, formatClosureMonth } from "./formatters";
 import { deleteApproachNoteFromFirebase } from "./approachNoteService";
+import { deleteFinancialDocumentFromR2 } from "./financialDocumentService";
 
 const COLLECTION_NAME = "b2b_leads";
 const LOCAL_STORAGE_KEY = "xmonks_b2b_leads_clean_v1";
@@ -538,6 +539,17 @@ export async function deleteLead(leadId: string): Promise<boolean> {
     }
   }
 
+  // Clean up any uploaded financial documents from Cloudflare R2
+  if (target?.financialDocuments && target.financialDocuments.length > 0) {
+    for (const docItem of target.financialDocuments) {
+      if (docItem.storagePath) {
+        deleteFinancialDocumentFromR2(docItem.storagePath).catch((err) => {
+          console.warn("Could not delete financial document file during lead deletion:", err);
+        });
+      }
+    }
+  }
+
   try {
     const docRef = doc(db, COLLECTION_NAME, leadId);
     await deleteDoc(docRef);
@@ -878,3 +890,136 @@ export async function removeLeadCompanyLogo(
 
   return updatedLead;
 }
+
+// Attach Financial Documents (supports multi-upload of all formats) to lead in Firestore & state
+export async function attachLeadFinancialDocuments(
+  leadId: string,
+  newDocuments: FinancialDocument[],
+  author: string = "Client Partner"
+): Promise<Lead | null> {
+  if (!newDocuments || newDocuments.length === 0) return null;
+
+  const localLeads = getStoredLocalLeads();
+  const target = localLeads.find((l) => l.id === leadId);
+  if (!target) return null;
+
+  const now = new Date();
+  const timestampIso = now.toISOString();
+  const formattedDate = formatTimestamp(now);
+
+  const existingDocs = target.financialDocuments || [];
+  // Deduplicate by id if needed
+  const combinedDocs = [...newDocuments, ...existingDocs.filter(d => !newDocuments.some(nd => nd.id === d.id))];
+
+  const docCount = newDocuments.length;
+  const docNames = newDocuments.map((d) => d.fileName).join(", ");
+
+  const docLog: JourneyLog = {
+    id: "log-" + Date.now() + "-" + Math.floor(Math.random() * 1000),
+    timestamp: timestampIso,
+    formattedDate: formattedDate,
+    type: "financial_document",
+    title:
+      docCount === 1
+        ? `Financial Document Attached: ${newDocuments[0].fileName}`
+        : `${docCount} Financial Documents Attached`,
+    description:
+      docCount === 1
+        ? `Attached financial document (${newDocuments[0].fileSize}) to client record: ${newDocuments[0].fileName}`
+        : `Attached ${docCount} financial documents to client record: ${docNames}`,
+    author: author || newDocuments[0]?.uploadedBy || "Client Partner",
+  };
+
+  const updatedLead: Lead = {
+    ...target,
+    financialDocuments: combinedDocs,
+    updatedAt: timestampIso,
+    journeyLogs: [docLog, ...target.journeyLogs],
+  };
+
+  // Firestore Update
+  try {
+    const docRef = doc(db, COLLECTION_NAME, leadId);
+    await updateDoc(
+      docRef,
+      sanitizeForFirestore({
+        financialDocuments: combinedDocs,
+        updatedAt: timestampIso,
+        journeyLogs: updatedLead.journeyLogs,
+      })
+    );
+  } catch (err) {
+    console.warn("Firestore financial documents update skipped, updating local state", err);
+  }
+
+  const updatedLeads = localLeads.map((l) => (l.id === leadId ? updatedLead : l));
+  saveStoredLocalLeads(updatedLeads);
+
+  return updatedLead;
+}
+
+// Remove a specific Financial Document from lead in Firebase & state
+export async function removeLeadFinancialDocument(
+  leadId: string,
+  documentId: string,
+  author: string = "Client Partner"
+): Promise<Lead | null> {
+  const localLeads = getStoredLocalLeads();
+  const target = localLeads.find((l) => l.id === leadId);
+  if (!target) return null;
+
+  const existingDocs = target.financialDocuments || [];
+  const docToRemove = existingDocs.find((d) => d.id === documentId);
+  if (!docToRemove) return target;
+
+  const now = new Date();
+  const timestampIso = now.toISOString();
+  const formattedDate = formatTimestamp(now);
+
+  // Clean up underlying file from Cloudflare R2
+  if (docToRemove.storagePath) {
+    deleteFinancialDocumentFromR2(docToRemove.storagePath).catch((err) => {
+      console.warn("Could not delete financial document file from Cloudflare R2:", err);
+    });
+  }
+
+  const remainingDocs = existingDocs.filter((d) => d.id !== documentId);
+
+  const removeLog: JourneyLog = {
+    id: "log-" + Date.now() + "-" + Math.floor(Math.random() * 1000),
+    timestamp: timestampIso,
+    formattedDate: formattedDate,
+    type: "financial_document",
+    title: `Financial Document Removed: ${docToRemove.fileName}`,
+    description: `Removed attached financial document (${docToRemove.fileName}) from client record.`,
+    author: author,
+  };
+
+  const updatedLead: Lead = {
+    ...target,
+    financialDocuments: remainingDocs,
+    updatedAt: timestampIso,
+    journeyLogs: [removeLog, ...target.journeyLogs],
+  };
+
+  // Firestore Update
+  try {
+    const docRef = doc(db, COLLECTION_NAME, leadId);
+    await updateDoc(
+      docRef,
+      sanitizeForFirestore({
+        financialDocuments: remainingDocs,
+        updatedAt: timestampIso,
+        journeyLogs: updatedLead.journeyLogs,
+      })
+    );
+  } catch (err) {
+    console.warn("Firestore remove financial document skipped, updating local state", err);
+  }
+
+  const updatedLeads = localLeads.map((l) => (l.id === leadId ? updatedLead : l));
+  saveStoredLocalLeads(updatedLeads);
+
+  return updatedLead;
+}
+

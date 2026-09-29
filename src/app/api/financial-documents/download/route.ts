@@ -29,22 +29,22 @@ export async function GET(req: NextRequest) {
 
     if (!r2Response.Body) {
       return NextResponse.json(
-        { error: "File not found or empty." },
+        { error: "Document not found or empty." },
         { status: 404 }
       );
     }
 
     // Extract filename from key
-    const rawFileName = key.split("/").pop() || "approach_note.pdf";
-    // Strip leading timestamp e.g. 1789634212_myfile.pdf -> myfile.pdf
+    const rawFileName = key.split("/").pop() || "document";
+    // Strip leading timestamp e.g. 1789634212_myfile.docx -> myfile.docx
     const cleanFileName = rawFileName.replace(/^\d+_/, "");
-
-    const byteArray = await r2Response.Body.transformToByteArray();
 
     const mimeType =
       r2Response.ContentType && r2Response.ContentType !== "application/octet-stream"
         ? r2Response.ContentType
-        : getMimeType(cleanFileName, "application/pdf");
+        : getMimeType(cleanFileName);
+
+    const byteArray = await r2Response.Body.transformToByteArray();
 
     const dispositionType = isDownload ? "attachment" : "inline";
     const headers = new Headers();
@@ -61,12 +61,12 @@ export async function GET(req: NextRequest) {
       headers,
     });
   } catch (error: any) {
-    console.error("R2 PDF Download Error:", error);
+    console.error("R2 Document Download Error:", error);
     if (error?.name === "NoSuchKey" || error?.$metadata?.httpStatusCode === 404) {
-      return NextResponse.json({ error: "PDF file not found in storage." }, { status: 404 });
+      return NextResponse.json({ error: "Document not found in storage." }, { status: 404 });
     }
     return NextResponse.json(
-      { error: error?.message || "Failed to retrieve PDF file from storage." },
+      { error: error?.message || "Failed to retrieve document from storage." },
       { status: 500 }
     );
   }

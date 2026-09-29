@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { Lead, LeadStage, ApproachNote } from "@/types/lead";
+import { Lead, LeadStage, ApproachNote, FinancialDocument } from "@/types/lead";
 import {
   subscribeToLeads,
   createLead,
@@ -15,6 +15,8 @@ import {
   updateLeadClosureMonth,
   attachLeadApproachNote,
   removeLeadApproachNote,
+  attachLeadFinancialDocuments,
+  removeLeadFinancialDocument,
   updateLeadSource,
   updateLeadCompanyLogo,
   removeLeadCompanyLogo,
@@ -595,6 +597,36 @@ export default function Home() {
     }
   };
 
+  const handleAttachFinancialDocuments = async (
+    leadId: string,
+    documents: FinancialDocument[]
+  ) => {
+    const updated = await attachLeadFinancialDocuments(
+      leadId,
+      documents,
+      currentUser?.name || "Client Partner"
+    );
+    if (updated) {
+      setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
+      setSelectedLead((prev) => (prev && prev.id === leadId ? updated : prev));
+    }
+  };
+
+  const handleRemoveFinancialDocument = async (
+    leadId: string,
+    documentId: string
+  ) => {
+    const updated = await removeLeadFinancialDocument(
+      leadId,
+      documentId,
+      currentUser?.name || "Client Partner"
+    );
+    if (updated) {
+      setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
+      setSelectedLead((prev) => (prev && prev.id === leadId ? updated : prev));
+    }
+  };
+
   const handleUpdateLeadSource = async (leadId: string, newSource: string) => {
     const updated = await updateLeadSource(
       leadId,
@@ -903,6 +935,8 @@ export default function Home() {
           onUpdateClosureMonth={handleUpdateClosureMonth}
           onAttachApproachNote={handleAttachApproachNote}
           onRemoveApproachNote={handleRemoveApproachNote}
+          onAttachFinancialDocuments={handleAttachFinancialDocuments}
+          onRemoveFinancialDocument={handleRemoveFinancialDocument}
           onUpdateCompanyLogo={handleUpdateCompanyLogo}
           onRemoveCompanyLogo={handleRemoveCompanyLogo}
           onMoveToBilling={handleMoveLeadToBilling}

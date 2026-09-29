@@ -16,6 +16,18 @@ export interface ApproachNote {
   storagePath?: string;
 }
 
+export interface FinancialDocument {
+  id: string; // Unique document ID
+  fileName: string;
+  fileSize: string;
+  fileSizeBytes?: number;
+  fileType?: string; // MIME type or file extension
+  uploadedAt: string;
+  uploadedBy: string;
+  downloadUrl: string;
+  storagePath?: string;
+}
+
 export interface JourneyLog {
   id: string;
   timestamp: string; // ISO string format
@@ -29,6 +41,7 @@ export interface JourneyLog {
     | "program_update"
     | "lead_source_update"
     | "approach_note"
+    | "financial_document"
     | "closure_month_update"
     | "logo_update";
   title: string;
@@ -56,6 +69,7 @@ export interface Lead {
   expectedCloseDate: string;
   closureMonth?: string; // Target conversion deadline e.g. "2026-10"
   approachNote?: ApproachNote; // Uploaded approach note in PDF format
+  financialDocuments?: FinancialDocument[]; // Attached financial documents (multi-upload, all formats allowed)
   notes?: string;
   tags?: string[];
   owner: string;

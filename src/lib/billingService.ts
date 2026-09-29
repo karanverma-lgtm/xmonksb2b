@@ -1049,7 +1049,7 @@ export function migrateLeadToBilling(
     customizations?.contractNumber ||
     `XMB-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
-  // Automatically migrate approach note from pipeline into Billing Documents
+  // Automatically migrate approach note & financial documents from pipeline into Billing Documents
   const docs: BillingDocument[] = [];
   if (lead.approachNote) {
     docs.push({
@@ -1063,6 +1063,23 @@ export function migrateLeadToBilling(
       storagePath: lead.approachNote.storagePath,
       uploadedAt: lead.approachNote.uploadedAt || new Date().toISOString(),
       uploadedBy: lead.approachNote.uploadedBy || lead.owner || "Pipeline Deal Sync",
+    });
+  }
+
+  if (lead.financialDocuments && lead.financialDocuments.length > 0) {
+    lead.financialDocuments.forEach((fd, idx) => {
+      docs.push({
+        id: `doc-fin-${timestamp}-${idx}`,
+        name: fd.fileName,
+        category: "proposal",
+        fileSize: fd.fileSize || "1.0 MB",
+        fileSizeBytes: fd.fileSizeBytes,
+        fileType: fd.fileType || "application/octet-stream",
+        downloadUrl: fd.downloadUrl || "#",
+        storagePath: fd.storagePath,
+        uploadedAt: fd.uploadedAt || new Date().toISOString(),
+        uploadedBy: fd.uploadedBy || lead.owner || "Pipeline Deal Sync",
+      });
     });
   }
 

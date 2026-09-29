@@ -21,8 +21,9 @@ import {
   CheckCircle2,
   ArrowRight,
   Sparkles,
-  Layers,
   Filter,
+  Layers,
+  Receipt,
 } from "lucide-react";
 
 interface MigratePipelineLeadModalProps {
@@ -353,6 +354,13 @@ export const MigratePipelineLeadModal: React.FC<MigratePipelineLeadModalProps> =
                         <span className="inline-flex items-center space-x-1 text-[10px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded-md border border-rose-200">
                           <FileText className="w-3 h-3 text-rose-500" />
                           <span>Approach Note Included</span>
+                        </span>
+                      )}
+
+                      {lead.financialDocuments && lead.financialDocuments.length > 0 && (
+                        <span className="inline-flex items-center space-x-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-200">
+                          <Receipt className="w-3 h-3 text-emerald-500" />
+                          <span>{lead.financialDocuments.length} Fin Docs Included</span>
                         </span>
                       )}
 

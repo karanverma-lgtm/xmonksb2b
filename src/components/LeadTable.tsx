@@ -441,9 +441,22 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                           <FileText className="w-3 h-3 text-rose-500 flex-shrink-0" />
                           <span className="truncate max-w-[100px]">PDF Attached</span>
                         </div>
-                      ) : (
-                        <div className="text-[10px] text-slate-400 mt-0.5">No note</div>
-                      )}
+                      ) : null}
+                      {lead.financialDocuments && lead.financialDocuments.length > 0 ? (
+                        <div
+                          onClick={() => onSelectLead(lead)}
+                          className="inline-flex items-center space-x-1 mt-1 px-2 py-0.5 rounded text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-200/60 dark:border-emerald-800/60 cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition"
+                          title={`${lead.financialDocuments.length} Financial Document(s): ${lead.financialDocuments.map((d) => d.fileName).join(", ")}`}
+                        >
+                          <Receipt className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+                          <span className="truncate max-w-[110px]">
+                            {lead.financialDocuments.length} Fin {lead.financialDocuments.length === 1 ? "Doc" : "Docs"}
+                          </span>
+                        </div>
+                      ) : null}
+                      {!lead.approachNote && (!lead.financialDocuments || lead.financialDocuments.length === 0) ? (
+                        <div className="text-[10px] text-slate-400 mt-0.5">No docs</div>
+                      ) : null}
                     </td>
 
                     {/* Last Log */}
