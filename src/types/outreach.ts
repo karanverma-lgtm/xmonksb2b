@@ -1,3 +1,5 @@
+import { ContactPerson } from "./lead";
+
 export type ColdClientStatus =
   | "cold_no_answer"
   | "outreach_sent"
@@ -38,6 +40,7 @@ export interface ColdClient {
   designation?: string;
   email: string;
   phone?: string;
+  additionalContacts?: ContactPerson[]; // Additional people / stakeholders
   linkedinUrl?: string;
   website?: string;
   city?: string;

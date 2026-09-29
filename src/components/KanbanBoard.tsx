@@ -206,12 +206,23 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                               </span>
                             )}
                           </div>
-                          {lead.contactPhone && (
-                            <div className="flex items-center space-x-1 text-[11px] text-slate-400 flex-shrink-0">
-                              <Phone className="w-2.5 h-2.5" />
-                              <span>{lead.contactPhone}</span>
-                            </div>
-                          )}
+                          <div className="flex items-center space-x-1.5 flex-shrink-0">
+                            {lead.additionalContacts && lead.additionalContacts.length > 0 && (
+                              <span
+                                className="inline-flex items-center space-x-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-800/50"
+                                title={`${lead.additionalContacts.length} additional contact(s): ${lead.additionalContacts.map((c) => c.name).join(", ")}`}
+                              >
+                                <Users className="w-2.5 h-2.5" />
+                                <span>+{lead.additionalContacts.length}</span>
+                              </span>
+                            )}
+                            {lead.contactPhone && (
+                              <div className="flex items-center space-x-1 text-[11px] text-slate-400">
+                                <Phone className="w-2.5 h-2.5" />
+                                <span>{lead.contactPhone}</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
 
                         {/* Badges: Pitched Program, Target Closure Month, Approach Note */}

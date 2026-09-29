@@ -10,7 +10,7 @@ import {
   orderBy,
   writeBatch,
 } from "firebase/firestore";
-import { Lead, LeadStage, JourneyLog, ApproachNote, FinancialDocument } from "@/types/lead";
+import { Lead, LeadStage, JourneyLog, ApproachNote, FinancialDocument, ContactPerson } from "@/types/lead";
 import { STAGES } from "@/constants/stages";
 import { formatINR, formatClosureMonth } from "./formatters";
 import { deleteApproachNoteFromFirebase } from "./approachNoteService";
@@ -1085,6 +1085,168 @@ export async function removeLeadFinancialDocument(
     );
   } catch (err) {
     console.warn("Firestore remove financial document skipped, updating local state", err);
+  }
+
+  const updatedLeads = localLeads.map((l) => (l.id === leadId ? updatedLead : l));
+  saveStoredLocalLeads(updatedLeads);
+
+  return updatedLead;
+}
+
+// Add an additional person / contact stakeholder to a Lead
+export async function addLeadContact(
+  leadId: string,
+  contactData: Omit<ContactPerson, "id" | "addedAt">,
+  author: string = "Client Partner"
+): Promise<Lead | null> {
+  const localLeads = getStoredLocalLeads();
+  const target = localLeads.find((l) => l.id === leadId);
+  if (!target) return null;
+
+  const now = new Date();
+  const timestampIso = now.toISOString();
+  const formattedDate = formatTimestamp(now);
+
+  const newContact: ContactPerson = {
+    id: `contact-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    name: contactData.name.trim(),
+    contactNumber: contactData.contactNumber?.trim() || undefined,
+    email: contactData.email?.trim() || undefined,
+    designation: contactData.designation?.trim() || undefined,
+    addedAt: timestampIso,
+  };
+
+  const existingContacts = target.additionalContacts || [];
+  const updatedContacts = [...existingContacts, newContact];
+
+  const contactLog: JourneyLog = {
+    id: "log-" + Date.now() + "-" + Math.floor(Math.random() * 1000),
+    timestamp: timestampIso,
+    formattedDate: formattedDate,
+    type: "contact_update",
+    title: `Stakeholder Added: ${newContact.name}`,
+    description: `Added ${newContact.name}${newContact.designation ? ` (${newContact.designation})` : ""} to client contacts list. Email: ${newContact.email || "N/A"}, Phone: ${newContact.contactNumber || "N/A"}.`,
+    author: author,
+  };
+
+  const updatedLead: Lead = {
+    ...target,
+    additionalContacts: updatedContacts,
+    updatedAt: timestampIso,
+    journeyLogs: [contactLog, ...target.journeyLogs],
+  };
+
+  // Firestore Update
+  try {
+    const docRef = doc(db, COLLECTION_NAME, leadId);
+    await updateDoc(
+      docRef,
+      sanitizeForFirestore({
+        additionalContacts: updatedContacts,
+        updatedAt: timestampIso,
+        journeyLogs: updatedLead.journeyLogs,
+      })
+    );
+  } catch (err) {
+    console.warn("Firestore add contact skipped, updating local state", err);
+  }
+
+  const updatedLeads = localLeads.map((l) => (l.id === leadId ? updatedLead : l));
+  saveStoredLocalLeads(updatedLeads);
+
+  return updatedLead;
+}
+
+// Remove an additional person / contact stakeholder from a Lead
+export async function removeLeadContact(
+  leadId: string,
+  contactId: string,
+  author: string = "Client Partner"
+): Promise<Lead | null> {
+  const localLeads = getStoredLocalLeads();
+  const target = localLeads.find((l) => l.id === leadId);
+  if (!target) return null;
+
+  const existingContacts = target.additionalContacts || [];
+  const contactToRemove = existingContacts.find((c) => c.id === contactId);
+  if (!contactToRemove) return target;
+
+  const now = new Date();
+  const timestampIso = now.toISOString();
+  const formattedDate = formatTimestamp(now);
+
+  const remainingContacts = existingContacts.filter((c) => c.id !== contactId);
+
+  const removeLog: JourneyLog = {
+    id: "log-" + Date.now() + "-" + Math.floor(Math.random() * 1000),
+    timestamp: timestampIso,
+    formattedDate: formattedDate,
+    type: "contact_update",
+    title: `Stakeholder Removed: ${contactToRemove.name}`,
+    description: `Removed ${contactToRemove.name} from client contacts list.`,
+    author: author,
+  };
+
+  const updatedLead: Lead = {
+    ...target,
+    additionalContacts: remainingContacts,
+    updatedAt: timestampIso,
+    journeyLogs: [removeLog, ...target.journeyLogs],
+  };
+
+  // Firestore Update
+  try {
+    const docRef = doc(db, COLLECTION_NAME, leadId);
+    await updateDoc(
+      docRef,
+      sanitizeForFirestore({
+        additionalContacts: remainingContacts,
+        updatedAt: timestampIso,
+        journeyLogs: updatedLead.journeyLogs,
+      })
+    );
+  } catch (err) {
+    console.warn("Firestore remove contact skipped, updating local state", err);
+  }
+
+  const updatedLeads = localLeads.map((l) => (l.id === leadId ? updatedLead : l));
+  saveStoredLocalLeads(updatedLeads);
+
+  return updatedLead;
+}
+
+// Update multiple contacts on a Lead (e.g. edit contact details)
+export async function updateLeadContacts(
+  leadId: string,
+  contacts: ContactPerson[],
+  author: string = "Client Partner"
+): Promise<Lead | null> {
+  const localLeads = getStoredLocalLeads();
+  const target = localLeads.find((l) => l.id === leadId);
+  if (!target) return null;
+
+  const now = new Date();
+  const timestampIso = now.toISOString();
+  const formattedDate = formatTimestamp(now);
+
+  const updatedLead: Lead = {
+    ...target,
+    additionalContacts: contacts,
+    updatedAt: timestampIso,
+  };
+
+  // Firestore Update
+  try {
+    const docRef = doc(db, COLLECTION_NAME, leadId);
+    await updateDoc(
+      docRef,
+      sanitizeForFirestore({
+        additionalContacts: contacts,
+        updatedAt: timestampIso,
+      })
+    );
+  } catch (err) {
+    console.warn("Firestore update contacts skipped, updating local state", err);
   }
 
   const updatedLeads = localLeads.map((l) => (l.id === leadId ? updatedLead : l));

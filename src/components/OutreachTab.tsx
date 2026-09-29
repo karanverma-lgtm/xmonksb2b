@@ -742,9 +742,20 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
                               <h4 className="text-xs font-bold text-slate-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                                 {client.companyName}
                               </h4>
-                              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                                {client.contactName}
-                              </p>
+                              <div className="flex items-center space-x-1.5 flex-wrap">
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                                  {client.contactName}
+                                </p>
+                                {client.additionalContacts && client.additionalContacts.length > 0 && (
+                                  <span
+                                    className="inline-flex items-center space-x-0.5 px-1 py-0.2 rounded-full text-[9px] font-bold bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/60"
+                                    title={`${client.additionalContacts.length} additional contact(s): ${client.additionalContacts.map((c) => c.name).join(", ")}`}
+                                  >
+                                    <Users className="w-2.5 h-2.5" />
+                                    <span>+{client.additionalContacts.length}</span>
+                                  </span>
+                                )}
+                              </div>
                             </div>
                             <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 uppercase tracking-wider flex-shrink-0">
                               {client.channel}
@@ -852,8 +863,17 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
                           <div className="font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                             {client.companyName || "Unnamed Company"}
                           </div>
-                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                            {client.contactName || "No Contact"} {client.designation ? `• ${client.designation}` : ""}
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center space-x-1.5 flex-wrap">
+                            <span>{client.contactName || "No Contact"} {client.designation ? `• ${client.designation}` : ""}</span>
+                            {client.additionalContacts && client.additionalContacts.length > 0 && (
+                              <span
+                                className="inline-flex items-center space-x-0.5 px-1 py-0.2 rounded-full text-[9px] font-bold bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/60"
+                                title={`${client.additionalContacts.length} additional contact(s): ${client.additionalContacts.map((c) => c.name).join(", ")}`}
+                              >
+                                <Users className="w-2.5 h-2.5" />
+                                <span>+{client.additionalContacts.length}</span>
+                              </span>
+                            )}
                           </div>
                         </td>
 

@@ -20,6 +20,7 @@ import {
   Compass,
   Download,
   Receipt,
+  Users,
 } from "lucide-react";
 import { formatINR, formatClosureMonth } from "@/lib/formatters";
 import { PRESET_PROGRAMS, getProgramBadgeStyle } from "@/constants/programs";
@@ -371,6 +372,17 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                         <div className="flex items-center space-x-1 text-[11px] text-slate-400 mt-0.5">
                           <Phone className="w-3 h-3 text-slate-400" />
                           <span>{lead.contactPhone}</span>
+                        </div>
+                      )}
+                      {lead.additionalContacts && lead.additionalContacts.length > 0 && (
+                        <div className="mt-1">
+                          <span
+                            className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-800/50"
+                            title={`${lead.additionalContacts.length} additional contact(s): ${lead.additionalContacts.map((c) => `${c.name} (${c.designation || "Stakeholder"})`).join("; ")}`}
+                          >
+                            <Users className="w-2.5 h-2.5" />
+                            <span>+{lead.additionalContacts.length} people</span>
+                          </span>
                         </div>
                       )}
                     </td>

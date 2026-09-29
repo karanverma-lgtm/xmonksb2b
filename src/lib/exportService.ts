@@ -29,6 +29,8 @@ export function exportLeadsToCSV(leads: Lead[], filenamePrefix: string = "xMonks
     "Designation",
     "Contact Email",
     "Contact Phone",
+    "Additional Contacts Count",
+    "Additional Contacts Details",
     "City / Location",
     "Industry",
     "Deal Value (INR)",
@@ -60,6 +62,7 @@ export function exportLeadsToCSV(leads: Lead[], filenamePrefix: string = "xMonks
         ? [lead.approachNote]
         : [];
     const finDocs = lead.financialDocuments || [];
+    const addlContacts = lead.additionalContacts || [];
 
     return [
       escapeCSVField(lead.id),
@@ -70,6 +73,19 @@ export function exportLeadsToCSV(leads: Lead[], filenamePrefix: string = "xMonks
       escapeCSVField(lead.designation || ""),
       escapeCSVField(lead.contactEmail),
       escapeCSVField(lead.contactPhone || ""),
+      escapeCSVField(addlContacts.length),
+      escapeCSVField(
+        addlContacts
+          .map(
+            (p) =>
+              `${p.name}${p.designation ? ` (${p.designation})` : ""}${
+                p.contactNumber || p.email
+                  ? ` [${[p.contactNumber, p.email].filter(Boolean).join(" | ")}]`
+                  : ""
+              }`
+          )
+          .join("; ")
+      ),
       escapeCSVField(lead.city || ""),
       escapeCSVField(lead.industry || ""),
       escapeCSVField(lead.dealValue || 0),

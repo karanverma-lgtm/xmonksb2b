@@ -372,6 +372,7 @@ export async function convertColdClientToLead(
     expectedCloseDate: new Date(Date.now() + 60 * 86400000).toISOString().split("T")[0],
     closureMonth: targetClosureMonth || new Date().toISOString().slice(0, 7),
     owner: coldClient.owner || author,
+    additionalContacts: coldClient.additionalContacts,
     journeyNotes: `Converted from Cold Outreach prospect. Previous channel: ${coldClient.channel}. Notes: ${coldClient.notes || "None"}`,
   });
 

@@ -18,6 +18,15 @@ export interface ApproachNote {
   storagePath?: string;
 }
 
+export interface ContactPerson {
+  id: string; // Unique contact ID
+  name: string;
+  contactNumber?: string; // Phone / mobile number
+  email?: string;
+  designation?: string;
+  addedAt?: string;
+}
+
 export interface FinancialDocument {
   id: string; // Unique document ID
   fileName: string;
@@ -73,6 +82,7 @@ export interface Lead {
   approachNote?: ApproachNote; // Legacy single approach note
   approachNotes?: ApproachNote[]; // Uploaded approach notes (multi-upload, all formats allowed)
   financialDocuments?: FinancialDocument[]; // Attached financial documents (multi-upload, all formats allowed)
+  additionalContacts?: ContactPerson[]; // Additional stakeholders / people associated with this client
   notes?: string;
   tags?: string[];
   owner: string;
