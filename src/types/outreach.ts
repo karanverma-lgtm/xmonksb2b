@@ -42,6 +42,8 @@ export interface ColdClient {
   lastContactDate?: string; // ISO string or YYYY-MM-DD
   nextFollowUpDate?: string; // YYYY-MM-DD
   convertedLeadId?: string; // Lead ID if converted to pipeline
+  sheetRowNumber?: number; // Row index in synced Google Sheet
+  sourceSheet?: string; // Google Sheet name or spreadsheet ID
   createdAt: string;
   updatedAt: string;
 }

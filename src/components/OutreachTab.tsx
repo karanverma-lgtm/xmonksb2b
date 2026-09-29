@@ -27,6 +27,7 @@ import {
   CheckCheck,
   RotateCcw,
   Radio,
+  FileSpreadsheet,
 } from "lucide-react";
 import { ColdClient, ColdClientStatus, ColdStatusConfig, OutreachChannel } from "@/types/outreach";
 import { COLD_STATUS_CONFIG, OUTREACH_CHANNELS, OUTREACH_INDUSTRIES } from "@/constants/outreach";
@@ -34,6 +35,7 @@ import { UserAccount, VALID_USERS } from "@/constants/users";
 import { formatINR } from "@/lib/formatters";
 import { AddColdClientModal } from "./AddColdClientModal";
 import { ColdClientDetailModal } from "./ColdClientDetailModal";
+import { GoogleSheetsSyncModal } from "./GoogleSheetsSyncModal";
 
 interface OutreachTabProps {
   coldClients: ColdClient[];
@@ -107,6 +109,7 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
 
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isSheetsModalOpen, setIsSheetsModalOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<ColdClient | null>(null);
 
   const todayStr = new Date().toISOString().split("T")[0];
@@ -616,6 +619,20 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
             <span className="hidden sm:inline">Export</span>
           </button>
 
+          {/* Google Sheets Live Sync */}
+          <button
+            onClick={() => setIsSheetsModalOpen(true)}
+            className="p-2 sm:px-3 sm:py-1.5 rounded-xl border border-emerald-300 dark:border-emerald-700/80 bg-emerald-50 hover:bg-emerald-100/80 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 text-xs font-bold text-emerald-700 dark:text-emerald-300 transition-all flex items-center space-x-1.5 shadow-xs"
+            title="Google Sheets Live Sync & Apps Script"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span className="hidden sm:inline">Sheets Sync</span>
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+          </button>
+
           {/* + Add Cold Prospect Button */}
           <button
             onClick={() => setIsAddModalOpen(true)}
@@ -904,6 +921,13 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
         onDeleteClient={onDeleteColdClient}
         currentUser={currentUser}
         onNavigateToEmail={onNavigateToEmailTab}
+      />
+
+      {/* Google Sheets Real-Time Sync Modal */}
+      <GoogleSheetsSyncModal
+        isOpen={isSheetsModalOpen}
+        onClose={() => setIsSheetsModalOpen(false)}
+        currentUser={currentUser}
       />
     </div>
   );
