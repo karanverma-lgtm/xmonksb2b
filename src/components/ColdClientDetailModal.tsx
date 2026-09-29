@@ -32,6 +32,7 @@ import {
   Pencil,
   Star,
   Eye,
+  Paperclip,
 } from "lucide-react";
 import { ColdClient, ColdClientStatus, OutreachChannel, OutreachTouchpoint } from "@/types/outreach";
 import { ContactPerson } from "@/types/lead";
@@ -45,7 +46,8 @@ import {
   getAllSenderProfiles,
   getSenderProfileForUser,
 } from "@/lib/emailService";
-import { EmailTemplate } from "@/constants/emailTemplates";
+import { EmailTemplate, EmailAttachment } from "@/constants/emailTemplates";
+import { EmailAttachmentManager } from "./EmailAttachmentManager";
 
 interface ColdClientDetailModalProps {
   client: ColdClient | null;
@@ -144,6 +146,7 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
   const [isEmailPreviewModalOpen, setIsEmailPreviewModalOpen] = useState(false);
   const [customSubject, setCustomSubject] = useState("");
   const [customHtml, setCustomHtml] = useState("");
+  const [emailAttachments, setEmailAttachments] = useState<EmailAttachment[]>([]);
 
   // Load templates on modal open
   useEffect(() => {
@@ -187,10 +190,15 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
 
       setCustomSubject(subj);
       setCustomHtml(body);
+      setEmailAttachments(selectedTemplate.attachments || []);
     }
   }, [selectedTemplateId, client, selectedTemplate]);
 
-  const handleSendEmailTemplate = async (overrideSubject?: string, overrideHtml?: string) => {
+  const handleSendEmailTemplate = async (
+    overrideSubject?: string,
+    overrideHtml?: string,
+    overrideAttachments?: EmailAttachment[]
+  ) => {
     if (!client || !client.email) {
       setEmailSendStatus({ type: "error", message: "Client does not have a valid email address." });
       return;
@@ -209,6 +217,8 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
 
       const subjectToSend = overrideSubject || customSubject || selectedTemplate.subject;
       const htmlToSend = overrideHtml || customHtml || selectedTemplate.htmlContent;
+      const attachmentsToSend =
+        overrideAttachments !== undefined ? overrideAttachments : emailAttachments;
 
       const payload = {
         recipients: [
@@ -224,21 +234,22 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
         subject: subjectToSend,
         htmlContent: htmlToSend,
         smtpConfig: senderProfile,
-        attachments: selectedTemplate.attachments,
+        attachments: attachmentsToSend,
       };
 
       const res = await sendEmailCampaign(payload);
 
       if (res.success || (res.results && res.results[0]?.success)) {
+        const attMsg = attachmentsToSend.length > 0 ? ` with ${attachmentsToSend.length} attachment(s)` : "";
         setEmailSendStatus({
           type: "success",
-          message: `Email sent to ${client.email} using "${selectedTemplate.name}"!`,
+          message: `Email sent to ${client.email} using "${selectedTemplate.name}"${attMsg}!`,
         });
 
         // Automatically log touchpoint in timeline
         await onLogTouchpoint(client.id, {
           channel: "email",
-          summary: `Sent email template "${selectedTemplate.name}" with subject: "${subjectToSend}".`,
+          summary: `Sent email template "${selectedTemplate.name}" with subject: "${subjectToSend}"${attMsg}.`,
           author: currentUser?.name || senderProfile.senderName || "Sales Representative",
           nextStatus:
             client.status === "uncontacted" || client.status === "cold_no_answer"
@@ -910,6 +921,26 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                           <Send className="w-3 h-3" />
                           <span>Send</span>
                         </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsEmailPreviewModalOpen(true)}
+                      className={`p-1 rounded-md transition flex items-center space-x-1 ${
+                        emailAttachments.length > 0
+                          ? "text-purple-700 dark:text-purple-300 bg-purple-200/60 dark:bg-purple-900/60 font-bold px-1.5"
+                          : "text-purple-600 dark:text-purple-400 hover:bg-purple-200/50 dark:hover:bg-purple-900/60"
+                      }`}
+                      title={
+                        emailAttachments.length > 0
+                          ? `${emailAttachments.length} attachment(s) attached. Click to view/manage.`
+                          : "Attach files to email"
+                      }
+                    >
+                      <Paperclip className="w-3.5 h-3.5" />
+                      {emailAttachments.length > 0 && (
+                        <span className="text-[10px]">{emailAttachments.length}</span>
                       )}
                     </button>
 
@@ -1657,8 +1688,30 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                     <span className="text-[10px] text-slate-400 font-medium">Personalized for {client.contactName}</span>
                   </div>
                   <div
-                    className="p-4 rounded-xl border border-slate-200 dark:border-slate-750 bg-slate-50 dark:bg-slate-850/60 max-h-[300px] overflow-y-auto text-xs text-slate-800 dark:text-slate-200"
+                    className="p-4 rounded-xl border border-slate-200 dark:border-slate-750 bg-slate-50 dark:bg-slate-850/60 max-h-[220px] overflow-y-auto text-xs text-slate-800 dark:text-slate-200"
                     dangerouslySetInnerHTML={{ __html: customHtml }}
+                  />
+                </div>
+
+                {/* Email Attachments Upload & Manager */}
+                <div className="space-y-1.5 pt-2 border-t border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center space-x-1.5">
+                      <Paperclip className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                      <span>Email Attachments</span>
+                      {emailAttachments.length > 0 && (
+                        <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300">
+                          {emailAttachments.length}
+                        </span>
+                      )}
+                    </label>
+                  </div>
+                  <EmailAttachmentManager
+                    attachments={emailAttachments}
+                    onChange={setEmailAttachments}
+                    label="Attach Files (PDF, Deck, Document, Spreadsheet)"
+                    description="Upload approach notes, brochures, pitch decks, PDFs, or files (up to 25MB)."
+                    className="p-3 bg-slate-50 dark:bg-slate-850/60 rounded-xl border border-slate-200 dark:border-slate-750"
                   />
                 </div>
               </div>
@@ -1675,7 +1728,7 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                 <button
                   type="button"
                   disabled={isSendingEmail}
-                  onClick={() => handleSendEmailTemplate(customSubject, customHtml)}
+                  onClick={() => handleSendEmailTemplate(customSubject, customHtml, emailAttachments)}
                   className="px-5 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded-xl flex items-center space-x-1.5 shadow-md shadow-purple-600/30 transition-all hover:scale-102 active:scale-98"
                 >
                   {isSendingEmail ? (
@@ -1686,7 +1739,11 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                   ) : (
                     <>
                       <Send className="w-3.5 h-3.5" />
-                      <span>Send Email Now</span>
+                      <span>
+                        {emailAttachments.length > 0
+                          ? `Send Email (${emailAttachments.length} Attachment${emailAttachments.length > 1 ? "s" : ""})`
+                          : "Send Email Now"}
+                      </span>
                     </>
                   )}
                 </button>
