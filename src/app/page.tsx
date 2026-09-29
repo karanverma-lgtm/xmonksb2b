@@ -25,6 +25,7 @@ import {
   removeLeadContact,
   updateLeadPrimaryContact,
   editLeadContact,
+  setLeadPrimaryContact,
 } from "@/lib/leadsService";
 import { exportLeadsToCSV } from "@/lib/exportService";
 import { Sidebar, NavTab } from "@/components/Sidebar";
@@ -690,12 +691,14 @@ export default function Home() {
       contactNumber?: string;
       email?: string;
       designation?: string;
-    }
+    },
+    isPrimary?: boolean
   ) => {
     const updated = await addLeadContact(
       leadId,
       contact,
-      currentUser?.name || "Client Partner"
+      currentUser?.name || "Client Partner",
+      isPrimary
     );
     if (updated) {
       setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
@@ -743,12 +746,29 @@ export default function Home() {
       contactNumber?: string;
       email?: string;
       designation?: string;
-    }
+    },
+    isPrimary?: boolean
   ) => {
     const updated = await editLeadContact(
       leadId,
       contactId,
       contactData,
+      currentUser?.name || "Client Partner",
+      isPrimary
+    );
+    if (updated) {
+      setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
+      setSelectedLead((prev) => (prev && prev.id === leadId ? updated : prev));
+    }
+  };
+
+  const handleSetLeadPrimaryContact = async (
+    leadId: string,
+    contactId: string
+  ) => {
+    const updated = await setLeadPrimaryContact(
+      leadId,
+      contactId,
       currentUser?.name || "Client Partner"
     );
     if (updated) {
@@ -1039,6 +1059,7 @@ export default function Home() {
           onRemoveContact={handleRemoveLeadContact}
           onUpdatePrimaryContact={handleUpdatePrimaryContact}
           onEditContact={handleEditLeadContact}
+          onSetPrimaryContact={handleSetLeadPrimaryContact}
           onMoveToBilling={handleMoveLeadToBilling}
         />
       )}

@@ -30,6 +30,7 @@ import {
   Users,
   UserPlus,
   Pencil,
+  Star,
 } from "lucide-react";
 import { ColdClient, ColdClientStatus, OutreachChannel, OutreachTouchpoint } from "@/types/outreach";
 import { ContactPerson } from "@/types/lead";
@@ -114,6 +115,7 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
   const [showContactPersonModal, setShowContactPersonModal] = useState(false);
   const [contactModalMode, setContactModalMode] = useState<"new" | "primary" | "additional">("new");
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
+  const [isPrimaryContact, setIsPrimaryContact] = useState(false);
   const [personName, setPersonName] = useState("");
   const [personContactNumber, setPersonContactNumber] = useState("");
   const [personEmail, setPersonEmail] = useState("");
@@ -241,6 +243,7 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
   const handleOpenAddPerson = () => {
     setContactModalMode("new");
     setEditingContactId(null);
+    setIsPrimaryContact(false);
     setPersonName("");
     setPersonContactNumber("");
     setPersonEmail("");
@@ -253,6 +256,7 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
     if (!client) return;
     setContactModalMode("primary");
     setEditingContactId("primary");
+    setIsPrimaryContact(true);
     setPersonName(client.contactName || "");
     setPersonContactNumber(client.phone || "");
     setPersonEmail(client.email || "");
@@ -264,12 +268,38 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
   const handleOpenEditAdditionalContact = (contact: ContactPerson) => {
     setContactModalMode("additional");
     setEditingContactId(contact.id);
+    setIsPrimaryContact(false);
     setPersonName(contact.name || "");
     setPersonContactNumber(contact.contactNumber || "");
     setPersonEmail(contact.email || "");
     setPersonDesignation(contact.designation || "");
     setPersonFormError(null);
     setShowContactPersonModal(true);
+  };
+
+  const handleSetPrimaryContact = async (contact: ContactPerson) => {
+    if (!client) return;
+
+    const demotedPrimary: ContactPerson = {
+      id: `contact-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      name: client.contactName || "Previous Contact",
+      contactNumber: client.phone || undefined,
+      email: client.email || undefined,
+      designation: client.designation || undefined,
+      addedAt: new Date().toISOString(),
+    };
+
+    const existingContacts = client.additionalContacts || [];
+    const remaining = existingContacts.filter((c) => c.id !== contact.id);
+    const updatedContacts = client.contactName ? [demotedPrimary, ...remaining] : remaining;
+
+    await onUpdateClient(client.id, {
+      contactName: contact.name,
+      phone: contact.contactNumber || undefined,
+      email: (contact.email || client.email).toLowerCase(),
+      designation: contact.designation || undefined,
+      additionalContacts: updatedContacts,
+    });
   };
 
   const handleSavePerson = async (e: React.FormEvent) => {
@@ -286,6 +316,30 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
         phone: personContactNumber.trim() || undefined,
         email: personEmail.trim().toLowerCase(),
         designation: personDesignation.trim() || undefined,
+      });
+    } else if (isPrimaryContact) {
+      // Promoting to primary contact
+      const demotedPrimary: ContactPerson = {
+        id: `contact-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        name: client.contactName || "Previous Contact",
+        contactNumber: client.phone || undefined,
+        email: client.email || undefined,
+        designation: client.designation || undefined,
+        addedAt: new Date().toISOString(),
+      };
+
+      const existingContacts = client.additionalContacts || [];
+      const remaining = contactModalMode === "additional" && editingContactId
+        ? existingContacts.filter((c) => c.id !== editingContactId)
+        : existingContacts;
+      const updatedContacts = client.contactName ? [demotedPrimary, ...remaining] : remaining;
+
+      await onUpdateClient(client.id, {
+        contactName: personName.trim(),
+        phone: personContactNumber.trim() || undefined,
+        email: (personEmail.trim() || client.email).toLowerCase(),
+        designation: personDesignation.trim() || undefined,
+        additionalContacts: updatedContacts,
       });
     } else if (contactModalMode === "additional" && editingContactId) {
       const existingContacts = client.additionalContacts || [];
@@ -739,8 +793,9 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                           <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
                             {client.contactName}
                           </span>
-                          <span className="px-1 py-0.2 rounded text-[9px] font-extrabold uppercase bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
-                            Primary
+                          <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 flex items-center space-x-1">
+                            <Star className="w-2.5 h-2.5 fill-current text-amber-500" />
+                            <span>Primary</span>
                           </span>
                         </div>
                         <p className="text-[10px] text-slate-500 truncate">
@@ -807,7 +862,16 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                         </div>
                       </div>
 
-                      <div className="flex items-center space-x-1">
+                      <div className="flex items-center space-x-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleSetPrimaryContact(person)}
+                          className="flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 bg-slate-100 hover:bg-blue-50 dark:bg-slate-800 dark:hover:bg-blue-950/60 border border-slate-200 dark:border-slate-700 hover:border-blue-300 transition cursor-pointer shadow-2xs"
+                          title="Set as Primary Contact"
+                        >
+                          <Star className="w-3 h-3 text-amber-500 fill-amber-500/20" />
+                          <span>Make Primary</span>
+                        </button>
                         <button
                           type="button"
                           onClick={() => handleOpenEditAdditionalContact(person)}
@@ -1188,6 +1252,56 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                       className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
                     />
                   </div>
+                </div>
+
+                {/* Toggle to make this contact Primary */}
+                <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700">
+                  <div className="flex items-center space-x-2.5">
+                    <div
+                      className={`p-2 rounded-lg transition-colors ${
+                        isPrimaryContact
+                          ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                          : "bg-slate-200 dark:bg-slate-700 text-slate-400"
+                      }`}
+                    >
+                      <Star
+                        className={`w-4 h-4 ${
+                          isPrimaryContact ? "fill-amber-500 text-amber-500" : ""
+                        }`}
+                      />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-900 dark:text-white flex items-center space-x-1.5">
+                        <span>Primary Contact</span>
+                        {isPrimaryContact && (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-800">
+                            Primary
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        {contactModalMode === "primary"
+                          ? "Currently the primary contact for this account"
+                          : "Toggle ON to make this person the primary stakeholder"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={contactModalMode === "primary"}
+                    onClick={() => setIsPrimaryContact(!isPrimaryContact)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      isPrimaryContact ? "bg-blue-600" : "bg-slate-300 dark:bg-slate-600"
+                    } ${contactModalMode === "primary" ? "opacity-75 cursor-not-allowed" : ""}`}
+                    title={contactModalMode === "primary" ? "Already the primary contact" : "Toggle primary contact"}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                        isPrimaryContact ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
                 </div>
 
                 <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100 dark:border-slate-800">

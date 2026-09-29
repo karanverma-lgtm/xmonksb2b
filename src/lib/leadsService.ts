@@ -1097,7 +1097,8 @@ export async function removeLeadFinancialDocument(
 export async function addLeadContact(
   leadId: string,
   contactData: Omit<ContactPerson, "id" | "addedAt">,
-  author: string = "Client Partner"
+  author: string = "Client Partner",
+  isPrimary: boolean = false
 ): Promise<Lead | null> {
   const localLeads = getStoredLocalLeads();
   const target = localLeads.find((l) => l.id === leadId);
@@ -1117,6 +1118,63 @@ export async function addLeadContact(
   };
 
   const existingContacts = target.additionalContacts || [];
+
+  if (isPrimary) {
+    const demotedPrimary: ContactPerson = {
+      id: `contact-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      name: target.contactName || "Previous Contact",
+      contactNumber: target.contactPhone || undefined,
+      email: target.contactEmail || undefined,
+      designation: target.designation || undefined,
+      addedAt: timestampIso,
+    };
+
+    const updatedContacts = target.contactName ? [demotedPrimary, ...existingContacts] : existingContacts;
+
+    const contactLog: JourneyLog = {
+      id: "log-" + Date.now() + "-" + Math.floor(Math.random() * 1000),
+      timestamp: timestampIso,
+      formattedDate: formattedDate,
+      type: "contact_update",
+      title: `Primary Contact Added: ${newContact.name}`,
+      description: `Added ${newContact.name}${newContact.designation ? ` (${newContact.designation})` : ""} as the primary contact. ${target.contactName ? `Previous primary contact ${target.contactName} moved to additional stakeholders.` : ""}`,
+      author: author,
+    };
+
+    const updatedLead: Lead = {
+      ...target,
+      contactName: newContact.name,
+      designation: newContact.designation || undefined,
+      contactEmail: newContact.email || target.contactEmail,
+      contactPhone: newContact.contactNumber || undefined,
+      additionalContacts: updatedContacts,
+      updatedAt: timestampIso,
+      journeyLogs: [contactLog, ...target.journeyLogs],
+    };
+
+    try {
+      const docRef = doc(db, COLLECTION_NAME, leadId);
+      await updateDoc(
+        docRef,
+        sanitizeForFirestore({
+          contactName: updatedLead.contactName,
+          designation: updatedLead.designation || null,
+          contactEmail: updatedLead.contactEmail,
+          contactPhone: updatedLead.contactPhone || null,
+          additionalContacts: updatedContacts,
+          updatedAt: timestampIso,
+          journeyLogs: updatedLead.journeyLogs,
+        })
+      );
+    } catch (err) {
+      console.warn("Firestore add primary contact skipped, updating local state", err);
+    }
+
+    const updatedLeads = localLeads.map((l) => (l.id === leadId ? updatedLead : l));
+    saveStoredLocalLeads(updatedLeads);
+    return updatedLead;
+  }
+
   const updatedContacts = [...existingContacts, newContact];
 
   const contactLog: JourneyLog = {
@@ -1323,7 +1381,8 @@ export async function editLeadContact(
   leadId: string,
   contactId: string,
   updatedData: Partial<ContactPerson>,
-  author: string = "Client Partner"
+  author: string = "Client Partner",
+  isPrimary: boolean = false
 ): Promise<Lead | null> {
   const localLeads = getStoredLocalLeads();
   const target = localLeads.find((l) => l.id === leadId);
@@ -1355,6 +1414,63 @@ export async function editLeadContact(
         ? updatedData.designation?.trim() || undefined
         : oldContact.designation,
   };
+
+  if (isPrimary) {
+    const demotedPrimary: ContactPerson = {
+      id: `contact-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      name: target.contactName || "Previous Contact",
+      contactNumber: target.contactPhone || undefined,
+      email: target.contactEmail || undefined,
+      designation: target.designation || undefined,
+      addedAt: timestampIso,
+    };
+
+    const remainingContacts = existingContacts.filter((c) => c.id !== contactId);
+    const updatedContacts = target.contactName ? [demotedPrimary, ...remainingContacts] : remainingContacts;
+
+    const promoLog: JourneyLog = {
+      id: "log-" + Date.now() + "-" + Math.floor(Math.random() * 1000),
+      timestamp: timestampIso,
+      formattedDate: formattedDate,
+      type: "contact_update",
+      title: `Primary Contact Changed to: ${updatedContact.name}`,
+      description: `${updatedContact.name}${updatedContact.designation ? ` (${updatedContact.designation})` : ""} is now the primary contact. ${target.contactName ? `Previous primary contact ${target.contactName} moved to additional stakeholders.` : ""}`,
+      author: author,
+    };
+
+    const updatedLead: Lead = {
+      ...target,
+      contactName: updatedContact.name,
+      designation: updatedContact.designation || undefined,
+      contactEmail: updatedContact.email || target.contactEmail,
+      contactPhone: updatedContact.contactNumber || undefined,
+      additionalContacts: updatedContacts,
+      updatedAt: timestampIso,
+      journeyLogs: [promoLog, ...target.journeyLogs],
+    };
+
+    try {
+      const docRef = doc(db, COLLECTION_NAME, leadId);
+      await updateDoc(
+        docRef,
+        sanitizeForFirestore({
+          contactName: updatedLead.contactName,
+          designation: updatedLead.designation || null,
+          contactEmail: updatedLead.contactEmail,
+          contactPhone: updatedLead.contactPhone || null,
+          additionalContacts: updatedContacts,
+          updatedAt: timestampIso,
+          journeyLogs: updatedLead.journeyLogs,
+        })
+      );
+    } catch (err) {
+      console.warn("Firestore edit and promote contact skipped, updating local state", err);
+    }
+
+    const updatedLeads = localLeads.map((l) => (l.id === leadId ? updatedLead : l));
+    saveStoredLocalLeads(updatedLeads);
+    return updatedLead;
+  }
 
   const updatedContacts = [...existingContacts];
   updatedContacts[contactIndex] = updatedContact;
@@ -1389,6 +1505,82 @@ export async function editLeadContact(
     );
   } catch (err) {
     console.warn("Firestore edit contact skipped, updating local state", err);
+  }
+
+  const updatedLeads = localLeads.map((l) => (l.id === leadId ? updatedLead : l));
+  saveStoredLocalLeads(updatedLeads);
+
+  return updatedLead;
+}
+
+// Make an existing contact the Primary Contact on a Lead
+export async function setLeadPrimaryContact(
+  leadId: string,
+  contactId: string,
+  author: string = "Client Partner"
+): Promise<Lead | null> {
+  const localLeads = getStoredLocalLeads();
+  const target = localLeads.find((l) => l.id === leadId);
+  if (!target) return null;
+
+  const existingContacts = target.additionalContacts || [];
+  const contactToPromote = existingContacts.find((c) => c.id === contactId);
+  if (!contactToPromote) return target;
+
+  const now = new Date();
+  const timestampIso = now.toISOString();
+  const formattedDate = formatTimestamp(now);
+
+  const demotedPrimary: ContactPerson = {
+    id: `contact-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    name: target.contactName || "Previous Contact",
+    contactNumber: target.contactPhone || undefined,
+    email: target.contactEmail || undefined,
+    designation: target.designation || undefined,
+    addedAt: timestampIso,
+  };
+
+  const remainingContacts = existingContacts.filter((c) => c.id !== contactId);
+  const updatedContacts = target.contactName ? [demotedPrimary, ...remainingContacts] : remainingContacts;
+
+  const promoLog: JourneyLog = {
+    id: "log-" + Date.now() + "-" + Math.floor(Math.random() * 1000),
+    timestamp: timestampIso,
+    formattedDate: formattedDate,
+    type: "contact_update",
+    title: `Primary Contact Changed to: ${contactToPromote.name}`,
+    description: `${contactToPromote.name}${contactToPromote.designation ? ` (${contactToPromote.designation})` : ""} is now the primary contact. ${target.contactName ? `Previous primary contact ${target.contactName} moved to additional stakeholders.` : ""}`,
+    author: author,
+  };
+
+  const updatedLead: Lead = {
+    ...target,
+    contactName: contactToPromote.name,
+    designation: contactToPromote.designation || undefined,
+    contactEmail: contactToPromote.email || target.contactEmail,
+    contactPhone: contactToPromote.contactNumber || undefined,
+    additionalContacts: updatedContacts,
+    updatedAt: timestampIso,
+    journeyLogs: [promoLog, ...target.journeyLogs],
+  };
+
+  // Firestore Update
+  try {
+    const docRef = doc(db, COLLECTION_NAME, leadId);
+    await updateDoc(
+      docRef,
+      sanitizeForFirestore({
+        contactName: updatedLead.contactName,
+        designation: updatedLead.designation || null,
+        contactEmail: updatedLead.contactEmail,
+        contactPhone: updatedLead.contactPhone || null,
+        additionalContacts: updatedContacts,
+        updatedAt: timestampIso,
+        journeyLogs: updatedLead.journeyLogs,
+      })
+    );
+  } catch (err) {
+    console.warn("Firestore set primary contact skipped, updating local state", err);
   }
 
   const updatedLeads = localLeads.map((l) => (l.id === leadId ? updatedLead : l));
