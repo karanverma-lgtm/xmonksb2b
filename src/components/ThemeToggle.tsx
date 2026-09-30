@@ -14,7 +14,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
   className = "",
   isCollapsed = false,
 }) => {
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [theme, setTheme] = useState<"dark" | "light">("light");
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -26,12 +26,12 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
 
     // Initialize from localStorage or current class
     const saved = localStorage.getItem("crm_theme");
-    if (saved === "light") {
-      document.documentElement.classList.remove("dark");
-      setTheme("light");
-    } else {
+    if (saved === "dark") {
       document.documentElement.classList.add("dark");
       setTheme("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      setTheme("light");
     }
 
     window.addEventListener("crm_theme_change", syncThemeFromDom);

@@ -26,7 +26,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full antialiased dark" suppressHydrationWarning>
+    <html lang="en" className="h-full antialiased" suppressHydrationWarning>
       <head>
         <link rel="icon" type="image/jpeg" href="/xmonksdotcom_logo.jpg" />
         <link rel="shortcut icon" href="/xmonksdotcom_logo.jpg" />
@@ -36,10 +36,10 @@ export default function RootLayout({
             __html: `
               try {
                 const savedTheme = localStorage.getItem('crm_theme');
-                if (savedTheme === 'light') {
-                  document.documentElement.classList.remove('dark');
-                } else {
+                if (savedTheme === 'dark') {
                   document.documentElement.classList.add('dark');
+                } else {
+                  document.documentElement.classList.remove('dark');
                 }
               } catch (e) {}
             `,
