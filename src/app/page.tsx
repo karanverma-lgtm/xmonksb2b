@@ -812,6 +812,10 @@ export default function Home() {
       author: string;
       nextStatus?: ColdClientStatus;
       nextFollowUpDate?: string;
+      activityDate?: string;
+      activityTime?: string;
+      time?: string;
+      timestamp?: string;
     }
   ) => {
     await logOutreachTouchpoint(clientId, touchpoint);

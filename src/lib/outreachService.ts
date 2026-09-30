@@ -205,6 +205,8 @@ export async function addColdClient(
       channel: clientData.channel || "note",
       summary: clientData.initialNote.trim(),
       author: clientData.owner || "Sales Representative",
+      time: now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }),
+      activityDate: timestampIso.split("T")[0],
     });
   }
 
@@ -280,15 +282,44 @@ export async function logOutreachTouchpoint(
     author: string;
     nextStatus?: ColdClientStatus;
     nextFollowUpDate?: string;
+    activityDate?: string;
+    activityTime?: string;
+    time?: string;
+    timestamp?: string;
   }
 ): Promise<void> {
   const current = getStoredLocalColdClients();
   const client = current.find((c) => c.id === clientId);
   if (!client) return;
 
-  const now = new Date();
-  const timestampIso = now.toISOString();
-  const formattedDate = formatTimestamp(now);
+  // Compute activity date & time
+  let activityDateTime = new Date();
+  if (touchpoint.timestamp) {
+    const parsed = new Date(touchpoint.timestamp);
+    if (!isNaN(parsed.getTime())) {
+      activityDateTime = parsed;
+    }
+  } else if (touchpoint.activityDate) {
+    const [y, m, d] = touchpoint.activityDate.split("-").map(Number);
+    let hours = activityDateTime.getHours();
+    let minutes = activityDateTime.getMinutes();
+    if (touchpoint.activityTime) {
+      const parts = touchpoint.activityTime.split(":").map(Number);
+      if (!isNaN(parts[0])) hours = parts[0];
+      if (!isNaN(parts[1])) minutes = parts[1];
+    }
+    activityDateTime = new Date(y, m - 1, d, hours, minutes);
+  }
+
+  const timestampIso = activityDateTime.toISOString();
+  const formattedDate = formatTimestamp(activityDateTime);
+  const formattedTime =
+    touchpoint.time ||
+    activityDateTime.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
 
   const newTp: OutreachTouchpoint = {
     id: "tp-" + Date.now(),
@@ -297,13 +328,21 @@ export async function logOutreachTouchpoint(
     channel: touchpoint.channel,
     summary: touchpoint.summary,
     author: touchpoint.author,
+    time: formattedTime,
+    activityDate: touchpoint.activityDate || timestampIso.split("T")[0],
   };
 
-  const updatedTouchpoints = [newTp, ...(client.touchpoints || [])];
+  // Sort descending by activity timestamp
+  const updatedTouchpoints = [newTp, ...(client.touchpoints || [])].sort((a, b) => {
+    const timeA = new Date(a.timestamp || 0).getTime();
+    const timeB = new Date(b.timestamp || 0).getTime();
+    return timeB - timeA;
+  });
+
   const updates: Partial<ColdClient> = {
     touchpoints: updatedTouchpoints,
-    lastContactDate: timestampIso.split("T")[0],
-    updatedAt: timestampIso,
+    lastContactDate: touchpoint.activityDate || timestampIso.split("T")[0],
+    updatedAt: new Date().toISOString(),
   };
 
   if (touchpoint.nextStatus) {
@@ -381,6 +420,8 @@ export async function bulkUpdateColdClients(
         channel: tpChannel,
         summary: touchpointNote.trim(),
         author: author || updates.owner || client.owner || "Sales Representative",
+        time: now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }),
+        activityDate: timestampIso.split("T")[0],
       };
       clientUpdates.touchpoints = [newTp, ...(client.touchpoints || [])];
       clientUpdates.lastContactDate = timestampIso.split("T")[0];
@@ -480,6 +521,8 @@ export async function convertColdClientToLead(
     channel: "note",
     summary: `Converted to Active CRM Pipeline Deal (${createdLead.id}) with initial deal value ₹${(dealValue || 0).toLocaleString("en-IN")}.`,
     author: author,
+    time: now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }),
+    activityDate: timestampIso.split("T")[0],
   };
 
   await updateColdClient(coldClient.id, {

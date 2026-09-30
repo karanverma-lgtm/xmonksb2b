@@ -30,6 +30,8 @@ export interface OutreachTouchpoint {
   channel: OutreachChannel | "note";
   summary: string;
   author: string;
+  time?: string; // Formatted time e.g. "03:30 PM" or "15:30"
+  activityDate?: string; // Date string e.g. "2026-09-30"
 }
 
 export interface ColdClient {

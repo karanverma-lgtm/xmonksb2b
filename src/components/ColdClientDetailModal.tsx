@@ -52,6 +52,93 @@ import { EmailAttachmentManager } from "./EmailAttachmentManager";
 import { EmailAutocompleteInput } from "./EmailAutocompleteInput";
 import { recordUsedEmails } from "@/lib/contactSuggestionService";
 
+function getTodayDateString(): string {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getCurrentTimeString(): string {
+  const d = new Date();
+  const hours = String(d.getHours()).padStart(2, "0");
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
+function getTouchpointDisplay(tp: OutreachTouchpoint): { date: string; time: string } {
+  let timeStr = tp.time || "";
+  let dateStr = "";
+
+  if (tp.activityDate) {
+    try {
+      const [y, m, d] = tp.activityDate.split("-").map(Number);
+      const dateObj = new Date(y, m - 1, d);
+      if (!isNaN(dateObj.getTime())) {
+        dateStr = dateObj.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
+      }
+    } catch {
+      dateStr = tp.activityDate;
+    }
+  }
+
+  // Compatibility fallback from timestamp if time is missing
+  if (!timeStr && tp.timestamp) {
+    try {
+      const parsed = new Date(tp.timestamp);
+      if (!isNaN(parsed.getTime())) {
+        timeStr = parsed.toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        });
+      }
+    } catch {
+      // fallback
+    }
+  }
+
+  if (!dateStr) {
+    if (tp.formattedDate) {
+      if (tp.formattedDate.includes(",")) {
+        const parts = tp.formattedDate.split(",");
+        if (parts.length >= 3) {
+          dateStr = `${parts[0].trim()}, ${parts[1].trim()}`;
+          if (!timeStr) {
+            timeStr = parts.slice(2).join(",").trim();
+          }
+        } else {
+          dateStr = tp.formattedDate;
+        }
+      } else {
+        dateStr = tp.formattedDate;
+      }
+    } else if (tp.timestamp) {
+      try {
+        const parsed = new Date(tp.timestamp);
+        if (!isNaN(parsed.getTime())) {
+          dateStr = parsed.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          });
+        } else {
+          dateStr = tp.timestamp;
+        }
+      } catch {
+        dateStr = tp.timestamp;
+      }
+    }
+  }
+
+  return { date: dateStr || "Recent", time: timeStr };
+}
+
 interface ColdClientDetailModalProps {
   client: ColdClient | null;
   isOpen: boolean;
@@ -65,6 +152,10 @@ interface ColdClientDetailModalProps {
       author: string;
       nextStatus?: ColdClientStatus;
       nextFollowUpDate?: string;
+      activityDate?: string;
+      activityTime?: string;
+      time?: string;
+      timestamp?: string;
     }
   ) => Promise<void>;
   onConvertToLead: (
@@ -115,6 +206,8 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
 
   // Touchpoint logger state
   const [tpChannel, setTpChannel] = useState<OutreachChannel | "note">("email");
+  const [tpDate, setTpDate] = useState<string>(getTodayDateString());
+  const [tpTime, setTpTime] = useState<string>(getCurrentTimeString());
   const [tpSummary, setTpSummary] = useState("");
   const [tpNextStatus, setTpNextStatus] = useState<ColdClientStatus | "">("");
   const [tpFollowUpDate, setTpFollowUpDate] = useState("");
@@ -327,6 +420,9 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
       setConvertSuccess(false);
       setTpSummary("");
       setTpNextStatus("");
+      setTpFollowUpDate("");
+      setTpDate(getTodayDateString());
+      setTpTime(getCurrentTimeString());
       setEmailCc("");
       setEmailBcc("");
       setShowCc(false);
@@ -385,10 +481,14 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
         author: currentUser?.name || currentUser?.username || "Admin User",
         nextStatus: tpNextStatus ? (tpNextStatus as ColdClientStatus) : undefined,
         nextFollowUpDate: tpFollowUpDate || undefined,
+        activityDate: tpDate || getTodayDateString(),
+        activityTime: tpTime || getCurrentTimeString(),
       });
       setTpSummary("");
       setTpNextStatus("");
       setTpFollowUpDate("");
+      setTpDate(getTodayDateString());
+      setTpTime(getCurrentTimeString());
       if (tpNextStatus) {
         setStatus(tpNextStatus as ColdClientStatus);
       }
@@ -1224,30 +1324,76 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                   <Send className="w-3.5 h-3.5 text-blue-500" />
                   Log New Touchpoint / Activity
                 </span>
-                <span className="text-[10px] text-slate-500 font-medium">Auto-recorded with timestamp</span>
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1">
+                  <Clock className="w-3 h-3 text-slate-400" />
+                  Custom time &amp; date support
+                </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {/* Row 1: Channel, Activity Date, Activity Time */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500">Channel</label>
+                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Channel</label>
                   <select
                     value={tpChannel}
                     onChange={(e) => setTpChannel(e.target.value as OutreachChannel | "note")}
-                    className="w-full mt-0.5 px-2.5 py-1 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                    className="w-full mt-0.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                   >
                     <option value="email">✉️ Sent Cold Email</option>
                     <option value="linkedin">💼 LinkedIn InMail</option>
                     <option value="call">📞 Phone Discovery Call</option>
                     <option value="note">📝 Internal Note</option>
+                    <option value="event">🤝 Meeting / Event</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500">New Status (Optional)</label>
+                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                    Activity Date
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={tpDate}
+                    onChange={(e) => setTpDate(e.target.value)}
+                    className="w-full mt-0.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Activity Time</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTpDate(getTodayDateString());
+                        setTpTime(getCurrentTimeString());
+                      }}
+                      className="text-[9px] font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline flex items-center gap-0.5"
+                      title="Reset date & time to right now"
+                    >
+                      <Clock className="w-2.5 h-2.5" />
+                      <span>Now</span>
+                    </button>
+                  </div>
+                  <input
+                    type="time"
+                    required
+                    value={tpTime}
+                    onChange={(e) => setTpTime(e.target.value)}
+                    className="w-full mt-0.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              {/* Row 2: Status & Follow-up */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">New Status (Optional)</label>
                   <select
                     value={tpNextStatus}
                     onChange={(e) => setTpNextStatus(e.target.value as ColdClientStatus | "")}
-                    className="w-full mt-0.5 px-2.5 py-1 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                    className="w-full mt-0.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                   >
                     <option value="">Keep current status</option>
                     {Object.entries(COLD_STATUS_CONFIG).map(([k, cfg]) => (
@@ -1259,12 +1405,12 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500">Next Follow-up Date</label>
+                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Next Follow-up Date (Optional)</label>
                   <input
                     type="date"
                     value={tpFollowUpDate}
                     onChange={(e) => setTpFollowUpDate(e.target.value)}
-                    className="w-full mt-0.5 px-2.5 py-1 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                    className="w-full mt-0.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                   />
                 </div>
               </div>
@@ -1315,23 +1461,43 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                   </p>
                 </div>
               ) : (
-                client.touchpoints.map((tp, idx) => (
-                  <div
-                    key={tp.id || idx}
-                    className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xs relative overflow-hidden"
-                  >
-                    <div className="flex items-center justify-between gap-1 mb-1">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 uppercase tracking-wide">
-                        {tp.channel}
-                      </span>
-                      <span className="text-[10px] text-slate-400">{tp.formattedDate || tp.timestamp}</span>
-                    </div>
-                    <p className="text-xs text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
-                      {tp.summary}
-                    </p>
-                    <p className="text-[10px] text-slate-400 mt-1 font-medium">Logged by: {tp.author}</p>
-                  </div>
-                ))
+                [...(client.touchpoints || [])]
+                  .sort((a, b) => {
+                    const timeA = new Date(a.timestamp || 0).getTime();
+                    const timeB = new Date(b.timestamp || 0).getTime();
+                    return timeB - timeA;
+                  })
+                  .map((tp, idx) => {
+                    const { date: displayDate, time: displayTime } = getTouchpointDisplay(tp);
+                    return (
+                      <div
+                        key={tp.id || idx}
+                        className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xs relative overflow-hidden"
+                      >
+                        <div className="flex items-center justify-between gap-1.5 mb-1.5 flex-wrap">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 uppercase tracking-wide">
+                            {tp.channel}
+                          </span>
+                          <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                            <span className="font-medium text-slate-600 dark:text-slate-300">{displayDate}</span>
+                            {displayTime && (
+                              <>
+                                <span className="text-slate-300 dark:text-slate-600">•</span>
+                                <span className="inline-flex items-center gap-1 font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-1.5 py-0.5 rounded border border-blue-200/50 dark:border-blue-900/40">
+                                  <Clock className="w-2.5 h-2.5" />
+                                  {displayTime}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        <p className="text-xs text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
+                          {tp.summary}
+                        </p>
+                        <p className="text-[10px] text-slate-400 mt-1 font-medium">Logged by: {tp.author}</p>
+                      </div>
+                    );
+                  })
               )}
             </div>
           </div>

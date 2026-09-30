@@ -67,6 +67,10 @@ interface OutreachTabProps {
       author: string;
       nextStatus?: ColdClientStatus;
       nextFollowUpDate?: string;
+      activityDate?: string;
+      activityTime?: string;
+      time?: string;
+      timestamp?: string;
     }
   ) => Promise<void>;
   onConvertToLead: (
