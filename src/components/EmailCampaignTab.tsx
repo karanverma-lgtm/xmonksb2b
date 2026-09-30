@@ -35,6 +35,8 @@ import {
 import { EmailPreviewCard } from "@/components/EmailPreviewCard";
 import { AITemplateGeneratorModal } from "@/components/AITemplateGeneratorModal";
 import { EmailAttachmentManager } from "@/components/EmailAttachmentManager";
+import { EmailAutocompleteInput } from "@/components/EmailAutocompleteInput";
+import { recordUsedEmails } from "@/lib/contactSuggestionService";
 import { Lead } from "@/types/lead";
 import { EmailTemplate, EmailAttachment } from "@/constants/emailTemplates";
 import { formatBytes } from "@/lib/formatters";
@@ -543,6 +545,10 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
       });
 
       if (res.success && res.successCount > 0) {
+        if (singleCc || singleBcc) {
+          recordUsedEmails([singleCc, singleBcc]);
+        }
+
         setSingleStatusMsg({
           type: "success",
           text: `Email successfully delivered to ${singleRecipientEmail}! Saved to Firebase.`,
@@ -1488,11 +1494,10 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                       Remove
                     </button>
                   </div>
-                  <input
-                    type="text"
+                  <EmailAutocompleteInput
                     value={singleCc}
-                    onChange={(e) => setSingleCc(e.target.value)}
-                    placeholder="colleague@company.com, team@xmonks.com"
+                    onChange={setSingleCc}
+                    placeholder="Type name or email, e.g. Preeti, Karan, Gaurav..."
                     className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none font-medium"
                   />
                 </div>
@@ -1515,11 +1520,10 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                       Remove
                     </button>
                   </div>
-                  <input
-                    type="text"
+                  <EmailAutocompleteInput
                     value={singleBcc}
-                    onChange={(e) => setSingleBcc(e.target.value)}
-                    placeholder="blindcopy@xmonks.com"
+                    onChange={setSingleBcc}
+                    placeholder="Type name or email for blind copy..."
                     className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none font-medium"
                   />
                 </div>

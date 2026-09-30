@@ -49,6 +49,8 @@ import {
 } from "@/lib/emailService";
 import { EmailTemplate, EmailAttachment } from "@/constants/emailTemplates";
 import { EmailAttachmentManager } from "./EmailAttachmentManager";
+import { EmailAutocompleteInput } from "./EmailAutocompleteInput";
+import { recordUsedEmails } from "@/lib/contactSuggestionService";
 
 interface ColdClientDetailModalProps {
   client: ColdClient | null;
@@ -261,6 +263,11 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
         const attMsg = attachmentsToSend.length > 0 ? ` with ${attachmentsToSend.length} attachment(s)` : "";
         const ccMsg = ccToSend ? ` (CC: ${ccToSend})` : "";
         const bccMsg = bccToSend ? ` (BCC: ${bccToSend})` : "";
+        // Record used CC and BCC emails for smart autocomplete learning
+        if (ccToSend || bccToSend) {
+          recordUsedEmails([ccToSend, bccToSend]);
+        }
+
         setEmailSendStatus({
           type: "success",
           message: `Email sent to ${client.email}${ccMsg}${bccMsg} using "${selectedTemplate.name}"${attMsg}!`,
@@ -1727,12 +1734,11 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                   {showCc && (
                     <div className="flex items-center space-x-2 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
                       <span className="font-extrabold text-purple-600 dark:text-purple-400 uppercase text-[10px] w-9">Cc:</span>
-                      <input
-                        type="text"
+                      <EmailAutocompleteInput
                         value={emailCc}
-                        onChange={(e) => setEmailCc(e.target.value)}
-                        placeholder="Add CC email addresses (e.g. colleague@company.com, team@xmonks.com)..."
-                        className="flex-1 px-2.5 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
+                        onChange={setEmailCc}
+                        placeholder="Add CC email addresses (type name or email, e.g. Preeti, Karan, Gaurav)..."
+                        className="w-full px-2.5 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
                       />
                       <button
                         type="button"
@@ -1752,12 +1758,11 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                   {showBcc && (
                     <div className="flex items-center space-x-2 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
                       <span className="font-extrabold text-purple-600 dark:text-purple-400 uppercase text-[10px] w-9">Bcc:</span>
-                      <input
-                        type="text"
+                      <EmailAutocompleteInput
                         value={emailBcc}
-                        onChange={(e) => setEmailBcc(e.target.value)}
+                        onChange={setEmailBcc}
                         placeholder="Add BCC email addresses (blind copy, comma-separated)..."
-                        className="flex-1 px-2.5 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
+                        className="w-full px-2.5 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
                       />
                       <button
                         type="button"
