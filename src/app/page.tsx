@@ -187,6 +187,7 @@ export default function Home() {
   const [selectedPartner, setSelectedPartner] = useState("all");
   const [selectedLeadSource, setSelectedLeadSource] = useState("all");
   const [selectedProgram, setSelectedProgram] = useState("all");
+  const [emailTabPrefill, setEmailTabPrefill] = useState<{ email: string; name?: string; company?: string } | null>(null);
 
   // Load & subscribe to user UI view & filter preferences from Firestore
   useEffect(() => {
@@ -973,6 +974,7 @@ export default function Home() {
             onDeleteColdClient={handleDeleteColdClient}
             currentUser={currentUser}
             onNavigateToEmailTab={(email, name, company) => {
+              setEmailTabPrefill({ email, name, company });
               handleTabChange("email");
             }}
             onFilteredCountChange={setOutreachFilteredCount}
@@ -991,6 +993,7 @@ export default function Home() {
             leads={userScopedLeads}
             currentUser={currentUser}
             isAdmin={isAdmin}
+            initialRecipient={emailTabPrefill}
             onNavigateToDeveloper={isAdmin ? () => handleTabChange("developer") : undefined}
           />
         )}

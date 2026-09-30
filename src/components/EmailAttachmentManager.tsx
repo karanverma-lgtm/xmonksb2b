@@ -27,6 +27,7 @@ interface EmailAttachmentManagerProps {
   label?: string;
   description?: string;
   maxFileSizeMB?: number;
+  maxAttachments?: number;
   className?: string;
 }
 
@@ -35,8 +36,9 @@ export const EmailAttachmentManager: React.FC<EmailAttachmentManagerProps> = ({
   onChange,
   readOnly = false,
   label = "Email Attachments",
-  description = "Attach PDFs, pitch decks, enterprise brochures, spreadsheets, or images (up to 25MB).",
+  description = "Attach PDFs, pitch decks, enterprise brochures, spreadsheets, or images (up to 6 files, 25MB each).",
   maxFileSizeMB = 25,
+  maxAttachments = 6,
   className = "",
 }) => {
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -67,13 +69,27 @@ export const EmailAttachmentManager: React.FC<EmailAttachmentManagerProps> = ({
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0 || readOnly) return;
     setUploadError(null);
+
+    if (attachments.length >= maxAttachments) {
+      setUploadError(`Maximum limit of ${maxAttachments} attachments reached. Remove a file to attach a new one.`);
+      return;
+    }
+
     setIsUploading(true);
 
     const newAttachments: EmailAttachment[] = [...attachments];
     const errors: string[] = [];
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+    const availableSlots = maxAttachments - newAttachments.length;
+    const fileArray = Array.from(files);
+    const filesToUpload = fileArray.slice(0, availableSlots);
+
+    if (fileArray.length > availableSlots) {
+      errors.push(`You can only attach up to ${maxAttachments} files. Only ${availableSlots} more file(s) could be added.`);
+    }
+
+    for (let i = 0; i < filesToUpload.length; i++) {
+      const file = filesToUpload[i];
       if (file.size > maxFileSizeMB * 1024 * 1024) {
         errors.push(`"${file.name}" exceeds the ${maxFileSizeMB}MB limit.`);
         continue;
@@ -148,7 +164,7 @@ export const EmailAttachmentManager: React.FC<EmailAttachmentManagerProps> = ({
           </label>
           {attachments.length > 0 && (
             <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
-              {attachments.length} {attachments.length === 1 ? "file" : "files"}
+              {attachments.length} / {maxAttachments} {attachments.length === 1 ? "file" : "files"}
             </span>
           )}
         </div>
@@ -157,8 +173,13 @@ export const EmailAttachmentManager: React.FC<EmailAttachmentManagerProps> = ({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-            className="flex items-center space-x-1.5 px-3 py-1 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/80 rounded-xl text-[11px] font-bold transition disabled:opacity-50"
+            disabled={isUploading || attachments.length >= maxAttachments}
+            title={
+              attachments.length >= maxAttachments
+                ? `Maximum limit of ${maxAttachments} attachments reached`
+                : "Attach files"
+            }
+            className="flex items-center space-x-1.5 px-3 py-1 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/80 rounded-xl text-[11px] font-bold transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isUploading ? (
               <>
@@ -215,7 +236,7 @@ export const EmailAttachmentManager: React.FC<EmailAttachmentManagerProps> = ({
               <span className="text-xs text-slate-500">or drag and drop here</span>
             </div>
             <p className="text-[10px] text-slate-400">
-              PDF, Word, Excel, PowerPoint, Images, ZIP (up to {maxFileSizeMB}MB each)
+              PDF, Word, Excel, PowerPoint, Images, ZIP (up to {maxAttachments} files, {maxFileSizeMB}MB each)
             </p>
           </div>
         </div>
@@ -293,24 +314,31 @@ export const EmailAttachmentManager: React.FC<EmailAttachmentManagerProps> = ({
           ))}
 
           {!readOnly && attachments.length > 0 && (
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading}
-              className="flex items-center space-x-1 px-3 py-2 border border-dashed border-slate-300 dark:border-slate-700 hover:border-purple-400 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 transition"
-            >
-              {isUploading ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Uploading...</span>
-                </>
-              ) : (
-                <>
-                  <UploadCloud className="w-3.5 h-3.5" />
-                  <span>+ Add More</span>
-                </>
-              )}
-            </button>
+            attachments.length < maxAttachments ? (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="flex items-center space-x-1.5 px-3 py-2 border border-dashed border-purple-300 dark:border-purple-700/80 hover:border-purple-500 bg-purple-50/40 hover:bg-purple-100/60 dark:bg-purple-950/20 dark:hover:bg-purple-950/40 rounded-xl text-xs font-bold text-purple-700 dark:text-purple-300 transition"
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Uploading...</span>
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud className="w-3.5 h-3.5" />
+                    <span>+ Add More ({attachments.length}/{maxAttachments})</span>
+                  </>
+                )}
+              </button>
+            ) : (
+              <div className="flex items-center space-x-1.5 px-3 py-2 border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-850/60 rounded-xl text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                <FileCheck className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Max {maxAttachments} attachments added</span>
+              </div>
+            )
           )}
         </div>
       )}

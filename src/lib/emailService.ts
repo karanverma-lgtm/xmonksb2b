@@ -10,6 +10,7 @@ import {
   getDocs,
 } from "firebase/firestore";
 import { PREBUILT_TEMPLATES, EmailTemplate, EmailAttachment, AMIT_ENTERPRISE_EMAIL_BANK } from "@/constants/emailTemplates";
+import { UserAccount, getUserProfile } from "@/constants/users";
 
 export interface SMTPConfig {
   id?: string;
@@ -56,6 +57,9 @@ export interface EmailCampaignRecipient {
   status?: "success" | "failed";
   error?: string;
   messageId?: string;
+  cc?: string | string[];
+  bcc?: string | string[];
+  senderUser?: UserAccount | string | null;
 }
 
 export interface EmailCampaign {
@@ -232,7 +236,7 @@ export function getSenderProfileForUser(
     const amitProfile = pool.find(
       (s) =>
         s.userEmail.toLowerCase().includes("amit@") ||
-        s.senderName.toLowerCase() === "amit" ||
+        s.senderName.toLowerCase().includes("amit") ||
         s.id.toLowerCase().includes("amit")
     );
     return amitProfile || defaults[1];
@@ -257,7 +261,14 @@ export function getSenderProfileForUser(
   );
   if (matched) return matched;
 
-  return pool.find((s) => s.isDefault) || pool[0] || defaults[0];
+  // 4. Return profile dynamically customized with currentUser's name & email
+  const baseDefault = pool.find((s) => s.isDefault) || pool[0] || defaults[0];
+  const userProf = getUserProfile(currentUser);
+  return {
+    ...baseDefault,
+    senderName: userProf.name,
+    userEmail: userProf.email || baseDefault.userEmail,
+  };
 }
 
 export function getAllSenderProfiles(): SMTPSenderProfile[] {
@@ -1047,11 +1058,17 @@ export async function sendEmailCampaign(payload: {
     designation?: string;
     industry?: string;
     dealValue?: number | string;
+    cc?: string | string[];
+    bcc?: string | string[];
+    senderUser?: UserAccount | string | null;
   }>;
   subject: string;
   htmlContent: string;
   smtpConfig?: SMTPConfig;
   attachments?: EmailAttachment[];
+  cc?: string | string[];
+  bcc?: string | string[];
+  senderUser?: UserAccount | string | null;
 }) {
   const activeSmtp = payload.smtpConfig || getStoredSMTPConfig();
   const response = await fetch("/api/email/send", {
@@ -1063,6 +1080,9 @@ export async function sendEmailCampaign(payload: {
       htmlContent: payload.htmlContent,
       smtpConfig: activeSmtp,
       attachments: payload.attachments,
+      cc: payload.cc,
+      bcc: payload.bcc,
+      senderUser: payload.senderUser,
     }),
   });
 
@@ -1098,6 +1118,152 @@ export async function uploadEmailAttachment(file: File): Promise<EmailAttachment
   }
 
   return data.attachment as EmailAttachment;
+}
+
+export interface PersonalizeEmailOptions {
+  recipientName?: string;
+  companyName?: string;
+  designation?: string;
+  industry?: string;
+  dealValue?: string | number;
+  currentUser?: UserAccount | string | null;
+  senderProfile?: SMTPSenderProfile | null;
+}
+
+export function personalizeEmailTemplate(
+  content: string,
+  options: PersonalizeEmailOptions
+): string {
+  if (!content) return "";
+
+  const repName = options.recipientName || "Valued Executive";
+  const compName = options.companyName || "your organization";
+  const desig = options.designation || "Valued Executive";
+  const ind = options.industry || "B2B Industry";
+  const dealVal = options.dealValue ? String(options.dealValue) : "";
+
+  // Resolve sender details dynamically based on logged in user or sender profile
+  const userProfile = getUserProfile(
+    options.currentUser || options.senderProfile?.senderName || null
+  );
+  const senderName = options.senderProfile?.senderName || userProfile.name || "xMonks Team";
+  const senderEmail = options.senderProfile?.userEmail || userProfile.email || "sales@xmonks.com";
+  const senderDesignation = userProfile.designation || userProfile.role || "Enterprise Solutions";
+  const senderPhone = userProfile.phone || "";
+  const cleanPhone = senderPhone.replace(/[^0-9+]/g, "");
+
+  let result = content
+    // Recipient dynamic tags
+    .replace(/\{\{\s*contactName\s*\}\}|\[\s*First Name\s*\]/gi, repName)
+    .replace(/\{\{\s*name\s*\}\}/gi, repName)
+    .replace(/\{\{\s*companyName\s*\}\}|\[\s*Company Name\s*\]/gi, compName)
+    .replace(/\{\{\s*designation\s*\}\}/gi, desig)
+    .replace(/\{\{\s*industry\s*\}\}/gi, ind)
+    .replace(/\{\{\s*dealValue\s*\}\}/gi, dealVal)
+    // Sender dynamic tags
+    .replace(/\{\{\s*senderName\s*\}\}/gi, senderName)
+    .replace(/\{\{\s*senderEmail\s*\}\}/gi, senderEmail)
+    .replace(/\{\{\s*senderRole\s*\}\}/gi, senderDesignation)
+    .replace(/\{\{\s*senderDesignation\s*\}\}/gi, senderDesignation)
+    .replace(/\{\{\s*senderPhone\s*\}\}/gi, senderPhone);
+
+  const isAmit = senderName.toLowerCase().includes("amit");
+
+  if (!isAmit) {
+    // Dynamically replace Amit Shelly references with logged-in user
+    result = result
+      .replace(/Amit Shelly/g, senderName)
+      .replace(/amit@xmonks\.com/gi, senderEmail)
+      .replace(/Senior Business Lead – Enterprise/g, senderDesignation)
+      .replace(/Senior Business Lead Enterprise/g, senderDesignation);
+
+    // Handle phone number dynamically (show only if available)
+    if (senderPhone && cleanPhone) {
+      result = result
+        .replace(/tel:\+919711266420/g, `tel:${cleanPhone}`)
+        .replace(/\+91 9711266420/g, senderPhone)
+        .replace(/919711266420/g, cleanPhone.replace(/^\+/, ""));
+    } else {
+      // Cleanly remove phone link if phone is empty
+      result = result
+        .replace(/<a[^>]*href=["']tel:[^"']*["'][^>]*>[\s\S]*?<\/a>/gi, "")
+        .replace(/📞\s*\+91\s*9711266420/g, "");
+    }
+
+    // If no phone, smoothly adjust WhatsApp consultation block to direct email consultation
+    if (!senderPhone) {
+      result = result
+        .replace(
+          /https:\/\/wa\.me\/[^\s"']+/g,
+          `mailto:${senderEmail}?subject=${encodeURIComponent(`Strategic Discussion for ${compName}`)}`
+        )
+        .replace(
+          /Connects directly to [^•<]+ on WhatsApp • Quick 20-min slot/g,
+          `Connect directly with ${senderName} • Schedule 20-min slot`
+        )
+        .replace(/💬 Book 20-Min Consultation Call/g, `✉️ Schedule 20-Min Consultation`);
+    }
+
+    // Replace Amit's signature block and contact table with dynamic executive warm sign-off card
+    const dynamicSignOffHtml = `
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px 24px; margin-top: 16px;">
+        <p style="margin: 0 0 6px 0; font-size: 14px; color: #475569; font-weight: 500;">Warm regards,</p>
+        <p style="margin: 0; font-size: 17px; font-weight: 800; color: #233F4D;">${senderName}</p>
+        <p style="margin: 3px 0 12px 0; font-size: 13px; font-weight: 600; color: #F15A24;">${senderDesignation} • xMonks</p>
+        <table style="font-size: 12.5px; color: #475569; border-collapse: collapse;">
+          <tr>
+            <td style="vertical-align: middle;">
+              <a href="mailto:${senderEmail}" style="color: #233F4D; text-decoration: none; font-weight: 700;">✉️ ${senderEmail}</a>
+            </td>
+            ${
+              senderPhone
+                ? `<td style="vertical-align: middle; padding-left: 18px;"><a href="tel:${cleanPhone}" style="color: #F15A24; text-decoration: none; font-weight: 700;">📞 ${senderPhone}</a></td>`
+                : ""
+            }
+          </tr>
+        </table>
+      </div>`;
+
+    // 1. Try replacing full signature container (image + contact table)
+    result = result.replace(
+      /<div style="border-top:\s*1px solid #e2e8f0;\s*padding-top:\s*20px;">[\s\S]*?(?:amit-signature|\/signature-amit)[\s\S]*?<\/table>\s*<\/div>/gi,
+      `<div style="border-top: 1px solid #e2e8f0; padding-top: 20px;">${dynamicSignOffHtml}</div>`
+    );
+
+    // 2. Fallback image replacements if structure differs
+    result = result.replace(
+      /<a[^>]*href=["'][^"']*["'][^>]*>\s*<img[^>]*src=["'][^"']*(?:amit-signature|\/signature-amit)[^"']*["'][^>]*>\s*<\/a>/gi,
+      dynamicSignOffHtml
+    );
+    result = result.replace(
+      /<img[^>]*src=["'][^"']*(?:amit-signature|\/signature-amit)[^"']*["'][^>]*>/gi,
+      dynamicSignOffHtml
+    );
+
+    // 3. Replace generic system team signatures in prebuilt templates
+    result = result
+      .replace(
+        /<strong>Sales Director,\s*xMonks B2B Team<\/strong>/gi,
+        `<strong>${senderName}</strong><br/><span style="color: #64748b; font-size: 13px;">${senderDesignation} • xMonks</span>`
+      )
+      .replace(
+        /<p>Best regards,<br\/>\s*xMonks Sales Team<\/p>/gi,
+        `<p style="margin: 0 0 4px 0;">Warm regards,</p><p style="margin: 0; font-weight: 700; color: #233F4D;">${senderName}</p><p style="margin: 2px 0 0 0; font-size: 13px; color: #F15A24; font-weight: 600;">${senderDesignation} • xMonks</p>`
+      );
+  } else {
+    result = result
+      .replace(/\{\{\s*senderName\s*\}\}/gi, "Amit Shelly")
+      .replace(/\{\{\s*senderEmail\s*\}\}/gi, "amit@xmonks.com")
+      .replace(/\{\{\s*senderRole\s*\}\}/gi, "Senior Business Lead – Enterprise")
+      .replace(/\{\{\s*senderPhone\s*\}\}/gi, "+91 9711266420");
+  }
+
+  // Also replace any legacy "Ruby Dayal" sign-off if another user is sending
+  if (!senderName.toLowerCase().includes("ruby")) {
+    result = result.replace(/Ruby Dayal/g, senderName);
+  }
+
+  return result;
 }
 
 

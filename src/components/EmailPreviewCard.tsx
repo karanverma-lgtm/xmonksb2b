@@ -4,6 +4,8 @@ import React, { useState, useMemo } from "react";
 import { Monitor, Smartphone, Maximize2, X, Eye, Paperclip } from "lucide-react";
 import { EmailAttachment } from "@/constants/emailTemplates";
 import { formatBytes } from "@/lib/formatters";
+import { UserAccount, getUserProfile } from "@/constants/users";
+import { personalizeEmailTemplate, SMTPSenderProfile } from "@/lib/emailService";
 
 interface EmailPreviewCardProps {
   html: string;
@@ -11,8 +13,13 @@ interface EmailPreviewCardProps {
   recipientName?: string;
   recipientEmail?: string;
   senderEmail?: string;
+  senderName?: string;
+  currentUser?: UserAccount | string | null;
+  senderProfile?: SMTPSenderProfile | null;
   height?: string;
   attachments?: EmailAttachment[];
+  cc?: string | string[];
+  bcc?: string | string[];
 }
 
 export const EmailPreviewCard: React.FC<EmailPreviewCardProps> = ({
@@ -20,24 +27,43 @@ export const EmailPreviewCard: React.FC<EmailPreviewCardProps> = ({
   subject = "B2B Outreach Opportunity",
   recipientName = "Aarav Patel",
   recipientEmail = "aarav@zenithcloud.in",
-  senderEmail = "ruby.dayal@xmonks.com",
+  senderEmail,
+  senderName,
+  currentUser,
+  senderProfile,
   height = "h-[450px]",
   attachments = [],
+  cc,
+  bcc,
 }) => {
   const [deviceMode, setDeviceMode] = useState<"desktop" | "mobile">("desktop");
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
-  // Perform dynamic variable tag replacement
+  const userProfile = getUserProfile(currentUser || senderProfile?.senderName || null);
+  const resolvedSenderName = senderProfile?.senderName || userProfile.name || senderName || "xMonks Team";
+  const resolvedSenderEmail = senderProfile?.userEmail || userProfile.email || senderEmail || "sales@xmonks.com";
+
+  // Perform dynamic variable tag replacement and sender personalization
   const processedHtml = useMemo(() => {
-    return (html || "")
-      .replace(/\{\{\s*contactName\s*\}\}/gi, recipientName)
-      .replace(/\{\{\s*name\s*\}\}/gi, recipientName)
-      .replace(/\{\{\s*companyName\s*\}\}/gi, "Zenith Cloud Tech")
-      .replace(/\{\{\s*designation\s*\}\}/gi, "VP of Infrastructure")
-      .replace(/\{\{\s*industry\s*\}\}/gi, "SaaS & Software")
-      .replace(/\{\{\s*dealValue\s*\}\}/gi, "₹15,00,000")
-      .replace(/\{\{\s*email\s*\}\}/gi, recipientEmail);
-  }, [html, recipientName, recipientEmail]);
+    return personalizeEmailTemplate(html || "", {
+      recipientName,
+      companyName: "Zenith Cloud Tech",
+      designation: "VP of Infrastructure",
+      industry: "SaaS & Software",
+      dealValue: "₹15,00,000",
+      currentUser: currentUser || resolvedSenderName,
+      senderProfile: senderProfile || {
+        senderName: resolvedSenderName,
+        userEmail: resolvedSenderEmail,
+        appPassword: "",
+        host: "smtp.gmail.com",
+        port: 587,
+        secure: false,
+        isDefault: false,
+        id: "preview-sender",
+      },
+    });
+  }, [html, recipientName, currentUser, resolvedSenderName, resolvedSenderEmail, senderProfile]);
 
   // Create isolated responsive iframe HTML content
   const iframeSrcDoc = useMemo(() => {
@@ -129,12 +155,27 @@ export const EmailPreviewCard: React.FC<EmailPreviewCardProps> = ({
         </div>
 
         {/* Sender / Recipient Sub-Header */}
-        <div className="px-4 py-1.5 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200/60 dark:border-slate-800/60 flex items-center justify-between text-[11px] text-slate-500">
+        <div className="px-4 py-1.5 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200/60 dark:border-slate-800/60 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] text-slate-500">
           <div>
-            From: <span className="font-semibold text-slate-700 dark:text-slate-300">{senderEmail}</span>
+            From:{" "}
+            <span className="font-semibold text-slate-700 dark:text-slate-300">
+              {resolvedSenderName} &lt;{resolvedSenderEmail}&gt;
+            </span>
           </div>
-          <div>
-            To: <span className="font-semibold text-slate-700 dark:text-slate-300">{recipientName} &lt;{recipientEmail}&gt;</span>
+          <div className="flex items-center flex-wrap gap-2">
+            <span>
+              To: <span className="font-semibold text-slate-700 dark:text-slate-300">{recipientName} &lt;{recipientEmail}&gt;</span>
+            </span>
+            {cc && (
+              <span className="text-[10px] bg-slate-200/60 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300 font-mono">
+                CC: {Array.isArray(cc) ? cc.join(", ") : cc}
+              </span>
+            )}
+            {bcc && (
+              <span className="text-[10px] bg-slate-200/60 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300 font-mono">
+                BCC: {Array.isArray(bcc) ? bcc.join(", ") : bcc}
+              </span>
+            )}
           </div>
         </div>
 

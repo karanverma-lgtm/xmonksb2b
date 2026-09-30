@@ -3,6 +3,7 @@ import nodemailer from "nodemailer";
 import fs from "fs";
 import path from "path";
 import { getFileFromR2 } from "@/lib/r2";
+import { personalizeEmailTemplate } from "@/lib/emailService";
 
 interface EmailRecipient {
   email: string;
@@ -12,7 +13,18 @@ interface EmailRecipient {
   designation?: string;
   industry?: string;
   dealValue?: number | string;
+  cc?: string | string[];
+  bcc?: string | string[];
   [key: string]: unknown;
+}
+
+function parseEmailList(input?: string | string[]): string[] | undefined {
+  if (!input) return undefined;
+  const list = Array.isArray(input) ? input : input.split(/[,;\s]+/);
+  const cleaned = list
+    .map((e) => e.trim())
+    .filter((e) => e.length > 0 && e.includes("@"));
+  return cleaned.length > 0 ? cleaned : undefined;
 }
 
 function createTransporter(
@@ -64,7 +76,16 @@ function createTransporter(
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { recipients, subject, htmlContent, smtpConfig, attachments: inputAttachments } = body;
+    const {
+      recipients,
+      subject,
+      htmlContent,
+      smtpConfig,
+      attachments: inputAttachments,
+      cc,
+      bcc,
+      senderUser,
+    } = body;
 
     if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
       return NextResponse.json(
@@ -143,6 +164,20 @@ export async function POST(req: NextRequest) {
                 contentType: att.type || undefined,
               });
             }
+          } else if (att.downloadUrl && att.downloadUrl.includes("key=")) {
+            const keyMatch = att.downloadUrl.match(/key=([^&]+)/);
+            if (keyMatch && keyMatch[1]) {
+              const r2Key = decodeURIComponent(keyMatch[1]);
+              const r2Response = await getFileFromR2(r2Key);
+              if (r2Response.Body) {
+                const byteArray = await r2Response.Body.transformToByteArray();
+                resolvedUserAttachments.push({
+                  filename: att.name || "attachment",
+                  content: Buffer.from(byteArray),
+                  contentType: att.type || undefined,
+                });
+              }
+            }
           }
         } catch (attErr) {
           console.warn(`Failed to resolve email attachment ${att?.name}:`, attErr);
@@ -170,26 +205,32 @@ export async function POST(req: NextRequest) {
       const industry = item.industry || "B2B Industry";
       const dealValue = item.dealValue ? String(item.dealValue) : "";
 
-      // Perform dynamic placeholder replacement
-      let personalizedHtml = htmlContent
-        .replace(/\{\{\s*contactName\s*\}\}|\[\s*First Name\s*\]/gi, recipientName)
-        .replace(/\{\{\s*name\s*\}\}/gi, recipientName)
-        .replace(/\{\{\s*companyName\s*\}\}|\[\s*Company Name\s*\]/gi, companyName)
-        .replace(/\{\{\s*designation\s*\}\}/gi, designation)
-        .replace(/\{\{\s*industry\s*\}\}/gi, industry)
-        .replace(/\{\{\s*dealValue\s*\}\}/gi, dealValue)
+      // Perform dynamic placeholder replacement including sender personalization
+      let personalizedHtml = personalizeEmailTemplate(htmlContent, {
+        recipientName,
+        companyName,
+        designation,
+        industry,
+        dealValue,
+        currentUser: (item.senderUser || senderUser || senderName) as any,
+        senderProfile: { id: "sender-send-route", senderName, userEmail, host, port, secure, isDefault: false, appPassword: "" },
+      });
+
       // Strip any internal sequence / persona badge header text if present
       personalizedHtml = personalizedHtml
         .replace(/<td[^>]*text-align:\s*right[^>]*>[\s\S]*?<\/td>/gi, "")
         .replace(/<span[^>]*>[^<]*(?:CHRO|HR HEAD|L&D|TALENT|SUCCESSION|HRBP|DEI|WOMEN LEADERSHIP|BUSINESS HEAD|CEO|CLOSING)[^<]*<\/span>/gi, "")
         .replace(/<div[^>]*>Sequence Step:[^<]*<\/div>/gi, "");
 
-      const personalizedSubject = subject
-        .replace(/\{\{\s*contactName\s*\}\}|\[\s*First Name\s*\]/gi, recipientName)
-        .replace(/\{\{\s*name\s*\}\}/gi, recipientName)
-        .replace(/\{\{\s*companyName\s*\}\}|\[\s*Company Name\s*\]/gi, companyName)
-        .replace(/\{\{\s*designation\s*\}\}/gi, designation)
-        .replace(/\{\{\s*industry\s*\}\}/gi, industry);
+      const personalizedSubject = personalizeEmailTemplate(subject, {
+        recipientName,
+        companyName,
+        designation,
+        industry,
+        dealValue,
+        currentUser: (item.senderUser || senderUser || senderName) as any,
+        senderProfile: { id: "sender-send-route", senderName, userEmail, host, port, secure, isDefault: false, appPassword: "" },
+      });
 
       // Check if local public images are referenced and attach inline CID
       const attachments: Array<{ filename: string; path: string; cid: string }> = [];
@@ -228,9 +269,14 @@ export async function POST(req: NextRequest) {
         ...resolvedUserAttachments,
       ];
 
+      const parsedCc = parseEmailList(item.cc || cc);
+      const parsedBcc = parseEmailList(item.bcc || bcc);
+
       const mailOptions = {
         from: `"${senderName}" <${userEmail}>`,
         to: recipientEmail,
+        cc: parsedCc && parsedCc.length > 0 ? parsedCc : undefined,
+        bcc: parsedBcc && parsedBcc.length > 0 ? parsedBcc : undefined,
         subject: personalizedSubject,
         html: personalizedHtml,
         attachments: allMailAttachments.length > 0 ? allMailAttachments : undefined,

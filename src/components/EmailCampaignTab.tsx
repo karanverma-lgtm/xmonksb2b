@@ -56,6 +56,7 @@ import {
   setActiveSender,
   getSenderProfileForUser,
   stripBadgesFromEmailHtml,
+  personalizeEmailTemplate,
   SMTPSenderProfile,
   EmailLogEntry,
   EmailCampaign,
@@ -66,6 +67,7 @@ interface EmailCampaignTabProps {
   onNavigateToDeveloper?: () => void;
   currentUser?: UserAccount | null;
   isAdmin?: boolean;
+  initialRecipient?: { email: string; name?: string; company?: string } | null;
 }
 
 interface ParsedCSVEmailRecipient {
@@ -88,9 +90,20 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
   onNavigateToDeveloper,
   currentUser,
   isAdmin = false,
+  initialRecipient,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<"templates" | "single" | "bulk" | "campaigns" | "logs">("templates");
   const [isAIModalOpen, setIsAIModalOpen] = useState<boolean>(false);
+
+  // If navigated from Outreach with prefill recipient
+  useEffect(() => {
+    if (initialRecipient && initialRecipient.email) {
+      setSingleRecipientEmail(initialRecipient.email);
+      if (initialRecipient.name) setSingleContactName(initialRecipient.name);
+      if (initialRecipient.company) setSingleCompanyName(initialRecipient.company);
+      setActiveSubTab("single");
+    }
+  }, [initialRecipient]);
 
   // Sender Capsules State
   const [senderProfiles, setSenderProfiles] = useState<SMTPSenderProfile[]>([]);
@@ -184,6 +197,10 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
   const [singleSubject, setSingleSubject] = useState<string>("");
   const [singleHtmlContent, setSingleHtmlContent] = useState<string>("");
   const [singleAttachments, setSingleAttachments] = useState<EmailAttachment[]>([]);
+  const [singleCc, setSingleCc] = useState<string>("");
+  const [singleBcc, setSingleBcc] = useState<string>("");
+  const [showSingleCc, setShowSingleCc] = useState<boolean>(false);
+  const [showSingleBcc, setShowSingleBcc] = useState<boolean>(false);
   const [isSendingSingle, setIsSendingSingle] = useState<boolean>(false);
   const [singleStatusMsg, setSingleStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -405,16 +422,47 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
   // Apply template to Single Email sender
   const handleApplyTemplateToSingle = (tpl: EmailTemplate) => {
     setSelectedSingleTemplateId(tpl.id);
-    setSingleSubject(tpl.subject);
-    setSingleHtmlContent(stripBadgesFromEmailHtml(tpl.htmlContent));
+    const repName = singleContactName || "Valued Executive";
+    const compName = singleCompanyName || "your organization";
+    const desig = singleDesignation || "";
+    const ind = singleIndustry || "";
+
+    const subj = personalizeEmailTemplate(tpl.subject || "", {
+      recipientName: repName,
+      companyName: compName,
+      designation: desig,
+      industry: ind,
+      currentUser,
+      senderProfile: activeSender,
+    });
+
+    const body = personalizeEmailTemplate(stripBadgesFromEmailHtml(tpl.htmlContent || ""), {
+      recipientName: repName,
+      companyName: compName,
+      designation: desig,
+      industry: ind,
+      currentUser,
+      senderProfile: activeSender,
+    });
+
+    setSingleSubject(subj);
+    setSingleHtmlContent(body);
     setSingleAttachments(tpl.attachments ? [...tpl.attachments] : []);
   };
 
   // Apply template to Bulk Email sender
   const handleApplyTemplateToBulk = (tpl: EmailTemplate) => {
     setSelectedBulkTemplateId(tpl.id);
-    setBulkSubject(tpl.subject);
-    setBulkHtmlContent(stripBadgesFromEmailHtml(tpl.htmlContent));
+    const subj = personalizeEmailTemplate(tpl.subject || "", {
+      currentUser,
+      senderProfile: activeSender,
+    });
+    const body = personalizeEmailTemplate(stripBadgesFromEmailHtml(tpl.htmlContent || ""), {
+      currentUser,
+      senderProfile: activeSender,
+    });
+    setBulkSubject(subj);
+    setBulkHtmlContent(body);
     setBulkAttachments(tpl.attachments ? [...tpl.attachments] : []);
   };
 
@@ -452,12 +500,18 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
             companyName: singleCompanyName,
             designation: singleDesignation,
             industry: singleIndustry,
+            cc: singleCc || undefined,
+            bcc: singleBcc || undefined,
+            senderUser: currentUser,
           },
         ],
         subject: singleSubject,
         htmlContent: singleHtmlContent,
         smtpConfig: activeSender,
         attachments: singleAttachments,
+        cc: singleCc || undefined,
+        bcc: singleBcc || undefined,
+        senderUser: currentUser,
       });
 
       const successCount = res.successCount || (res.success ? 1 : 0);
@@ -1265,6 +1319,8 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                     recipientName="Aarav Patel"
                     recipientEmail="aarav@zenithcloud.in"
                     attachments={templateAttachments}
+                    currentUser={currentUser}
+                    senderProfile={activeSender}
                     height="h-[420px]"
                   />
                 </div>
@@ -1275,8 +1331,9 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                 <EmailAttachmentManager
                   attachments={templateAttachments}
                   onChange={setTemplateAttachments}
-                  label="Template Attachments (Saved with Template)"
-                  description="Attach PDF proposals, pitch decks, enterprise brochures, or documents to this template. These files will be saved with this template and automatically attached whenever this template is selected."
+                  maxAttachments={6}
+                  label="Template Attachments (Saved with Template - up to 6)"
+                  description="Attach PDF proposals, pitch decks, enterprise brochures, or documents to this template. Up to 6 files will be saved with this template and automatically attached whenever this template is selected."
                 />
               </div>
             </div>
@@ -1349,16 +1406,38 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
           {/* Recipient Details */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Recipient Email <span className="text-rose-500">*</span>
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Recipient Email <span className="text-rose-500">*</span>
+                </label>
+                <div className="flex items-center space-x-1.5">
+                  {!showSingleCc && (
+                    <button
+                      type="button"
+                      onClick={() => setShowSingleCc(true)}
+                      className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+                    >
+                      + Cc
+                    </button>
+                  )}
+                  {!showSingleBcc && (
+                    <button
+                      type="button"
+                      onClick={() => setShowSingleBcc(true)}
+                      className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+                    >
+                      + Bcc
+                    </button>
+                  )}
+                </div>
+              </div>
               <input
                 type="email"
                 required
                 value={singleRecipientEmail}
                 onChange={(e) => setSingleRecipientEmail(e.target.value)}
                 placeholder="lead@company.com"
-                className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none font-medium"
               />
             </div>
 
@@ -1388,6 +1467,65 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
               />
             </div>
           </div>
+
+          {/* Optional CC & BCC Rows */}
+          {(showSingleCc || showSingleBcc) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+              {showSingleCc && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      CC Recipients
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSingleCc("");
+                        setShowSingleCc(false);
+                      }}
+                      className="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={singleCc}
+                    onChange={(e) => setSingleCc(e.target.value)}
+                    placeholder="colleague@company.com, team@xmonks.com"
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none font-medium"
+                  />
+                </div>
+              )}
+
+              {showSingleBcc && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      BCC Recipients
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSingleBcc("");
+                        setShowSingleBcc(false);
+                      }}
+                      className="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={singleBcc}
+                    onChange={(e) => setSingleBcc(e.target.value)}
+                    placeholder="blindcopy@xmonks.com"
+                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none font-medium"
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Template Selector Dropdown */}
           <div className="space-y-4 border-t border-slate-200 dark:border-slate-800 pt-4">
@@ -1431,8 +1569,9 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
               <EmailAttachmentManager
                 attachments={singleAttachments}
                 onChange={setSingleAttachments}
-                label="Email Attachments"
-                description="Attachments loaded from the selected template. You can add extra files or remove any before sending."
+                maxAttachments={6}
+                label="Email Attachments (Up to 6 Files)"
+                description="Attachments loaded from the selected template. You can add extra files (up to 6 total) or remove any before sending."
               />
             </div>
 
@@ -1458,6 +1597,10 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                     recipientName={singleContactName || "Contact Name"}
                     recipientEmail={singleRecipientEmail || "lead@company.com"}
                     attachments={singleAttachments}
+                    currentUser={currentUser}
+                    senderProfile={activeSender}
+                    cc={singleCc || undefined}
+                    bcc={singleBcc || undefined}
                     height="h-[360px]"
                   />
                 </div>
@@ -1728,8 +1871,9 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                 <EmailAttachmentManager
                   attachments={bulkAttachments}
                   onChange={setBulkAttachments}
-                  label="Campaign Attachments"
-                  description="Attachments loaded from the selected template. Every recipient in this bulk campaign will receive these attached files."
+                  maxAttachments={6}
+                  label="Campaign Attachments (Up to 6 Files)"
+                  description="Attachments loaded from the selected template. Every recipient in this bulk campaign will receive these attached files (up to 6 files)."
                 />
               </div>
 
@@ -1755,6 +1899,8 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                       recipientName="Contact Name"
                       recipientEmail="lead@company.com"
                       attachments={bulkAttachments}
+                      currentUser={currentUser}
+                      senderProfile={activeSender}
                       height="h-[360px]"
                     />
                   </div>

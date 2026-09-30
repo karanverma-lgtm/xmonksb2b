@@ -45,6 +45,7 @@ import {
   sendEmailCampaign,
   getAllSenderProfiles,
   getSenderProfileForUser,
+  personalizeEmailTemplate,
 } from "@/lib/emailService";
 import { EmailTemplate, EmailAttachment } from "@/constants/emailTemplates";
 import { EmailAttachmentManager } from "./EmailAttachmentManager";
@@ -147,6 +148,10 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
   const [customSubject, setCustomSubject] = useState("");
   const [customHtml, setCustomHtml] = useState("");
   const [emailAttachments, setEmailAttachments] = useState<EmailAttachment[]>([]);
+  const [emailCc, setEmailCc] = useState("");
+  const [emailBcc, setEmailBcc] = useState("");
+  const [showCc, setShowCc] = useState(false);
+  const [showBcc, setShowBcc] = useState(false);
 
   // Load templates on modal open
   useEffect(() => {
@@ -173,31 +178,36 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
         ? formatINR(client.estimatedPotentialValue)
         : "";
 
-      const subj = (selectedTemplate.subject || "")
-        .replace(/\{\{\s*contactName\s*\}\}|\[\s*First Name\s*\]/gi, repName)
-        .replace(/\{\{\s*name\s*\}\}/gi, repName)
-        .replace(/\{\{\s*companyName\s*\}\}|\[\s*Company Name\s*\]/gi, compName)
-        .replace(/\{\{\s*designation\s*\}\}/gi, desig)
-        .replace(/\{\{\s*industry\s*\}\}/gi, ind);
+      const subj = personalizeEmailTemplate(selectedTemplate.subject || "", {
+        recipientName: repName,
+        companyName: compName,
+        designation: desig,
+        industry: ind,
+        dealValue: dealVal,
+        currentUser,
+      });
 
-      const body = (selectedTemplate.htmlContent || "")
-        .replace(/\{\{\s*contactName\s*\}\}|\[\s*First Name\s*\]/gi, repName)
-        .replace(/\{\{\s*name\s*\}\}/gi, repName)
-        .replace(/\{\{\s*companyName\s*\}\}|\[\s*Company Name\s*\]/gi, compName)
-        .replace(/\{\{\s*designation\s*\}\}/gi, desig)
-        .replace(/\{\{\s*industry\s*\}\}/gi, ind)
-        .replace(/\{\{\s*dealValue\s*\}\}/gi, dealVal);
+      const body = personalizeEmailTemplate(selectedTemplate.htmlContent || "", {
+        recipientName: repName,
+        companyName: compName,
+        designation: desig,
+        industry: ind,
+        dealValue: dealVal,
+        currentUser,
+      });
 
       setCustomSubject(subj);
       setCustomHtml(body);
       setEmailAttachments(selectedTemplate.attachments || []);
     }
-  }, [selectedTemplateId, client, selectedTemplate]);
+  }, [selectedTemplateId, client, selectedTemplate, currentUser]);
 
   const handleSendEmailTemplate = async (
     overrideSubject?: string,
     overrideHtml?: string,
-    overrideAttachments?: EmailAttachment[]
+    overrideAttachments?: EmailAttachment[],
+    overrideCc?: string,
+    overrideBcc?: string
   ) => {
     if (!client || !client.email) {
       setEmailSendStatus({ type: "error", message: "Client does not have a valid email address." });
@@ -219,6 +229,8 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
       const htmlToSend = overrideHtml || customHtml || selectedTemplate.htmlContent;
       const attachmentsToSend =
         overrideAttachments !== undefined ? overrideAttachments : emailAttachments;
+      const ccToSend = overrideCc !== undefined ? overrideCc : emailCc;
+      const bccToSend = overrideBcc !== undefined ? overrideBcc : emailBcc;
 
       const payload = {
         recipients: [
@@ -229,27 +241,35 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
             designation: client.designation,
             industry: client.industry,
             dealValue: client.estimatedPotentialValue,
+            cc: ccToSend || undefined,
+            bcc: bccToSend || undefined,
+            senderUser: currentUser,
           },
         ],
         subject: subjectToSend,
         htmlContent: htmlToSend,
         smtpConfig: senderProfile,
         attachments: attachmentsToSend,
+        cc: ccToSend || undefined,
+        bcc: bccToSend || undefined,
+        senderUser: currentUser,
       };
 
       const res = await sendEmailCampaign(payload);
 
       if (res.success || (res.results && res.results[0]?.success)) {
         const attMsg = attachmentsToSend.length > 0 ? ` with ${attachmentsToSend.length} attachment(s)` : "";
+        const ccMsg = ccToSend ? ` (CC: ${ccToSend})` : "";
+        const bccMsg = bccToSend ? ` (BCC: ${bccToSend})` : "";
         setEmailSendStatus({
           type: "success",
-          message: `Email sent to ${client.email} using "${selectedTemplate.name}"${attMsg}!`,
+          message: `Email sent to ${client.email}${ccMsg}${bccMsg} using "${selectedTemplate.name}"${attMsg}!`,
         });
 
         // Automatically log touchpoint in timeline
         await onLogTouchpoint(client.id, {
           channel: "email",
-          summary: `Sent email template "${selectedTemplate.name}" with subject: "${subjectToSend}"${attMsg}.`,
+          summary: `Sent email template "${selectedTemplate.name}" to ${client.email}${ccMsg}${bccMsg} with subject: "${subjectToSend}"${attMsg}.`,
           author: currentUser?.name || senderProfile.senderName || "Sales Representative",
           nextStatus:
             client.status === "uncontacted" || client.status === "cold_no_answer"
@@ -300,6 +320,10 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
       setConvertSuccess(false);
       setTpSummary("");
       setTpNextStatus("");
+      setEmailCc("");
+      setEmailBcc("");
+      setShowCc(false);
+      setShowBcc(false);
     }
   }, [client, currentUser]);
 
@@ -934,15 +958,25 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                       }`}
                       title={
                         emailAttachments.length > 0
-                          ? `${emailAttachments.length} attachment(s) attached. Click to view/manage.`
-                          : "Attach files to email"
+                          ? `${emailAttachments.length} attachment(s) attached (max 6). Click to view/manage.`
+                          : "Attach files to email (up to 6)"
                       }
                     >
                       <Paperclip className="w-3.5 h-3.5" />
                       {emailAttachments.length > 0 && (
-                        <span className="text-[10px]">{emailAttachments.length}</span>
+                        <span className="text-[10px]">{emailAttachments.length}/6</span>
                       )}
                     </button>
+
+                    {(emailCc || emailBcc) && (
+                      <span
+                        onClick={() => setIsEmailPreviewModalOpen(true)}
+                        className="text-[9px] font-extrabold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/70 px-1.5 py-0.5 rounded cursor-pointer border border-purple-200 dark:border-purple-800"
+                        title={`CC: ${emailCc || "None"} | BCC: ${emailBcc || "None"}`}
+                      >
+                        {emailCc ? "CC" : ""}{emailCc && emailBcc ? "+" : ""}{emailBcc ? "BCC" : ""}
+                      </span>
+                    )}
 
                     <button
                       type="button"
@@ -1655,15 +1689,124 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
 
               {/* Modal Body */}
               <div className="p-6 space-y-4 overflow-y-auto flex-1">
-                {/* Recipient info */}
-                <div className="flex items-center justify-between text-xs p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-750">
-                  <div>
-                    <span className="font-semibold text-slate-500">To: </span>
-                    <span className="font-bold text-slate-900 dark:text-white">
-                      {client.contactName} &lt;{client.email}&gt;
-                    </span>
+                {/* Recipient & CC/BCC controls */}
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-750 space-y-2.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center space-x-2 flex-1 min-w-0">
+                      <span className="font-extrabold text-slate-500 uppercase text-[10px] w-9">To:</span>
+                      <span className="font-bold text-slate-900 dark:text-white truncate">
+                        {client.contactName} &lt;{client.email}&gt;
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-1.5 shrink-0 ml-2">
+                      <span className="text-[11px] text-slate-400 font-medium mr-1 hidden sm:inline">
+                        {client.companyName}
+                      </span>
+                      {!showCc && (
+                        <button
+                          type="button"
+                          onClick={() => setShowCc(true)}
+                          className="px-2 py-0.5 rounded-md text-[10px] font-bold text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-950/60 border border-purple-200 dark:border-purple-800 transition cursor-pointer"
+                        >
+                          + Cc
+                        </button>
+                      )}
+                      {!showBcc && (
+                        <button
+                          type="button"
+                          onClick={() => setShowBcc(true)}
+                          className="px-2 py-0.5 rounded-md text-[10px] font-bold text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-950/60 border border-purple-200 dark:border-purple-800 transition cursor-pointer"
+                        >
+                          + Bcc
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <span className="text-[11px] text-slate-500 font-medium">{client.companyName}</span>
+
+                  {/* CC Input Row */}
+                  {showCc && (
+                    <div className="flex items-center space-x-2 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+                      <span className="font-extrabold text-purple-600 dark:text-purple-400 uppercase text-[10px] w-9">Cc:</span>
+                      <input
+                        type="text"
+                        value={emailCc}
+                        onChange={(e) => setEmailCc(e.target.value)}
+                        placeholder="Add CC email addresses (e.g. colleague@company.com, team@xmonks.com)..."
+                        className="flex-1 px-2.5 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEmailCc("");
+                          setShowCc(false);
+                        }}
+                        className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-700/50"
+                        title="Remove CC field"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* BCC Input Row */}
+                  {showBcc && (
+                    <div className="flex items-center space-x-2 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+                      <span className="font-extrabold text-purple-600 dark:text-purple-400 uppercase text-[10px] w-9">Bcc:</span>
+                      <input
+                        type="text"
+                        value={emailBcc}
+                        onChange={(e) => setEmailBcc(e.target.value)}
+                        placeholder="Add BCC email addresses (blind copy, comma-separated)..."
+                        className="flex-1 px-2.5 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEmailBcc("");
+                          setShowBcc(false);
+                        }}
+                        className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-700/50"
+                        title="Remove BCC field"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Quick Stakeholders to CC Chips */}
+                  {client.additionalContacts && client.additionalContacts.filter((c) => c.email).length > 0 && (
+                    <div className="flex items-center flex-wrap gap-1.5 pt-1.5 border-t border-slate-200/60 dark:border-slate-700/60 text-[11px]">
+                      <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">
+                        Stakeholders:
+                      </span>
+                      {client.additionalContacts
+                        .filter((c) => c.email)
+                        .map((c) => {
+                          const isAlreadyInCc = emailCc.toLowerCase().includes((c.email || "").toLowerCase());
+                          return (
+                            <button
+                              key={c.id}
+                              type="button"
+                              onClick={() => {
+                                if (isAlreadyInCc) return;
+                                setEmailCc((prev) => (prev ? `${prev}, ${c.email}` : c.email || ""));
+                                setShowCc(true);
+                              }}
+                              className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold transition flex items-center space-x-1 cursor-pointer ${
+                                isAlreadyInCc
+                                  ? "bg-slate-200/70 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border-slate-300 dark:border-slate-600"
+                                  : "bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800"
+                              }`}
+                              title={isAlreadyInCc ? "Already added to CC" : `Add ${c.name} (${c.email}) to CC`}
+                            >
+                              <span>{isAlreadyInCc ? "✓" : "+"}</span>
+                              <span>{c.name}</span>
+                              <span className="text-[9px] opacity-75">({c.designation || "Stakeholder"})</span>
+                            </button>
+                          );
+                        })}
+                    </div>
+                  )}
                 </div>
 
                 {/* Subject input */}
@@ -1701,7 +1844,7 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                       <span>Email Attachments</span>
                       {emailAttachments.length > 0 && (
                         <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300">
-                          {emailAttachments.length}
+                          {emailAttachments.length} / 6
                         </span>
                       )}
                     </label>
@@ -1709,8 +1852,9 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                   <EmailAttachmentManager
                     attachments={emailAttachments}
                     onChange={setEmailAttachments}
-                    label="Attach Files (PDF, Deck, Document, Spreadsheet)"
-                    description="Upload approach notes, brochures, pitch decks, PDFs, or files (up to 25MB)."
+                    maxAttachments={6}
+                    label="Attach Files (PDF, Deck, Document, Spreadsheet - up to 6)"
+                    description="Upload approach notes, brochures, pitch decks, PDFs, or files (up to 6 files, 25MB each)."
                     className="p-3 bg-slate-50 dark:bg-slate-850/60 rounded-xl border border-slate-200 dark:border-slate-750"
                   />
                 </div>
@@ -1728,8 +1872,8 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                 <button
                   type="button"
                   disabled={isSendingEmail}
-                  onClick={() => handleSendEmailTemplate(customSubject, customHtml, emailAttachments)}
-                  className="px-5 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded-xl flex items-center space-x-1.5 shadow-md shadow-purple-600/30 transition-all hover:scale-102 active:scale-98"
+                  onClick={() => handleSendEmailTemplate(customSubject, customHtml, emailAttachments, emailCc, emailBcc)}
+                  className="px-5 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded-xl flex items-center space-x-1.5 shadow-md shadow-purple-600/30 transition-all hover:scale-102 active:scale-98 cursor-pointer"
                 >
                   {isSendingEmail ? (
                     <>
