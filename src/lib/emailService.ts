@@ -1103,7 +1103,55 @@ export async function sendEmailCampaign(payload: {
 }
 
 // Upload Email Template or Campaign Attachment
+// Uses Direct-to-R2 Presigned Upload (bypasses Vercel 4.5MB / server payload limits, supports up to 25MB)
 export async function uploadEmailAttachment(file: File): Promise<EmailAttachment> {
+  if (!file) {
+    throw new Error("No file selected.");
+  }
+
+  // Strategy 1: Direct-to-R2 Presigned Upload (Bypasses server payload limits like Vercel 4.5MB)
+  try {
+    const presignRes = await fetch("/api/email/attachments/presign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fileName: file.name,
+        fileSizeBytes: file.size,
+        fileType: file.type || "application/octet-stream",
+      }),
+    });
+
+    if (presignRes.ok) {
+      const presignText = await presignRes.text();
+      let presignData: any = null;
+      try {
+        presignData = JSON.parse(presignText);
+      } catch {
+        console.warn("Presign response was not JSON:", presignText.slice(0, 100));
+      }
+
+      if (presignData && presignData.uploadUrl) {
+        // Direct PUT from browser to Cloudflare R2
+        const r2Res = await fetch(presignData.uploadUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": file.type || "application/octet-stream",
+          },
+          body: file,
+        });
+
+        if (r2Res.ok) {
+          return presignData.attachment as EmailAttachment;
+        }
+
+        console.warn("Direct R2 upload failed with HTTP status:", r2Res.status, "trying server upload fallback");
+      }
+    }
+  } catch (presignErr) {
+    console.warn("Presigned direct upload error, attempting server fallback:", presignErr);
+  }
+
+  // Strategy 2: Server Upload Route fallback (with safe text & 413 error parsing)
   const formData = new FormData();
   formData.append("file", file);
 
@@ -1112,9 +1160,19 @@ export async function uploadEmailAttachment(file: File): Promise<EmailAttachment
     body: formData,
   });
 
-  const data = await res.json();
+  const responseText = await res.text();
+  let data: any = null;
+  try {
+    data = JSON.parse(responseText);
+  } catch {
+    if (res.status === 413 || responseText.includes("Request Entity Too Large") || responseText.includes("Payload Too Large")) {
+      throw new Error(`"${file.name}" (${(file.size / (1024 * 1024)).toFixed(1)}MB) exceeds serverless payload limits. Please use direct Cloudflare R2 or a file under 25MB.`);
+    }
+    throw new Error(`Upload failed (${res.status}): ${responseText.slice(0, 100) || "Server error"}`);
+  }
+
   if (!res.ok || !data.success) {
-    throw new Error(data.error || "Failed to upload file attachment.");
+    throw new Error(data?.error || "Failed to upload file attachment.");
   }
 
   return data.attachment as EmailAttachment;
