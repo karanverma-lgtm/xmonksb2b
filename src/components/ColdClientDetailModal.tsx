@@ -51,6 +51,7 @@ import { EmailTemplate, EmailAttachment } from "@/constants/emailTemplates";
 import { EmailAttachmentManager } from "./EmailAttachmentManager";
 import { EmailAutocompleteInput } from "./EmailAutocompleteInput";
 import { recordUsedEmails } from "@/lib/contactSuggestionService";
+import { ModernTimePicker } from "./ModernTimePicker";
 
 function getTodayDateString(): string {
   const d = new Date();
@@ -1360,30 +1361,14 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                   />
                 </div>
 
-                <div>
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Activity Time</label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTpDate(getTodayDateString());
-                        setTpTime(getCurrentTimeString());
-                      }}
-                      className="text-[9px] font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 hover:underline flex items-center gap-0.5"
-                      title="Reset date & time to right now"
-                    >
-                      <Clock className="w-2.5 h-2.5" />
-                      <span>Now</span>
-                    </button>
-                  </div>
-                  <input
-                    type="time"
-                    required
-                    value={tpTime}
-                    onChange={(e) => setTpTime(e.target.value)}
-                    className="w-full mt-0.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                  />
-                </div>
+                <ModernTimePicker
+                  value={tpTime}
+                  onChange={(newTime) => setTpTime(newTime)}
+                  onResetNow={() => {
+                    setTpDate(getTodayDateString());
+                    setTpTime(getCurrentTimeString());
+                  }}
+                />
               </div>
 
               {/* Row 2: Status & Follow-up */}
@@ -1485,7 +1470,7 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                                 <span className="text-slate-300 dark:text-slate-600">•</span>
                                 <span className="inline-flex items-center gap-1 font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-1.5 py-0.5 rounded border border-blue-200/50 dark:border-blue-900/40">
                                   <Clock className="w-2.5 h-2.5" />
-                                  {displayTime}
+                                  {displayTime.includes("IST") ? displayTime : `${displayTime} IST`}
                                 </span>
                               </>
                             )}
