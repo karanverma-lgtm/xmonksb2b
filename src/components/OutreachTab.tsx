@@ -41,6 +41,7 @@ import { AddColdClientModal } from "./AddColdClientModal";
 import { ColdClientDetailModal } from "./ColdClientDetailModal";
 import { GoogleSheetsSyncModal } from "./GoogleSheetsSyncModal";
 import { BulkUpdateOutreachModal } from "./BulkUpdateOutreachModal";
+import { BulkEmailOutreachModal } from "./BulkEmailOutreachModal";
 
 interface OutreachTabProps {
   coldClients: ColdClient[];
@@ -82,6 +83,16 @@ interface OutreachTabProps {
   onDeleteColdClient: (id: string) => Promise<void>;
   currentUser?: UserAccount | null;
   onNavigateToEmailTab?: (recipientEmail: string, recipientName: string, companyName: string) => void;
+  onNavigateToBulkEmailTab?: (
+    recipients: Array<{
+      email: string;
+      contactName: string;
+      companyName: string;
+      designation?: string;
+      industry?: string;
+      dealValue?: number;
+    }>
+  ) => void;
   onFilteredCountChange?: (count: number) => void;
 }
 
@@ -97,6 +108,7 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
   onDeleteColdClient,
   currentUser,
   onNavigateToEmailTab,
+  onNavigateToBulkEmailTab,
   onFilteredCountChange,
 }) => {
   // Safe helper to resolve status config with rock-solid fallback
@@ -127,6 +139,7 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
   // Multi-selection state
   const [selectedClientIds, setSelectedClientIds] = useState<string[]>([]);
   const [isBulkUpdateModalOpen, setIsBulkUpdateModalOpen] = useState(false);
+  const [isBulkEmailModalOpen, setIsBulkEmailModalOpen] = useState(false);
 
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -281,6 +294,14 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
 
   const isSomeFilteredSelected =
     filteredClients.some((c) => selectedClientIds.includes(c.id)) && !isAllFilteredSelected;
+
+  const selectedClientsWithEmail = useMemo(() => {
+    return coldClients.filter(
+      (c) =>
+        selectedClientIds.includes(c.id) &&
+        Boolean(c.email && c.email.trim().includes("@"))
+    );
+  }, [coldClients, selectedClientIds]);
 
   const handleExecuteBulkUpdate = async (
     ids: string[],
@@ -1150,6 +1171,19 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
         onConfirmBulkUpdate={handleExecuteBulkUpdate}
       />
 
+      {/* Bulk Email Outreach Modal */}
+      <BulkEmailOutreachModal
+        isOpen={isBulkEmailModalOpen}
+        onClose={() => setIsBulkEmailModalOpen(false)}
+        selectedIds={selectedClientIds}
+        clients={coldClients}
+        currentUser={currentUser}
+        onLogTouchpoint={onLogTouchpoint}
+        onBulkUpdateClients={onBulkUpdateColdClients}
+        onClearSelection={handleClearSelection}
+        onNavigateToBulkEmailTab={onNavigateToBulkEmailTab}
+      />
+
       {/* Sticky Multi-Action Bar for Selected Leads */}
       {selectedClientIds.length > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-auto max-w-[95vw] animate-in slide-in-from-bottom-5 duration-200">
@@ -1171,6 +1205,19 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
                 Select all {filteredClients.length}
               </button>
             )}
+
+            {/* Bulk Email Button */}
+            <button
+              onClick={() => setIsBulkEmailModalOpen(true)}
+              className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-purple-600/30 transition-all hover:scale-102 active:scale-98 whitespace-nowrap cursor-pointer"
+              title="Send Bulk Email to Selected Leads"
+            >
+              <Mail className="w-3.5 h-3.5" />
+              <span>Bulk Email</span>
+              <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full font-bold">
+                {selectedClientsWithEmail.length}
+              </span>
+            </button>
 
             {/* Multi-Update Button */}
             <button

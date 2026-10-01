@@ -70,9 +70,10 @@ interface EmailCampaignTabProps {
   currentUser?: UserAccount | null;
   isAdmin?: boolean;
   initialRecipient?: { email: string; name?: string; company?: string } | null;
+  initialBulkRecipients?: ParsedCSVEmailRecipient[] | null;
 }
 
-interface ParsedCSVEmailRecipient {
+export interface ParsedCSVEmailRecipient {
   email: string;
   contactName: string;
   companyName: string;
@@ -93,6 +94,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
   currentUser,
   isAdmin = false,
   initialRecipient,
+  initialBulkRecipients,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<"templates" | "single" | "bulk" | "campaigns" | "logs">("templates");
   const [isAIModalOpen, setIsAIModalOpen] = useState<boolean>(false);
@@ -106,6 +108,15 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
       setActiveSubTab("single");
     }
   }, [initialRecipient]);
+
+  // If navigated from Outreach with prefill bulk recipients
+  useEffect(() => {
+    if (initialBulkRecipients && initialBulkRecipients.length > 0) {
+      setBulkRecipients(initialBulkRecipients);
+      setBulkSource("csv");
+      setActiveSubTab("bulk");
+    }
+  }, [initialBulkRecipients]);
 
   // Sender Capsules State
   const [senderProfiles, setSenderProfiles] = useState<SMTPSenderProfile[]>([]);

@@ -37,7 +37,7 @@ import { LeadDetailModal } from "@/components/LeadDetailModal";
 import { AddLeadModal } from "@/components/AddLeadModal";
 import { BulkUploadModal } from "@/components/BulkUploadModal";
 import { AnalyticsCharts } from "@/components/AnalyticsCharts";
-import { EmailCampaignTab } from "@/components/EmailCampaignTab";
+import { EmailCampaignTab, ParsedCSVEmailRecipient } from "@/components/EmailCampaignTab";
 import { DeveloperTab } from "@/components/DeveloperTab";
 import { OutreachTab } from "@/components/OutreachTab";
 import { BillingTab } from "@/components/BillingTab";
@@ -188,6 +188,7 @@ export default function Home() {
   const [selectedLeadSource, setSelectedLeadSource] = useState("all");
   const [selectedProgram, setSelectedProgram] = useState("all");
   const [emailTabPrefill, setEmailTabPrefill] = useState<{ email: string; name?: string; company?: string } | null>(null);
+  const [emailTabBulkPrefill, setEmailTabBulkPrefill] = useState<ParsedCSVEmailRecipient[] | null>(null);
 
   // Load & subscribe to user UI view & filter preferences from Firestore
   useEffect(() => {
@@ -979,6 +980,12 @@ export default function Home() {
             currentUser={currentUser}
             onNavigateToEmailTab={(email, name, company) => {
               setEmailTabPrefill({ email, name, company });
+              setEmailTabBulkPrefill(null);
+              handleTabChange("email");
+            }}
+            onNavigateToBulkEmailTab={(recipients) => {
+              setEmailTabBulkPrefill(recipients);
+              setEmailTabPrefill(null);
               handleTabChange("email");
             }}
             onFilteredCountChange={setOutreachFilteredCount}
@@ -998,6 +1005,7 @@ export default function Home() {
             currentUser={currentUser}
             isAdmin={isAdmin}
             initialRecipient={emailTabPrefill}
+            initialBulkRecipients={emailTabBulkPrefill}
             onNavigateToDeveloper={isAdmin ? () => handleTabChange("developer") : undefined}
           />
         )}
