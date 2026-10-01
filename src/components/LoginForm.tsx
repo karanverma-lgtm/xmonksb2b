@@ -45,14 +45,25 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
       {/* Login Card */}
       <div className="relative w-full max-w-md bg-slate-900/80 backdrop-blur-xl p-8 rounded-3xl border border-slate-800 shadow-2xl space-y-6">
         {/* Brand Header */}
-        <div className="text-center space-y-2">
-          <div className="inline-flex p-3 rounded-2xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 text-white shadow-lg shadow-indigo-500/30 mb-2">
-            <Building2 className="w-8 h-8" />
+        <div className="text-center space-y-3">
+          <div className="inline-flex p-1.5 rounded-2xl bg-white shadow-lg border border-slate-700/60 mb-1">
+            <img
+              src="/xmonksdotcom_logo.jpg"
+              alt="xMonks"
+              className="w-14 h-14 object-contain rounded-xl"
+            />
           </div>
 
-          <h1 className="text-2xl font-black text-white tracking-tight">
-            xMonks B2B CRM Portal
-          </h1>
+          <div className="flex items-center justify-center space-x-2">
+            <img
+              src="/xMonks%20Logo-01%202%20(4).png"
+              alt="xMonks Logo"
+              className="h-8 w-auto object-contain bg-white/95 px-3 py-1 rounded-xl shadow-md"
+            />
+            <span className="text-xl font-black text-white tracking-tight">
+              B2B CRM
+            </span>
+          </div>
           <p className="text-xs text-slate-400">
             Sign in to access your sales pipeline
           </p>

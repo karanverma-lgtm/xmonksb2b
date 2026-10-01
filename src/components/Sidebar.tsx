@@ -256,15 +256,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
 
           <div className="flex items-center space-x-2">
-            <div className="h-8 w-8 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center text-white shadow-sm shadow-indigo-500/20">
-              <Building2 className="w-4 h-4" />
+            <div className="h-8 w-8 rounded-xl overflow-hidden border border-slate-200/90 dark:border-slate-800 shadow-xs flex-shrink-0 bg-white flex items-center justify-center p-0.5">
+              <img
+                src="/xmonksdotcom_logo.jpg"
+                alt="xMonks"
+                className="w-full h-full object-contain rounded-lg"
+              />
             </div>
-            <span className="font-black text-sm text-slate-900 dark:text-white tracking-tight">
-              xMonks B2B
-            </span>
-            <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
-              {isAccounts ? "Accounts" : "v2.0"}
-            </span>
+            <div className="flex items-center space-x-1.5">
+              <img
+                src="/xMonks%20Logo-01%202%20(4).png"
+                alt="xMonks"
+                className="h-5 w-auto max-w-[95px] object-contain dark:bg-white/95 dark:px-1.5 dark:py-0.5 dark:rounded-md"
+              />
+              <span className="font-black text-xs text-slate-900 dark:text-white tracking-tight">
+                B2B
+              </span>
+              <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                {isAccounts ? "Accounts" : "v2.0"}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -311,20 +322,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="p-4 space-y-4 border-b border-slate-100 dark:border-slate-850">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2.5 min-w-0">
-              <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/25 flex-shrink-0">
-                <Building2 className="w-4 h-4" />
+              <div className="h-9 w-9 rounded-xl overflow-hidden border border-slate-200/90 dark:border-slate-800 shadow-xs flex-shrink-0 bg-white flex items-center justify-center p-0.5" title="xMonks">
+                <img
+                  src="/xmonksdotcom_logo.jpg"
+                  alt="xMonks"
+                  className="w-full h-full object-contain rounded-lg"
+                />
               </div>
               {(!isCollapsed || isMobileOpen) && (
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center space-x-1.5">
-                    <span className="font-black text-sm text-slate-900 dark:text-white tracking-tight truncate">
-                      xMonks B2B
+                    <img
+                      src="/xMonks%20Logo-01%202%20(4).png"
+                      alt="xMonks"
+                      className="h-5.5 w-auto max-w-[110px] object-contain dark:bg-white/95 dark:px-1.5 dark:py-0.5 dark:rounded-md"
+                    />
+                    <span className="font-black text-xs text-slate-900 dark:text-white tracking-tight">
+                      B2B
                     </span>
                     <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 flex-shrink-0">
                       {isAccounts ? "Accounts" : "v2.0"}
                     </span>
                   </div>
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate mt-0.5 font-medium">
                     {isAccounts ? "Finance & Invoicing" : "Stage Weightage CRM"}
                   </p>
                 </div>
