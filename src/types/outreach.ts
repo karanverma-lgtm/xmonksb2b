@@ -60,6 +60,7 @@ export interface ColdClient {
   sheetRowNumber?: number; // Row index in synced Google Sheet
   sourceSheet?: string; // Google Sheet name or spreadsheet ID
   companySize?: string; // Company headcount / employee size (from sheets)
+  dataset?: string; // Dataset category / cohort / source identifier (e.g. Q1 Tech Founders, CFO Summit, Inbound)
   createdAt: string;
   updatedAt: string;
 }

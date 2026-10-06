@@ -207,6 +207,7 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
   const [status, setStatus] = useState<ColdClientStatus>("uncontacted");
   const [channel, setChannel] = useState<OutreachChannel>("email");
   const [owner, setOwner] = useState("Amit");
+  const [dataset, setDataset] = useState("");
   const [nextFollowUpDate, setNextFollowUpDate] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -444,6 +445,7 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
       setStatus(client.status || "uncontacted");
       setChannel(client.channel || "email");
       setOwner(client.owner || currentUser?.name || "Amit");
+      setDataset(client.dataset || "");
       setNextFollowUpDate(client.nextFollowUpDate || "");
       setNotes(client.notes || "");
       setConvertDealValue(client.estimatedPotentialValue?.toString() || "500000");
@@ -485,6 +487,7 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
         status,
         channel,
         owner,
+        dataset: dataset.trim() || undefined,
         nextFollowUpDate: nextFollowUpDate || undefined,
         notes: notes.trim() || undefined,
       });
@@ -728,6 +731,12 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                 >
                   {statusConfig.label}
                 </span>
+                {client.dataset && (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800/80 flex items-center space-x-1 shadow-2xs">
+                    <span>🗂️</span>
+                    <span>{client.dataset}</span>
+                  </span>
+                )}
                 {isFollowUpDue && status !== "converted" && status !== "not_interested" && (
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center space-x-1">
                     <Clock className="w-3 h-3" />
@@ -959,11 +968,21 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                       ))}
                     </select>
                   </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-500">Dataset / Cohort</label>
+                    <input
+                      type="text"
+                      value={dataset}
+                      onChange={(e) => setDataset(e.target.value)}
+                      placeholder="e.g. Q1 Tech Founders, CFO Summit, Inbound..."
+                      className="w-full mt-1 px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-medium"
+                    />
+                  </div>
                 </div>
               </div>
             ) : (
               <div className="bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-800 p-4 space-y-3">
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                   <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
                     <p className="text-[10px] text-slate-500 uppercase font-semibold">Contact Email</p>
                     <a
@@ -986,6 +1005,12 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                     </p>
                   </div>
                   <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
+                    <p className="text-[10px] text-slate-500 uppercase font-semibold">Dataset / Cohort</p>
+                    <p className="text-xs font-bold text-purple-600 dark:text-purple-400 truncate">
+                      {client.dataset ? `🗂️ ${client.dataset}` : "Not assigned"}
+                    </p>
+                  </div>
+                  <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
                     <p className="text-[10px] text-slate-500 uppercase font-semibold">Industry</p>
                     <p className="text-xs font-medium text-slate-800 dark:text-slate-200">
                       {client.industry || "General B2B"}
@@ -997,7 +1022,7 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                       {client.targetProgram || "Executive Coaching"}
                     </p>
                   </div>
-                  <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
+                  <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 col-span-2 sm:col-span-1">
                     <p className="text-[10px] text-slate-500 uppercase font-semibold">Next Follow-Up</p>
                     <p
                       className={`text-xs font-bold ${

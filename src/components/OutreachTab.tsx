@@ -134,6 +134,7 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [selectedChannel, setSelectedChannel] = useState<string>("all");
   const [selectedOwner, setSelectedOwner] = useState<string>("all");
+  const [selectedDataset, setSelectedDataset] = useState<string>("all");
   const [onlyDueToday, setOnlyDueToday] = useState(false);
 
   // Multi-selection state
@@ -147,6 +148,17 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
   const [selectedClient, setSelectedClient] = useState<ColdClient | null>(null);
 
   const todayStr = new Date().toISOString().split("T")[0];
+
+  // Dynamic list of unique datasets present in cold clients
+  const uniqueDatasets = useMemo(() => {
+    const list = new Set<string>();
+    coldClients.forEach((c) => {
+      if (c.dataset && c.dataset.trim()) {
+        list.add(c.dataset.trim());
+      }
+    });
+    return Array.from(list).sort();
+  }, [coldClients]);
 
   // Dynamic platform users list for Owner selection (including any custom owners)
   const platformOwners = useMemo(() => {
@@ -165,10 +177,11 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
     selectedStatus !== "all" ||
     selectedChannel !== "all" ||
     selectedOwner !== "all" ||
+    selectedDataset !== "all" ||
     onlyDueToday
   );
 
-  // 1. Scoped clients based on dimensional filters (Search, Channel, Owner)
+  // 1. Scoped clients based on dimensional filters (Search, Channel, Owner, Dataset)
   const baseClients = useMemo(() => {
     return coldClients.filter((client) => {
       // 1. Search term
@@ -179,7 +192,8 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
         const matchEmail = client.email?.toLowerCase().includes(q) || false;
         const matchRole = client.designation?.toLowerCase().includes(q) || false;
         const matchCity = client.city?.toLowerCase().includes(q) || false;
-        if (!matchCompany && !matchContact && !matchEmail && !matchRole && !matchCity) {
+        const matchDataset = client.dataset?.toLowerCase().includes(q) || false;
+        if (!matchCompany && !matchContact && !matchEmail && !matchRole && !matchCity && !matchDataset) {
           return false;
         }
       }
@@ -202,9 +216,24 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
         }
       }
 
+      // 4. Dataset filter
+      if (selectedDataset !== "all") {
+        if (selectedDataset === "__none__") {
+          if (client.dataset && client.dataset.trim().length > 0) {
+            return false;
+          }
+        } else {
+          const selClean = selectedDataset.toLowerCase().trim();
+          const clientDataset = (client.dataset || "").toLowerCase().trim();
+          if (clientDataset !== selClean) {
+            return false;
+          }
+        }
+      }
+
       return true;
     });
-  }, [coldClients, searchTerm, selectedChannel, selectedOwner]);
+  }, [coldClients, searchTerm, selectedChannel, selectedOwner, selectedDataset]);
 
   // 2. Filtered cold clients: applies stage and due date filters on top of base scope
   const filteredClients = useMemo(() => {
@@ -350,6 +379,7 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
       "Target Program",
       "Estimated Value",
       "Owner",
+      "Dataset",
       "Next Follow-Up",
       "Last Contact",
       "City",
@@ -367,6 +397,7 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
       c.targetProgram || "",
       c.estimatedPotentialValue || 0,
       c.owner,
+      `"${(c.dataset || "").replace(/"/g, '""')}"`,
       c.nextFollowUpDate || "",
       c.lastContactDate || "",
       c.city || "",
@@ -673,6 +704,37 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
             })}
           </select>
 
+          {/* Dataset Filter */}
+          <select
+            value={selectedDataset}
+            onChange={(e) => setSelectedDataset(e.target.value)}
+            className={`px-2.5 py-1.5 text-xs rounded-xl border transition-all focus:outline-none font-medium cursor-pointer ${
+              selectedDataset !== "all"
+                ? "border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-750 font-bold"
+                : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300"
+            }`}
+            title="Filter outreach accounts by dataset / source cohort"
+          >
+            <option value="all">
+              All Datasets ({uniqueDatasets.length})
+            </option>
+            {uniqueDatasets.map((ds) => {
+              const count = coldClients.filter(
+                (c) => (c.dataset || "").trim().toLowerCase() === ds.toLowerCase()
+              ).length;
+              return (
+                <option key={ds} value={ds}>
+                  🗂️ {ds} ({count})
+                </option>
+              );
+            })}
+            {coldClients.some((c) => !c.dataset || !c.dataset.trim()) && (
+              <option value="__none__">
+                ⚪ No Dataset ({coldClients.filter((c) => !c.dataset || !c.dataset.trim()).length})
+              </option>
+            )}
+          </select>
+
           {hasActiveFilters && (
             <button
               onClick={() => {
@@ -680,6 +742,7 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
                 setSelectedStatus("all");
                 setSelectedChannel("all");
                 setSelectedOwner("all");
+                setSelectedDataset("all");
                 setOnlyDueToday(false);
               }}
               className="px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl transition flex items-center space-x-1"
@@ -896,9 +959,23 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
                                 </div>
                               </div>
                             </div>
-                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 uppercase tracking-wider flex-shrink-0">
-                              {client.channel}
-                            </span>
+                            <div className="flex items-center space-x-1 shrink-0">
+                              {client.dataset && (
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedDataset(client.dataset!.trim());
+                                  }}
+                                  className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/80 max-w-[100px] truncate transition-colors cursor-pointer"
+                                  title={`Dataset: ${client.dataset} (Click to filter)`}
+                                >
+                                  🗂️ {client.dataset}
+                                </span>
+                              )}
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 uppercase tracking-wider flex-shrink-0">
+                                {client.channel}
+                              </span>
+                            </div>
                           </div>
 
                           {/* Role & Target Program */}
@@ -977,6 +1054,7 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
                     />
                   </th>
                   <th className="py-3 px-4">Company & Contact</th>
+                  <th className="py-3 px-4">Dataset</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4">Channel</th>
                   <th className="py-3 px-4">Target Offering</th>
@@ -989,7 +1067,7 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
                 {filteredClients.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-slate-400">
+                    <td colSpan={10} className="py-12 text-center text-slate-400">
                       No cold prospects found matching the current filters.
                     </td>
                   </tr>
@@ -1044,6 +1122,25 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
                               </span>
                             )}
                           </div>
+                        </td>
+
+                        {/* Dataset */}
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          {client.dataset ? (
+                            <span
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedDataset(client.dataset!.trim());
+                              }}
+                              className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/80 hover:bg-purple-100 transition-colors"
+                              title={`Filter by dataset: ${client.dataset}`}
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0" />
+                              <span className="truncate max-w-[120px]">{client.dataset}</span>
+                            </span>
+                          ) : (
+                            <span className="text-slate-300 dark:text-slate-600 text-[11px]">—</span>
+                          )}
                         </td>
 
                         {/* Status */}

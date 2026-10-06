@@ -20,6 +20,7 @@ import {
   Trash2,
   ArrowRight,
   Link2,
+  Database,
 } from "lucide-react";
 import { ColdClient, ColdClientStatus, OutreachChannel } from "@/types/outreach";
 import { COLD_STATUS_CONFIG, OUTREACH_CHANNELS, OUTREACH_INDUSTRIES } from "@/constants/outreach";
@@ -27,10 +28,10 @@ import { PRESET_PROGRAMS } from "@/constants/programs";
 import { UserAccount, VALID_USERS } from "@/constants/users";
 import { formatINR } from "@/lib/formatters";
 
-const SAMPLE_OUTREACH_CSV = `Company Name,Contact Person,Email,Designation,Phone,City,Industry,Target Program,Estimated Value,Channel,Initial Note
-Acme Corporation,Vikram Malhotra,vikram@acme.com,VP Human Resources,+91 98200 11223,Mumbai,Technology & SaaS,Executive Coaching,1200000,email,Met at HR Leadership Summit
-Nexus Health,Pooja Sharma,pooja.sharma@nexushealth.in,Head of L&D,+91 98111 22334,Bengaluru,Healthcare & Pharma,L&D Transformation,1500000,linkedin,Mid-level manager transformation initiative
-Zenith Retail,Amitabh Sen,amitabh@zenithretail.com,Chief People Officer,+91 98300 44556,Delhi NCR,E-Commerce & Retail,Assessments,800000,call,Looking for leadership psychometric assessment suite`;
+const SAMPLE_OUTREACH_CSV = `Company Name,Contact Person,Email,Designation,Phone,City,Industry,Target Program,Estimated Value,Channel,Dataset,Initial Note
+Acme Corporation,Vikram Malhotra,vikram@acme.com,VP Human Resources,+91 98200 11223,Mumbai,Technology & SaaS,Executive Coaching,1200000,email,Q1 Tech Enterprise,Met at HR Leadership Summit
+Nexus Health,Pooja Sharma,pooja.sharma@nexushealth.in,Head of L&D,+91 98111 22334,Bengaluru,Healthcare & Pharma,L&D Transformation,1500000,linkedin,Healthcare CXO,Mid-level manager transformation initiative
+Zenith Retail,Amitabh Sen,amitabh@zenithretail.com,Chief People Officer,+91 98300 44556,Delhi NCR,E-Commerce & Retail,Assessments,800000,call,Retail Leaders,Looking for leadership psychometric assessment suite`;
 
 interface AddColdClientModalProps {
   isOpen: boolean;
@@ -72,6 +73,7 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
   const [status, setStatus] = useState<ColdClientStatus>("uncontacted");
   const [channel, setChannel] = useState<OutreachChannel>("email");
   const [assignedOwner, setAssignedOwner] = useState(currentUser?.name || "Amit");
+  const [dataset, setDataset] = useState("");
   const [nextFollowUpDate, setNextFollowUpDate] = useState<string>(
     new Date(Date.now() + 2 * 86400000).toISOString().split("T")[0]
   );
@@ -86,12 +88,14 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
   const [uploadStatus, setUploadStatus] = useState<ColdClientStatus>("uncontacted");
   const [uploadChannel, setUploadChannel] = useState<OutreachChannel>("email");
   const [uploadOwner, setUploadOwner] = useState(currentUser?.name || "Amit");
+  const [uploadDataset, setUploadDataset] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Bulk Paste states
   const [bulkText, setBulkText] = useState("");
   const [bulkStatus, setBulkStatus] = useState<ColdClientStatus>("uncontacted");
   const [bulkChannel, setBulkChannel] = useState<OutreachChannel>("email");
+  const [bulkDataset, setBulkDataset] = useState("");
 
   if (!isOpen) return null;
 
@@ -130,6 +134,7 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
         status: status,
         channel: channel,
         owner: assignedOwner,
+        dataset: dataset.trim() || undefined,
         notes: initialNote.trim() || undefined,
         nextFollowUpDate: nextFollowUpDate || undefined,
         initialNote: initialNote.trim() || undefined,
@@ -171,6 +176,7 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
       let valIdx = 8;
       let chanIdx = 9;
       let noteIdx = 10;
+      let datasetIdx = -1;
 
       if (hasHeader) {
         startIdx = 1;
@@ -219,6 +225,13 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
             valIdx = idx;
           } else if (h.includes("channel") || h.includes("medium")) {
             chanIdx = idx;
+          } else if (
+            h.includes("dataset") ||
+            h.includes("cohort") ||
+            h.includes("segment") ||
+            h.includes("batch")
+          ) {
+            datasetIdx = idx;
           } else if (h.includes("note") || h.includes("comment") || h.includes("remark")) {
             noteIdx = idx;
           }
@@ -256,6 +269,8 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
           ? (parsedChannelRaw as OutreachChannel)
           : uploadChannel;
 
+        const parsedDataset = datasetIdx !== -1 && cols[datasetIdx] ? cols[datasetIdx].trim() : "";
+
         parsed.push({
           companyName: company || "Unnamed Company",
           contactName: contact || "Key Stakeholder",
@@ -271,6 +286,7 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
           status: uploadStatus,
           channel: validChannel,
           owner: uploadOwner,
+          dataset: parsedDataset || uploadDataset.trim() || undefined,
           notes: cols[noteIdx] || undefined,
           nextFollowUpDate: new Date(Date.now() + 2 * 86400000).toISOString().split("T")[0],
         });
@@ -369,6 +385,7 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
         ...c,
         owner: uploadOwner,
         status: uploadStatus,
+        dataset: uploadDataset.trim() ? uploadDataset.trim() : c.dataset,
       }));
       await onBulkAdd(finalClients);
       onClose();
@@ -408,6 +425,7 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
           status: bulkStatus,
           channel: bulkChannel,
           owner: assignedOwner,
+          dataset: bulkDataset.trim() || undefined,
           nextFollowUpDate: new Date(Date.now() + 2 * 86400000).toISOString().split("T")[0],
         });
       }
@@ -707,8 +725,8 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
               </div>
             </div>
 
-            {/* Row 6: Est Potential Value, City & Assigned Owner */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Row 6: Est Potential Value, City, Dataset & Assigned Owner */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Estimated Value (INR)
@@ -733,6 +751,22 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
                     placeholder="e.g. Mumbai, Bengaluru"
+                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Dataset / Cohort
+                </label>
+                <div className="relative">
+                  <Database className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={dataset}
+                    onChange={(e) => setDataset(e.target.value)}
+                    placeholder="e.g. Q1_SaaS_Founders"
                     className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                 </div>
@@ -950,7 +984,7 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
             )}
 
             {/* Default Import Settings Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Default Outreach Status
@@ -983,6 +1017,19 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Assign Dataset (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={uploadDataset}
+                  onChange={(e) => setUploadDataset(e.target.value)}
+                  placeholder="e.g. Apollo_Batch_March"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
               </div>
 
               <div>
@@ -1060,7 +1107,7 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Default Outreach Status
@@ -1093,6 +1140,19 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Assign Dataset (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={bulkDataset}
+                  onChange={(e) => setBulkDataset(e.target.value)}
+                  placeholder="e.g. Q1_Inbound_List"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
               </div>
 
               <div>

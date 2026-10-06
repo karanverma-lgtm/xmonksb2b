@@ -154,6 +154,7 @@ function mapRowToColdClient(
         "status",
         "channel",
         "owner",
+        "dataset",
         "notes",
       ];
       defaultHeaders.forEach((h, idx) => {
@@ -255,6 +256,9 @@ function mapRowToColdClient(
   
   const channel = normalizeChannel(findVal("channel", "source", "outreachchannel"));
 
+  // Dataset / Cohort: supports 'Dataset', 'Cohort', 'Segment', 'Batch', 'List'
+  const dataset = findVal("dataset", "cohort", "segment", "batch", "list");
+
   // Company Size: supports 'Company Size', 'Size', 'Employees', 'Headcount'
   const companySize = findVal("companysize", "size", "employees", "headcount", "teamsize");
 
@@ -289,6 +293,7 @@ function mapRowToColdClient(
     owner,
     status,
     channel,
+    dataset: dataset || undefined,
     companySize,
     estimatedPotentialValue,
     initialNote,
@@ -346,6 +351,7 @@ async function upsertColdClient(
       owner: clientData.owner || existingClient.owner,
       status: clientData.status || existingClient.status,
       channel: clientData.channel || existingClient.channel,
+      dataset: clientData.dataset !== undefined ? clientData.dataset : existingClient.dataset,
       estimatedPotentialValue: clientData.estimatedPotentialValue ?? existingClient.estimatedPotentialValue,
       notes: clientData.initialNote || existingClient.notes,
       companySize: clientData.companySize || existingClient.companySize,
@@ -388,6 +394,7 @@ async function upsertColdClient(
       owner: clientData.owner || "Amit",
       status: clientData.status || "uncontacted",
       channel: clientData.channel || "email",
+      dataset: clientData.dataset || undefined,
       estimatedPotentialValue: clientData.estimatedPotentialValue || 500000,
       notes: clientData.initialNote || "",
       companySize: clientData.companySize || undefined,

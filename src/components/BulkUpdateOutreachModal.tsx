@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   AlertCircle,
   FileText,
+  Database,
 } from "lucide-react";
 import { ColdClient, ColdClientStatus, OutreachChannel } from "@/types/outreach";
 import { COLD_STATUS_CONFIG, OUTREACH_CHANNELS } from "@/constants/outreach";
@@ -56,6 +57,9 @@ export const BulkUpdateOutreachModal: React.FC<BulkUpdateOutreachModalProps> = (
   const [followUpMode, setFollowUpMode] = useState<"keep" | "set" | "clear">("keep");
   const [followUpDate, setFollowUpDate] = useState<string>("");
 
+  const [datasetMode, setDatasetMode] = useState<"keep" | "set" | "clear">("keep");
+  const [customDataset, setCustomDataset] = useState<string>("");
+
   const [shouldAddTouchpoint, setShouldAddTouchpoint] = useState<boolean>(false);
   const [touchpointNote, setTouchpointNote] = useState<string>("");
 
@@ -92,6 +96,8 @@ export const BulkUpdateOutreachModal: React.FC<BulkUpdateOutreachModalProps> = (
   const hasOwnerUpdate = selectedOwner !== "__KEEP__";
   const hasChannelUpdate = selectedChannel !== "__KEEP__";
   const hasFollowUpUpdate = followUpMode !== "keep";
+  const hasDatasetUpdate =
+    datasetMode !== "keep" && (datasetMode === "clear" || customDataset.trim().length > 0);
   const hasTouchpointUpdate = shouldAddTouchpoint && touchpointNote.trim().length > 0;
 
   const totalModificationsCount = [
@@ -101,6 +107,7 @@ export const BulkUpdateOutreachModal: React.FC<BulkUpdateOutreachModalProps> = (
     hasOwnerUpdate,
     hasChannelUpdate,
     hasFollowUpUpdate,
+    hasDatasetUpdate,
     hasTouchpointUpdate,
   ].filter(Boolean).length;
 
@@ -137,6 +144,14 @@ export const BulkUpdateOutreachModal: React.FC<BulkUpdateOutreachModalProps> = (
         updates.nextFollowUpDate = followUpDate;
       } else if (followUpMode === "clear") {
         updates.nextFollowUpDate = "";
+      }
+
+      if (hasDatasetUpdate) {
+        if (datasetMode === "set" && customDataset.trim()) {
+          updates.dataset = customDataset.trim();
+        } else if (datasetMode === "clear") {
+          updates.dataset = "";
+        }
       }
 
       const noteToLog = hasTouchpointUpdate ? touchpointNote.trim() : undefined;
@@ -446,7 +461,45 @@ export const BulkUpdateOutreachModal: React.FC<BulkUpdateOutreachModalProps> = (
             </div>
           </div>
 
-          {/* 4. Touchpoint Note (Optional Bulk Activity Log) */}
+          {/* 4. Dataset / Cohort Assignment */}
+          <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/40 space-y-2">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+              <Database className="w-3.5 h-3.5 inline mr-1 text-slate-400" />
+              Dataset / Cohort Assignment
+            </label>
+            <div className="flex items-center space-x-2">
+              <select
+                value={datasetMode}
+                onChange={(e) => setDatasetMode(e.target.value as "keep" | "set" | "clear")}
+                className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              >
+                <option value="keep">Keep Current Dataset</option>
+                <option value="set">Assign Dataset</option>
+                <option value="clear">Clear Dataset (None)</option>
+              </select>
+              {datasetMode === "set" && (
+                <input
+                  type="text"
+                  value={customDataset}
+                  onChange={(e) => setCustomDataset(e.target.value)}
+                  placeholder="e.g. Q1_SaaS_Founders, Apollo_March"
+                  className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-blue-500 bg-blue-50/40 dark:bg-blue-950/30 text-slate-900 dark:text-white font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+              )}
+            </div>
+            {datasetMode === "set" && (
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                All selected leads will be grouped under this dataset label.
+              </p>
+            )}
+            {datasetMode === "clear" && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                The dataset tag will be removed from all selected leads.
+              </p>
+            )}
+          </div>
+
+          {/* 5. Touchpoint Note (Optional Bulk Activity Log) */}
           <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/40 space-y-2">
             <label className="flex items-center space-x-2 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer">
               <input
@@ -519,6 +572,11 @@ export const BulkUpdateOutreachModal: React.FC<BulkUpdateOutreachModalProps> = (
                   {hasFollowUpUpdate && (
                     <span className="px-2 py-0.5 rounded-md bg-rose-100 dark:bg-rose-900/60 text-rose-800 dark:text-rose-300 font-medium text-[11px]">
                       Follow-Up: {followUpMode === "clear" ? "Cleared" : followUpDate}
+                    </span>
+                  )}
+                  {hasDatasetUpdate && (
+                    <span className="px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-300 font-medium text-[11px]">
+                      Dataset: {datasetMode === "clear" ? "Cleared" : customDataset}
                     </span>
                   )}
                   {hasTouchpointUpdate && (
