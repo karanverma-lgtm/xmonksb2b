@@ -53,6 +53,7 @@ import {
   DOCUMENT_CATEGORIES,
   getCategoryConfig,
   libraryDocToEmailAttachment,
+  isDocumentVisibleToUser,
 } from "@/types/library";
 import {
   subscribeToLibraryDocuments,
@@ -84,12 +85,19 @@ export const LibraryTab: React.FC<LibraryTabProps> = ({
   const [documents, setDocuments] = useState<LibraryDocument[]>(() => getStoredLocalLibraryDocs());
   const [isFirebaseSyncing, setIsFirebaseSyncing] = useState<boolean>(true);
 
+  // User permission check: Admin has unified cross-team access; regular users only see their own files
+  const isUserAdmin =
+    isAdmin ||
+    currentUser?.username?.toLowerCase() === "admin" ||
+    currentUser?.role?.toLowerCase().includes("admin");
+
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [onlyStarred, setOnlyStarred] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<SortOption>("newest");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [adminAuthorFilter, setAdminAuthorFilter] = useState<string>("all");
 
   // Selection for Batch Actions
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
@@ -134,23 +142,60 @@ export const LibraryTab: React.FC<LibraryTabProps> = ({
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  // KPI Calculations
+  // Distinct team members present in catalog (for admin selector)
+  const teamMembers = useMemo(() => {
+    const set = new Set<string>();
+    documents.forEach((d) => {
+      if (d.uploadedBy?.trim()) set.add(d.uploadedBy.trim());
+    });
+    return Array.from(set).sort();
+  }, [documents]);
+
+  // Scoped documents: Admin sees unified resources (or filtered by team member); standard user ONLY sees their uploaded collateral
+  const scopedDocuments = useMemo(() => {
+    if (!isUserAdmin) {
+      return documents.filter((doc) =>
+        isDocumentVisibleToUser(
+          doc,
+          currentUser?.username,
+          currentUser?.email,
+          currentUser?.name,
+          false
+        )
+      );
+    }
+
+    // Admin user has unified access
+    if (adminAuthorFilter === "all") {
+      return documents;
+    }
+
+    const key = adminAuthorFilter.toLowerCase().trim();
+    return documents.filter(
+      (doc) =>
+        (doc.owner && doc.owner.toLowerCase() === key) ||
+        (doc.uploadedBy && doc.uploadedBy.toLowerCase() === key) ||
+        (doc.uploadedByEmail && doc.uploadedByEmail.toLowerCase() === key)
+    );
+  }, [documents, isUserAdmin, adminAuthorFilter, currentUser]);
+
+  // KPI Calculations based on user-scoped documents
   const stats = useMemo(() => {
-    const totalDocs = documents.length;
-    const totalBytes = documents.reduce((acc, d) => acc + (d.fileSizeBytes || 0), 0);
-    const totalStarred = documents.filter((d) => d.isStarred).length;
-    const totalUses = documents.reduce((acc, d) => acc + (d.useCount || 0), 0);
+    const totalDocs = scopedDocuments.length;
+    const totalBytes = scopedDocuments.reduce((acc, d) => acc + (d.fileSizeBytes || 0), 0);
+    const totalStarred = scopedDocuments.filter((d) => d.isStarred).length;
+    const totalUses = scopedDocuments.reduce((acc, d) => acc + (d.useCount || 0), 0);
     return {
       totalDocs,
       totalBytesFormatted: formatBytes(totalBytes),
       totalStarred,
       totalUses,
     };
-  }, [documents]);
+  }, [scopedDocuments]);
 
   // Filtered & Sorted Documents
   const processedDocuments = useMemo(() => {
-    let result = documents.filter((doc) => {
+    let result = scopedDocuments.filter((doc) => {
       if (onlyStarred && !doc.isStarred) return false;
       if (selectedCategory !== "all" && doc.category !== selectedCategory) return false;
 
@@ -175,7 +220,7 @@ export const LibraryTab: React.FC<LibraryTabProps> = ({
     });
 
     return result;
-  }, [documents, searchQuery, selectedCategory, onlyStarred, sortBy]);
+  }, [scopedDocuments, searchQuery, selectedCategory, onlyStarred, sortBy]);
 
   // Selection Helpers
   const toggleSelectDoc = (id: string) => {
@@ -231,6 +276,7 @@ export const LibraryTab: React.FC<LibraryTabProps> = ({
 
     const authorName = currentUser?.name || "Amit Shelly";
     const authorEmail = currentUser?.email || "amit@xmonks.com";
+    const authorOwner = currentUser?.username?.toLowerCase() || "amit";
 
     try {
       for (let i = 0; i < uploadFiles.length; i++) {
@@ -247,6 +293,7 @@ export const LibraryTab: React.FC<LibraryTabProps> = ({
           tags: parsedTags,
           uploadedBy: authorName,
           uploadedByEmail: authorEmail,
+          owner: authorOwner,
         });
       }
 
@@ -357,7 +404,7 @@ export const LibraryTab: React.FC<LibraryTabProps> = ({
         <div className="absolute top-0 right-0 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
           <div className="space-y-2">
-            <div className="flex items-center space-x-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="px-3 py-1 bg-purple-500/20 text-purple-300 rounded-full text-[11px] font-black uppercase tracking-wider border border-purple-500/30 flex items-center space-x-1.5">
                 <FolderOpen className="w-3.5 h-3.5" />
                 <span>Enterprise Collateral Vault</span>
@@ -365,6 +412,17 @@ export const LibraryTab: React.FC<LibraryTabProps> = ({
               <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 rounded-full text-[10px] font-bold border border-emerald-500/30">
                 Any Format • Cloudflare R2
               </span>
+              {isUserAdmin ? (
+                <span className="px-2.5 py-0.5 bg-amber-500/20 text-amber-300 rounded-full text-[10px] font-black border border-amber-500/40 flex items-center space-x-1">
+                  <Shield className="w-3 h-3 text-amber-400" />
+                  <span>👑 Unified Admin View ({documents.length} Total Files)</span>
+                </span>
+              ) : (
+                <span className="px-2.5 py-0.5 bg-blue-500/20 text-blue-300 rounded-full text-[10px] font-bold border border-blue-500/40 flex items-center space-x-1">
+                  <User className="w-3 h-3 text-blue-400" />
+                  <span>Personal Library ({currentUser?.name || currentUser?.username || "You"})</span>
+                </span>
+              )}
             </div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-center space-x-2.5">
               <span>Document Library</span>
@@ -385,8 +443,8 @@ export const LibraryTab: React.FC<LibraryTabProps> = ({
             </button>
 
             <button
-              onClick={() => exportLibraryMetadataToCSV(documents)}
-              title="Export all document metadata to CSV"
+              onClick={() => exportLibraryMetadataToCSV(scopedDocuments)}
+              title="Export visible document metadata to CSV"
               className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl border border-white/10 text-xs font-bold transition flex items-center space-x-1.5"
             >
               <FileDown className="w-4 h-4" />
@@ -445,7 +503,7 @@ export const LibraryTab: React.FC<LibraryTabProps> = ({
 
       {/* Controls & Filter Bar */}
       <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-        {/* Row 1: Search, Starred, Sort, View Toggle */}
+        {/* Row 1: Search, Starred, Sort, Admin Filter, View Toggle */}
         <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
           <div className="relative flex-1">
             <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -466,7 +524,24 @@ export const LibraryTab: React.FC<LibraryTabProps> = ({
             )}
           </div>
 
-          <div className="flex items-center space-x-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {/* Admin Unified / Team Member Selector */}
+            {isUserAdmin && (
+              <select
+                value={adminAuthorFilter}
+                onChange={(e) => setAdminAuthorFilter(e.target.value)}
+                className="px-3 py-2 text-xs font-bold bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-2xl text-amber-900 dark:text-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                title="Filter resources by team member or view unified library"
+              >
+                <option value="all">👑 All Team Members (Unified)</option>
+                {teamMembers.map((member) => (
+                  <option key={member} value={member}>
+                    👤 {member}
+                  </option>
+                ))}
+              </select>
+            )}
+
             {/* Starred filter button */}
             <button
               onClick={() => setOnlyStarred(!onlyStarred)}
@@ -531,10 +606,10 @@ export const LibraryTab: React.FC<LibraryTabProps> = ({
                 : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900"
             }`}
           >
-            All Collateral ({documents.length})
+            All Collateral ({scopedDocuments.length})
           </button>
           {DOCUMENT_CATEGORIES.map((cat) => {
-            const count = documents.filter((d) => d.category === cat.id).length;
+            const count = scopedDocuments.filter((d) => d.category === cat.id).length;
             return (
               <button
                 key={cat.id}

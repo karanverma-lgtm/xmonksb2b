@@ -2009,6 +2009,8 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                     attachments={emailAttachments}
                     onChange={setEmailAttachments}
                     maxAttachments={6}
+                    currentUser={currentUser}
+                    isAdmin={currentUser?.username?.toLowerCase() === "admin" || currentUser?.role?.toLowerCase().includes("admin")}
                     label="Attach Files (PDF, Deck, Document, Spreadsheet - up to 6)"
                     description="Upload approach notes, brochures, pitch decks, PDFs, or files (up to 6 files, 25MB each)."
                     className="p-3 bg-slate-50 dark:bg-slate-850/60 rounded-xl border border-slate-200 dark:border-slate-750"

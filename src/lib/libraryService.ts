@@ -32,6 +32,7 @@ export const SEED_LIBRARY_DOCUMENTS: LibraryDocument[] = [
     downloadUrl: "/api/library/download?key=" + encodeURIComponent("b2bxmonks/library/seed_xMonks_Corporate_Credentials_2026.pdf"),
     uploadedBy: "Amit Shelly",
     uploadedByEmail: "amit@xmonks.com",
+    owner: "amit",
     uploadedAt: "2026-01-10T10:00:00.000Z",
     uploadedAtMs: 1768039200000,
     tags: ["credentials", "brochure", "overview", "icf"],
@@ -53,6 +54,7 @@ export const SEED_LIBRARY_DOCUMENTS: LibraryDocument[] = [
     downloadUrl: "/api/library/download?key=" + encodeURIComponent("b2bxmonks/library/seed_Executive_Coaching_Master_Pitch_Deck.pdf"),
     uploadedBy: "Amit Shelly",
     uploadedByEmail: "amit@xmonks.com",
+    owner: "amit",
     uploadedAt: "2026-01-15T11:30:00.000Z",
     uploadedAtMs: 1768476600000,
     tags: ["pitch deck", "executive coaching", "cxo", "c-suite"],
@@ -74,6 +76,7 @@ export const SEED_LIBRARY_DOCUMENTS: LibraryDocument[] = [
     downloadUrl: "/api/library/download?key=" + encodeURIComponent("b2bxmonks/library/seed_LD_Transformation_Enterprise_Architecture.pptx"),
     uploadedBy: "Ruby Dayal",
     uploadedByEmail: "ruby.dayal@xmonks.com",
+    owner: "ruby",
     uploadedAt: "2026-01-20T16:00:00.000Z",
     uploadedAtMs: 1768924800000,
     tags: ["l&d", "transformation", "presentation", "cohorts"],
@@ -95,6 +98,7 @@ export const SEED_LIBRARY_DOCUMENTS: LibraryDocument[] = [
     downloadUrl: "/api/library/download?key=" + encodeURIComponent("b2bxmonks/library/seed_TASC_Inhouse_Solutions_Brochure.pdf"),
     uploadedBy: "Gaurav",
     uploadedByEmail: "gaurav@xmonks.com",
+    owner: "gaurav",
     uploadedAt: "2026-02-05T09:45:00.000Z",
     uploadedAtMs: 1770284700000,
     tags: ["tasc", "inhouse", "talent", "advisory"],
@@ -116,6 +120,7 @@ export const SEED_LIBRARY_DOCUMENTS: LibraryDocument[] = [
     downloadUrl: "/api/library/download?key=" + encodeURIComponent("b2bxmonks/library/seed_xMonks_Assessments_Diagnostics_Catalog.pdf"),
     uploadedBy: "Preeti",
     uploadedByEmail: "preeti@xmonks.com",
+    owner: "preeti",
     uploadedAt: "2026-02-12T14:15:00.000Z",
     uploadedAtMs: 1770905700000,
     tags: ["assessments", "psychometrics", "360", "eq"],
@@ -137,6 +142,7 @@ export const SEED_LIBRARY_DOCUMENTS: LibraryDocument[] = [
     downloadUrl: "/api/library/download?key=" + encodeURIComponent("b2bxmonks/library/seed_Enterprise_Commercial_Proposal_SLA_Template.docx"),
     uploadedBy: "Admin User",
     uploadedByEmail: "sales@xmonks.com",
+    owner: "admin",
     uploadedAt: "2026-02-18T12:00:00.000Z",
     uploadedAtMs: 1771416000000,
     tags: ["proposal", "sla", "contract", "legal"],
@@ -158,6 +164,7 @@ export const SEED_LIBRARY_DOCUMENTS: LibraryDocument[] = [
     downloadUrl: "/api/library/download?key=" + encodeURIComponent("b2bxmonks/library/seed_Enterprise_Case_Studies_ROI_Impact.pdf"),
     uploadedBy: "Amit Shelly",
     uploadedByEmail: "amit@xmonks.com",
+    owner: "amit",
     uploadedAt: "2026-02-25T15:20:00.000Z",
     uploadedAtMs: 1772032800000,
     tags: ["case study", "roi", "fortune 500", "results"],
@@ -274,6 +281,7 @@ export async function uploadLibraryDocument(
     tags?: string[];
     uploadedBy: string;
     uploadedByEmail?: string;
+    owner?: string;
   }
 ): Promise<LibraryDocument> {
   if (!file) {
@@ -379,6 +387,7 @@ export async function uploadLibraryDocument(
     downloadUrl: uploadResult.downloadUrl,
     uploadedBy: metadata.uploadedBy,
     uploadedByEmail: metadata.uploadedByEmail || "",
+    owner: metadata.owner || metadata.uploadedBy.toLowerCase(),
     uploadedAt: uploadResult.uploadedAt,
     uploadedAtMs: Date.now(),
     tags: metadata.tags || [],

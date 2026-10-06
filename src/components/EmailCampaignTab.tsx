@@ -1359,6 +1359,8 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                   attachments={templateAttachments}
                   onChange={setTemplateAttachments}
                   maxAttachments={6}
+                  currentUser={currentUser}
+                  isAdmin={isAdmin}
                   label="Template Attachments (Saved with Template - up to 6)"
                   description="Attach PDF proposals, pitch decks, enterprise brochures, or documents to this template. Up to 6 files will be saved with this template and automatically attached whenever this template is selected."
                 />
@@ -1595,6 +1597,8 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                 attachments={singleAttachments}
                 onChange={setSingleAttachments}
                 maxAttachments={6}
+                currentUser={currentUser}
+                isAdmin={isAdmin}
                 label="Email Attachments (Up to 6 Files)"
                 description="Attachments loaded from the selected template. You can add extra files (up to 6 total) or remove any before sending."
               />
@@ -1897,6 +1901,8 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                   attachments={bulkAttachments}
                   onChange={setBulkAttachments}
                   maxAttachments={6}
+                  currentUser={currentUser}
+                  isAdmin={isAdmin}
                   label="Campaign Attachments (Up to 6 Files)"
                   description="Attachments loaded from the selected template. Every recipient in this bulk campaign will receive these attached files (up to 6 files)."
                 />

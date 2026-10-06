@@ -27,6 +27,7 @@ export interface LibraryDocument {
   downloadUrl: string;           // Direct download or proxy URL
   uploadedBy: string;            // User name (e.g. "Amit Shelly")
   uploadedByEmail?: string;
+  owner?: string;                // Username identifier e.g. "amit", "preeti", "admin"
   uploadedAt: string;            // ISO timestamp
   uploadedAtMs: number;          // Numeric timestamp for fast sorting
   tags?: string[];               // e.g. ["cxo", "brochure", "2026"]
@@ -34,6 +35,38 @@ export interface LibraryDocument {
   useCount: number;              // Number of times attached to emails
   lastUsedAt?: string;           // ISO timestamp of last email attachment
   isPublic?: boolean;            // Accessible to all sales reps
+}
+
+/**
+ * Helper to check if a document is visible to a given user:
+ * Admin has unified access to all resources;
+ * Non-admin users can ONLY see their own uploaded files.
+ */
+export function isDocumentVisibleToUser(
+  doc: LibraryDocument,
+  username?: string,
+  userEmail?: string,
+  userName?: string,
+  isAdmin: boolean = false
+): boolean {
+  if (isAdmin) return true;
+  if (!username && !userEmail && !userName) return false;
+
+  const cleanUser = (username || "").toLowerCase().trim();
+  const cleanEmail = (userEmail || "").toLowerCase().trim();
+  const cleanName = (userName || "").toLowerCase().trim();
+
+  const docOwner = (doc.owner || "").toLowerCase().trim();
+  const docEmail = (doc.uploadedByEmail || "").toLowerCase().trim();
+  const docName = (doc.uploadedBy || "").toLowerCase().trim();
+
+  // Match by username, email, or user display name
+  if (cleanUser && docOwner && cleanUser === docOwner) return true;
+  if (cleanEmail && docEmail && cleanEmail === docEmail) return true;
+  if (cleanName && docName && cleanName === docName) return true;
+  if (cleanUser && docName && (cleanUser === docName || docName.startsWith(cleanUser) || cleanUser.startsWith(docName))) return true;
+
+  return false;
 }
 
 export interface CategoryConfig {

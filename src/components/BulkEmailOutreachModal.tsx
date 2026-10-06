@@ -1175,6 +1175,8 @@ export const BulkEmailOutreachModal: React.FC<BulkEmailOutreachModalProps> = ({
         }}
         alreadyAttachedIds={attachments.map((a) => a.id).filter(Boolean)}
         maxSelectable={6 - attachments.length}
+        currentUser={currentUser}
+        isAdmin={currentUser?.username?.toLowerCase() === "admin" || currentUser?.role?.toLowerCase().includes("admin")}
       />
     </div>
   );

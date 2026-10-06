@@ -22,6 +22,7 @@ import { uploadEmailAttachment } from "@/lib/emailService";
 import { formatBytes } from "@/lib/formatters";
 import { AttachFromLibraryModal } from "./AttachFromLibraryModal";
 import { incrementDocumentUseCount } from "@/lib/libraryService";
+import { UserAccount } from "@/constants/users";
 
 interface EmailAttachmentManagerProps {
   attachments: EmailAttachment[];
@@ -32,6 +33,8 @@ interface EmailAttachmentManagerProps {
   maxFileSizeMB?: number;
   maxAttachments?: number;
   className?: string;
+  currentUser?: UserAccount | null;
+  isAdmin?: boolean;
 }
 
 export const EmailAttachmentManager: React.FC<EmailAttachmentManagerProps> = ({
@@ -43,6 +46,8 @@ export const EmailAttachmentManager: React.FC<EmailAttachmentManagerProps> = ({
   maxFileSizeMB = 25,
   maxAttachments = 6,
   className = "",
+  currentUser,
+  isAdmin = false,
 }) => {
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -421,6 +426,8 @@ export const EmailAttachmentManager: React.FC<EmailAttachmentManagerProps> = ({
         onAttach={handleAttachFromLibrary}
         alreadyAttachedIds={attachments.map((a) => a.id).filter(Boolean)}
         maxSelectable={maxAttachments - attachments.length}
+        currentUser={currentUser}
+        isAdmin={isAdmin}
       />
     </div>
   );
