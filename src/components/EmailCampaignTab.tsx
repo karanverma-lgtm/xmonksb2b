@@ -31,12 +31,19 @@ import {
   Calendar,
   Flame,
   Paperclip,
+  UserPlus,
+  X,
 } from "lucide-react";
 import { EmailPreviewCard } from "@/components/EmailPreviewCard";
 import { AITemplateGeneratorModal } from "@/components/AITemplateGeneratorModal";
 import { EmailAttachmentManager } from "@/components/EmailAttachmentManager";
 import { EmailAutocompleteInput } from "@/components/EmailAutocompleteInput";
-import { recordUsedEmails } from "@/lib/contactSuggestionService";
+import {
+  ContactSuggestion,
+  getStoredContactSuggestions,
+  subscribeToContactSuggestions,
+  recordUsedEmails,
+} from "@/lib/contactSuggestionService";
 import { Lead } from "@/types/lead";
 import { EmailTemplate, EmailAttachment } from "@/constants/emailTemplates";
 import { formatBytes } from "@/lib/formatters";
@@ -235,10 +242,65 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
   const [bulkSubject, setBulkSubject] = useState<string>("");
   const [bulkHtmlContent, setBulkHtmlContent] = useState<string>("");
   const [bulkAttachments, setBulkAttachments] = useState<EmailAttachment[]>([]);
+  const [bulkCc, setBulkCc] = useState<string>("");
+  const [bulkBcc, setBulkBcc] = useState<string>("");
+  const [showBulkCc, setShowBulkCc] = useState<boolean>(false);
+  const [showBulkBcc, setShowBulkBcc] = useState<boolean>(false);
   const [isSendingBulk, setIsSendingBulk] = useState<boolean>(false);
   const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | null>(null);
   const [bulkStatusMsg, setBulkStatusMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [csvFileName, setCsvFileName] = useState<string>("");
+
+  // Suggested contacts for autofill & dropdown
+  const [suggestedContacts, setSuggestedContacts] = useState<ContactSuggestion[]>(getStoredContactSuggestions());
+
+  useEffect(() => {
+    const unsub = subscribeToContactSuggestions((updated) => {
+      setSuggestedContacts(updated);
+    });
+    return unsub;
+  }, []);
+
+  const handleAddEmailToField = (
+    currentVal: string,
+    setter: (val: string) => void,
+    emailToAdd: string
+  ) => {
+    if (!emailToAdd) return;
+    const cleanEmail = emailToAdd.trim().toLowerCase();
+    const existing = currentVal
+      .split(/[,;\s]+/)
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+
+    if (existing.includes(cleanEmail)) {
+      return;
+    }
+
+    const trimmed = currentVal.trim().replace(/[,;]+$/, "");
+    const next = trimmed ? `${trimmed}, ${cleanEmail}` : cleanEmail;
+    setter(next);
+  };
+
+  const handleToggleEmailInField = (
+    currentVal: string,
+    setter: (val: string) => void,
+    email: string
+  ) => {
+    const cleanEmail = email.trim().toLowerCase();
+    const existing = currentVal
+      .split(/[,;\s]+/)
+      .map((e) => e.trim())
+      .filter(Boolean);
+
+    if (existing.some((e) => e.toLowerCase() === cleanEmail)) {
+      const filtered = existing.filter((e) => e.toLowerCase() !== cleanEmail);
+      setter(filtered.join(", "));
+    } else {
+      const trimmed = currentVal.trim().replace(/[,;]+$/, "");
+      setter(trimmed ? `${trimmed}, ${cleanEmail}` : cleanEmail);
+    }
+  };
 
   // Campaigns & Logs State
   const [campaigns, setCampaigns] = useState<EmailCampaign[]>([]);
@@ -702,7 +764,13 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
         htmlContent: bulkHtmlContent,
         smtpConfig: activeSender,
         attachments: bulkAttachments,
+        cc: bulkCc || undefined,
+        bcc: bulkBcc || undefined,
       });
+
+      if (bulkCc || bulkBcc) {
+        recordUsedEmails([bulkCc, bulkBcc]);
+      }
 
       setBulkProgress({ current: targetRecipients.length, total: targetRecipients.length });
 
@@ -1501,54 +1569,178 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
           {(showSingleCc || showSingleBcc) && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
               {showSingleCc && (
-                <div>
-                  <div className="flex items-center justify-between mb-1">
+                <div className="p-3 bg-slate-50/80 dark:bg-slate-900/50 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
                     <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
                       CC Recipients
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSingleCc("");
-                        setShowSingleCc(false);
-                      }}
-                      className="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                    >
-                      Remove
-                    </button>
+                    <div className="flex items-center space-x-2">
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            handleAddEmailToField(singleCc, setSingleCc, e.target.value);
+                          }
+                        }}
+                        className="px-2 py-0.5 text-[11px] font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-indigo-600 dark:text-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                      >
+                        <option value="">▼ Select CC...</option>
+                        <optgroup label="Core Team & Leadership">
+                          {suggestedContacts
+                            .filter(
+                              (c) =>
+                                c.tag === "Core Team" ||
+                                c.tag === "Leadership" ||
+                                c.tag === "Sales Manager" ||
+                                c.tag === "Enterprise Sales"
+                            )
+                            .map((c) => (
+                              <option key={c.id || c.email} value={c.email}>
+                                👤 {c.name} ({c.email})
+                              </option>
+                            ))}
+                        </optgroup>
+                        <optgroup label="All Contacts">
+                          {suggestedContacts
+                            .filter(
+                              (c) =>
+                                c.tag !== "Core Team" &&
+                                c.tag !== "Leadership" &&
+                                c.tag !== "Sales Manager" &&
+                                c.tag !== "Enterprise Sales"
+                            )
+                            .map((c) => (
+                              <option key={c.id || c.email} value={c.email}>
+                                ✉️ {c.name} ({c.email})
+                              </option>
+                            ))}
+                        </optgroup>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSingleCc("");
+                          setShowSingleCc(false);
+                        }}
+                        className="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
                   <EmailAutocompleteInput
                     value={singleCc}
                     onChange={setSingleCc}
                     placeholder="Type name or email, e.g. Preeti, Karan, Gaurav..."
-                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none font-medium"
+                    className="w-full px-3 py-1.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none font-medium"
                   />
+                  <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                    {suggestedContacts.slice(0, 5).map((c) => {
+                      const isAdded = singleCc.toLowerCase().includes(c.email.toLowerCase());
+                      return (
+                        <button
+                          key={c.id || c.email}
+                          type="button"
+                          onClick={() => handleToggleEmailInField(singleCc, setSingleCc, c.email)}
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-bold border transition ${
+                            isAdded
+                              ? "bg-indigo-100 dark:bg-indigo-950/80 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300"
+                              : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-indigo-300"
+                          }`}
+                        >
+                          {isAdded ? "✓" : "+"} {c.name.split(" ")[0]}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
               {showSingleBcc && (
-                <div>
-                  <div className="flex items-center justify-between mb-1">
+                <div className="p-3 bg-slate-50/80 dark:bg-slate-900/50 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
                     <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
                       BCC Recipients
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSingleBcc("");
-                        setShowSingleBcc(false);
-                      }}
-                      className="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                    >
-                      Remove
-                    </button>
+                    <div className="flex items-center space-x-2">
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            handleAddEmailToField(singleBcc, setSingleBcc, e.target.value);
+                          }
+                        }}
+                        className="px-2 py-0.5 text-[11px] font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-indigo-600 dark:text-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                      >
+                        <option value="">▼ Select BCC...</option>
+                        <optgroup label="Core Team & Leadership">
+                          {suggestedContacts
+                            .filter(
+                              (c) =>
+                                c.tag === "Core Team" ||
+                                c.tag === "Leadership" ||
+                                c.tag === "Sales Manager" ||
+                                c.tag === "Enterprise Sales"
+                            )
+                            .map((c) => (
+                              <option key={c.id || c.email} value={c.email}>
+                                👤 {c.name} ({c.email})
+                              </option>
+                            ))}
+                        </optgroup>
+                        <optgroup label="All Contacts">
+                          {suggestedContacts
+                            .filter(
+                              (c) =>
+                                c.tag !== "Core Team" &&
+                                c.tag !== "Leadership" &&
+                                c.tag !== "Sales Manager" &&
+                                c.tag !== "Enterprise Sales"
+                            )
+                            .map((c) => (
+                              <option key={c.id || c.email} value={c.email}>
+                                ✉️ {c.name} ({c.email})
+                              </option>
+                            ))}
+                        </optgroup>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSingleBcc("");
+                          setShowSingleBcc(false);
+                        }}
+                        className="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
                   <EmailAutocompleteInput
                     value={singleBcc}
                     onChange={setSingleBcc}
                     placeholder="Type name or email for blind copy..."
-                    className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none font-medium"
+                    className="w-full px-3 py-1.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none font-medium"
                   />
+                  <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                    {suggestedContacts.slice(0, 5).map((c) => {
+                      const isAdded = singleBcc.toLowerCase().includes(c.email.toLowerCase());
+                      return (
+                        <button
+                          key={c.id || c.email}
+                          type="button"
+                          onClick={() => handleToggleEmailInField(singleBcc, setSingleBcc, c.email)}
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-bold border transition ${
+                            isAdded
+                              ? "bg-indigo-100 dark:bg-indigo-950/80 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300"
+                              : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-indigo-300"
+                          }`}
+                        >
+                          {isAdded ? "✓" : "+"} {c.name.split(" ")[0]}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
@@ -1857,6 +2049,230 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
                 </div>
               </div>
             )}
+
+            {/* Bulk CC & BCC Options with Autofill & Dropdown Select */}
+            <div className="space-y-3 border-t border-slate-200 dark:border-slate-800 pt-3">
+              <div className="flex items-center space-x-3 text-xs">
+                <span className="font-bold text-slate-600 dark:text-slate-300">Campaign CC & BCC:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (showBulkCc) {
+                      setBulkCc("");
+                      setShowBulkCc(false);
+                    } else {
+                      setShowBulkCc(true);
+                    }
+                  }}
+                  className={`font-bold transition cursor-pointer flex items-center space-x-1 ${
+                    showBulkCc
+                      ? "text-purple-600 dark:text-purple-400 font-extrabold"
+                      : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                  }`}
+                >
+                  <span>{showBulkCc ? "- Remove CC" : "+ Add CC"}</span>
+                </button>
+                <span className="text-slate-300 dark:text-slate-700">|</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (showBulkBcc) {
+                      setBulkBcc("");
+                      setShowBulkBcc(false);
+                    } else {
+                      setShowBulkBcc(true);
+                    }
+                  }}
+                  className={`font-bold transition cursor-pointer flex items-center space-x-1 ${
+                    showBulkBcc
+                      ? "text-purple-600 dark:text-purple-400 font-extrabold"
+                      : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                  }`}
+                >
+                  <span>{showBulkBcc ? "- Remove BCC" : "+ Add BCC"}</span>
+                </button>
+              </div>
+
+              {/* Bulk CC Card */}
+              {showBulkCc && (
+                <div className="p-3.5 bg-slate-50/80 dark:bg-slate-900/60 rounded-2xl border border-purple-200 dark:border-purple-900/40 space-y-2 animate-in fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center space-x-2">
+                      <span className="font-extrabold text-[11px] uppercase tracking-wider text-purple-600 dark:text-purple-400">
+                        Cc:
+                      </span>
+                      <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        Carbon Copy Recipients
+                      </span>
+                    </div>
+
+                    <div className="flex items-center space-x-1.5">
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            handleAddEmailToField(bulkCc, setBulkCc, e.target.value);
+                          }
+                        }}
+                        className="px-2.5 py-1 text-xs font-bold bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-800/80 rounded-xl text-purple-700 dark:text-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer shadow-2xs"
+                      >
+                        <option value="">▼ Select Email to CC...</option>
+                        <optgroup label="Core Team & Leadership">
+                          {suggestedContacts
+                            .filter(
+                              (c) =>
+                                c.tag === "Core Team" ||
+                                c.tag === "Leadership" ||
+                                c.tag === "Sales Manager" ||
+                                c.tag === "Enterprise Sales"
+                            )
+                            .map((c) => (
+                              <option key={c.id || c.email} value={c.email}>
+                                👤 {c.name} ({c.email})
+                              </option>
+                            ))}
+                        </optgroup>
+                        <optgroup label="All Organization Contacts">
+                          {suggestedContacts
+                            .filter(
+                              (c) =>
+                                c.tag !== "Core Team" &&
+                                c.tag !== "Leadership" &&
+                                c.tag !== "Sales Manager" &&
+                                c.tag !== "Enterprise Sales"
+                            )
+                            .map((c) => (
+                              <option key={c.id || c.email} value={c.email}>
+                                ✉️ {c.name} ({c.email})
+                              </option>
+                            ))}
+                        </optgroup>
+                      </select>
+                    </div>
+                  </div>
+
+                  <EmailAutocompleteInput
+                    value={bulkCc}
+                    onChange={setBulkCc}
+                    placeholder="Type name or email to autofill (e.g. Preeti, Gaurav, Karan)..."
+                    className="w-full px-3 py-2 text-xs font-medium rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-2xs"
+                  />
+
+                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                    <span className="text-[10px] font-semibold text-slate-400">Quick add:</span>
+                    {suggestedContacts.slice(0, 7).map((c) => {
+                      const isAdded = bulkCc.toLowerCase().includes(c.email.toLowerCase());
+                      return (
+                        <button
+                          key={c.id || c.email}
+                          type="button"
+                          onClick={() => handleToggleEmailInField(bulkCc, setBulkCc, c.email)}
+                          className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition flex items-center space-x-1 cursor-pointer ${
+                            isAdded
+                              ? "bg-purple-100 dark:bg-purple-950/80 border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300"
+                              : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-purple-300 hover:text-purple-600"
+                          }`}
+                          title={isAdded ? `Click to remove ${c.name}` : `Click to add ${c.name} (${c.email})`}
+                        >
+                          <span>{isAdded ? "✓" : "+"}</span>
+                          <span>{c.name.split(" ")[0]}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Bulk BCC Card */}
+              {showBulkBcc && (
+                <div className="p-3.5 bg-slate-50/80 dark:bg-slate-900/60 rounded-2xl border border-purple-200 dark:border-purple-900/40 space-y-2 animate-in fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center space-x-2">
+                      <span className="font-extrabold text-[11px] uppercase tracking-wider text-purple-600 dark:text-purple-400">
+                        Bcc:
+                      </span>
+                      <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        Blind Carbon Copy (Undisclosed)
+                      </span>
+                    </div>
+
+                    <div className="flex items-center space-x-1.5">
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            handleAddEmailToField(bulkBcc, setBulkBcc, e.target.value);
+                          }
+                        }}
+                        className="px-2.5 py-1 text-xs font-bold bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-800/80 rounded-xl text-purple-700 dark:text-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer shadow-2xs"
+                      >
+                        <option value="">▼ Select Email to BCC...</option>
+                        <optgroup label="Core Team & Leadership">
+                          {suggestedContacts
+                            .filter(
+                              (c) =>
+                                c.tag === "Core Team" ||
+                                c.tag === "Leadership" ||
+                                c.tag === "Sales Manager" ||
+                                c.tag === "Enterprise Sales"
+                            )
+                            .map((c) => (
+                              <option key={c.id || c.email} value={c.email}>
+                                👤 {c.name} ({c.email})
+                              </option>
+                            ))}
+                        </optgroup>
+                        <optgroup label="All Organization Contacts">
+                          {suggestedContacts
+                            .filter(
+                              (c) =>
+                                c.tag !== "Core Team" &&
+                                c.tag !== "Leadership" &&
+                                c.tag !== "Sales Manager" &&
+                                c.tag !== "Enterprise Sales"
+                            )
+                            .map((c) => (
+                              <option key={c.id || c.email} value={c.email}>
+                                ✉️ {c.name} ({c.email})
+                              </option>
+                            ))}
+                        </optgroup>
+                      </select>
+                    </div>
+                  </div>
+
+                  <EmailAutocompleteInput
+                    value={bulkBcc}
+                    onChange={setBulkBcc}
+                    placeholder="Type name or email for blind copy (e.g. sales@xmonks.com)..."
+                    className="w-full px-3 py-2 text-xs font-medium rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-2xs"
+                  />
+
+                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                    <span className="text-[10px] font-semibold text-slate-400">Quick add:</span>
+                    {suggestedContacts.slice(0, 7).map((c) => {
+                      const isAdded = bulkBcc.toLowerCase().includes(c.email.toLowerCase());
+                      return (
+                        <button
+                          key={c.id || c.email}
+                          type="button"
+                          onClick={() => handleToggleEmailInField(bulkBcc, setBulkBcc, c.email)}
+                          className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition flex items-center space-x-1 cursor-pointer ${
+                            isAdded
+                              ? "bg-purple-100 dark:bg-purple-950/80 border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300"
+                              : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-purple-300 hover:text-purple-600"
+                          }`}
+                          title={isAdded ? `Click to remove ${c.name}` : `Click to add ${c.name} (${c.email})`}
+                        >
+                          <span>{isAdded ? "✓" : "+"}</span>
+                          <span>{c.name.split(" ")[0]}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Campaign Template Selection Dropdown */}
             <div className="space-y-4 border-t border-slate-200 dark:border-slate-800 pt-4">

@@ -50,7 +50,12 @@ import {
 import { EmailTemplate, EmailAttachment } from "@/constants/emailTemplates";
 import { EmailAttachmentManager } from "./EmailAttachmentManager";
 import { EmailAutocompleteInput } from "./EmailAutocompleteInput";
-import { recordUsedEmails } from "@/lib/contactSuggestionService";
+import {
+  ContactSuggestion,
+  getStoredContactSuggestions,
+  subscribeToContactSuggestions,
+  recordUsedEmails,
+} from "@/lib/contactSuggestionService";
 import { ModernTimePicker } from "./ModernTimePicker";
 
 function getTodayDateString(): string {
@@ -248,6 +253,32 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
   const [emailBcc, setEmailBcc] = useState("");
   const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
+  const [suggestedContacts, setSuggestedContacts] = useState<ContactSuggestion[]>(getStoredContactSuggestions());
+
+  useEffect(() => {
+    const unsub = subscribeToContactSuggestions((updated) => {
+      setSuggestedContacts(updated);
+    });
+    return unsub;
+  }, []);
+
+  const handleAddEmailToField = (
+    currentVal: string,
+    setter: (val: string) => void,
+    emailToAdd: string
+  ) => {
+    if (!emailToAdd) return;
+    const cleanEmail = emailToAdd.trim().toLowerCase();
+    const existing = currentVal
+      .split(/[,;\s]+/)
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+
+    if (existing.includes(cleanEmail)) return;
+
+    const trimmed = currentVal.trim().replace(/[,;]+$/, "");
+    setter(trimmed ? `${trimmed}, ${cleanEmail}` : cleanEmail);
+  };
 
   // Load templates on modal open
   useEffect(() => {
@@ -1883,49 +1914,139 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
 
                   {/* CC Input Row */}
                   {showCc && (
-                    <div className="flex items-center space-x-2 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
-                      <span className="font-extrabold text-purple-600 dark:text-purple-400 uppercase text-[10px] w-9">Cc:</span>
+                    <div className="space-y-1.5 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-purple-600 dark:text-purple-400 uppercase text-[10px]">Cc: Carbon Copy</span>
+                        <div className="flex items-center space-x-1.5">
+                          <select
+                            value=""
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                handleAddEmailToField(emailCc, setEmailCc, e.target.value);
+                              }
+                            }}
+                            className="px-2 py-0.5 text-[10px] font-bold bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-800/80 rounded-lg text-purple-700 dark:text-purple-300 focus:outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer"
+                          >
+                            <option value="">▼ Select CC Contact...</option>
+                            <optgroup label="Core Team & Leadership">
+                              {suggestedContacts
+                                .filter(
+                                  (c) =>
+                                    c.tag === "Core Team" ||
+                                    c.tag === "Leadership" ||
+                                    c.tag === "Sales Manager" ||
+                                    c.tag === "Enterprise Sales"
+                                )
+                                .map((c) => (
+                                  <option key={c.id || c.email} value={c.email}>
+                                    👤 {c.name} ({c.email})
+                                  </option>
+                                ))}
+                            </optgroup>
+                            <optgroup label="All Contacts">
+                              {suggestedContacts
+                                .filter(
+                                  (c) =>
+                                    c.tag !== "Core Team" &&
+                                    c.tag !== "Leadership" &&
+                                    c.tag !== "Sales Manager" &&
+                                    c.tag !== "Enterprise Sales"
+                                )
+                                .map((c) => (
+                                  <option key={c.id || c.email} value={c.email}>
+                                    ✉️ {c.name} ({c.email})
+                                  </option>
+                                ))}
+                            </optgroup>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEmailCc("");
+                              setShowCc(false);
+                            }}
+                            className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-700/50"
+                            title="Remove CC field"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
                       <EmailAutocompleteInput
                         value={emailCc}
                         onChange={setEmailCc}
                         placeholder="Add CC email addresses (type name or email, e.g. Preeti, Karan, Gaurav)..."
                         className="w-full px-2.5 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
                       />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEmailCc("");
-                          setShowCc(false);
-                        }}
-                        className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-700/50"
-                        title="Remove CC field"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
                     </div>
                   )}
 
                   {/* BCC Input Row */}
                   {showBcc && (
-                    <div className="flex items-center space-x-2 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
-                      <span className="font-extrabold text-purple-600 dark:text-purple-400 uppercase text-[10px] w-9">Bcc:</span>
+                    <div className="space-y-1.5 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-purple-600 dark:text-purple-400 uppercase text-[10px]">Bcc: Blind Carbon Copy</span>
+                        <div className="flex items-center space-x-1.5">
+                          <select
+                            value=""
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                handleAddEmailToField(emailBcc, setEmailBcc, e.target.value);
+                              }
+                            }}
+                            className="px-2 py-0.5 text-[10px] font-bold bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-800/80 rounded-lg text-purple-700 dark:text-purple-300 focus:outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer"
+                          >
+                            <option value="">▼ Select BCC Contact...</option>
+                            <optgroup label="Core Team & Leadership">
+                              {suggestedContacts
+                                .filter(
+                                  (c) =>
+                                    c.tag === "Core Team" ||
+                                    c.tag === "Leadership" ||
+                                    c.tag === "Sales Manager" ||
+                                    c.tag === "Enterprise Sales"
+                                )
+                                .map((c) => (
+                                  <option key={c.id || c.email} value={c.email}>
+                                    👤 {c.name} ({c.email})
+                                  </option>
+                                ))}
+                            </optgroup>
+                            <optgroup label="All Contacts">
+                              {suggestedContacts
+                                .filter(
+                                  (c) =>
+                                    c.tag !== "Core Team" &&
+                                    c.tag !== "Leadership" &&
+                                    c.tag !== "Sales Manager" &&
+                                    c.tag !== "Enterprise Sales"
+                                )
+                                .map((c) => (
+                                  <option key={c.id || c.email} value={c.email}>
+                                    ✉️ {c.name} ({c.email})
+                                  </option>
+                                ))}
+                            </optgroup>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEmailBcc("");
+                              setShowBcc(false);
+                            }}
+                            className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-700/50"
+                            title="Remove BCC field"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
                       <EmailAutocompleteInput
                         value={emailBcc}
                         onChange={setEmailBcc}
                         placeholder="Add BCC email addresses (blind copy, comma-separated)..."
                         className="w-full px-2.5 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-medium"
                       />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEmailBcc("");
-                          setShowBcc(false);
-                        }}
-                        className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-700/50"
-                        title="Remove BCC field"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
                     </div>
                   )}
 
