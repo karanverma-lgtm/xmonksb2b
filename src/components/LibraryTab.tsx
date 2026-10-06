@@ -833,13 +833,14 @@ export const LibraryTab: React.FC<LibraryTabProps> = ({
                   <div className="flex items-center space-x-1.5">
                     {doc.downloadUrl && (
                       <a
-                        href={doc.downloadUrl}
+                        href={`${doc.downloadUrl}${doc.downloadUrl.includes("?") ? "&" : "?"}download=1`}
                         target="_blank"
                         rel="noreferrer"
-                        title="Download / View document"
+                        download={doc.fileName}
+                        title="Download document"
                         className="p-2 text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
                       >
-                        <ExternalLink className="w-3.5 h-3.5" />
+                        <Download className="w-3.5 h-3.5" />
                       </a>
                     )}
 
@@ -976,9 +977,10 @@ export const LibraryTab: React.FC<LibraryTabProps> = ({
 
                           {doc.downloadUrl && (
                             <a
-                              href={doc.downloadUrl}
+                              href={`${doc.downloadUrl}${doc.downloadUrl.includes("?") ? "&" : "?"}download=1`}
                               target="_blank"
                               rel="noreferrer"
+                              download={doc.fileName}
                               className="p-1.5 text-slate-400 hover:text-purple-600 rounded-lg transition"
                               title="Download"
                             >
@@ -1338,9 +1340,10 @@ export const LibraryTab: React.FC<LibraryTabProps> = ({
               <div className="flex items-center space-x-2">
                 {previewDoc.downloadUrl && (
                   <a
-                    href={previewDoc.downloadUrl}
+                    href={`${previewDoc.downloadUrl}${previewDoc.downloadUrl.includes("?") ? "&" : "?"}download=1`}
                     target="_blank"
                     rel="noreferrer"
+                    download={previewDoc.fileName}
                     className="px-4 py-2 text-xs font-bold bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl transition flex items-center space-x-1.5"
                   >
                     <Download className="w-3.5 h-3.5" />

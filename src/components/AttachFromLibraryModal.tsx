@@ -388,9 +388,10 @@ export const AttachFromLibraryModal: React.FC<AttachFromLibraryModalProps> = ({
                   <div className="flex items-center space-x-1 flex-shrink-0 ml-2" onClick={(e) => e.stopPropagation()}>
                     {doc.downloadUrl && (
                       <a
-                        href={doc.downloadUrl}
+                        href={`${doc.downloadUrl}${doc.downloadUrl.includes("?") ? "&" : "?"}download=1`}
                         target="_blank"
                         rel="noreferrer"
+                        download={doc.fileName}
                         title="Download / View document"
                         className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition"
                       >
