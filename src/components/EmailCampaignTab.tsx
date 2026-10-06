@@ -71,6 +71,7 @@ interface EmailCampaignTabProps {
   isAdmin?: boolean;
   initialRecipient?: { email: string; name?: string; company?: string } | null;
   initialBulkRecipients?: ParsedCSVEmailRecipient[] | null;
+  initialAttachments?: EmailAttachment[] | null;
 }
 
 export interface ParsedCSVEmailRecipient {
@@ -95,6 +96,7 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
   isAdmin = false,
   initialRecipient,
   initialBulkRecipients,
+  initialAttachments,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<"templates" | "single" | "bulk" | "campaigns" | "logs">("templates");
   const [isAIModalOpen, setIsAIModalOpen] = useState<boolean>(false);
@@ -117,6 +119,14 @@ export const EmailCampaignTab: React.FC<EmailCampaignTabProps> = ({
       setActiveSubTab("bulk");
     }
   }, [initialBulkRecipients]);
+
+  // If navigated from Library with prefill attachments
+  useEffect(() => {
+    if (initialAttachments && initialAttachments.length > 0) {
+      setSingleAttachments(initialAttachments);
+      setActiveSubTab("single");
+    }
+  }, [initialAttachments]);
 
   // Sender Capsules State
   const [senderProfiles, setSenderProfiles] = useState<SMTPSenderProfile[]>([]);

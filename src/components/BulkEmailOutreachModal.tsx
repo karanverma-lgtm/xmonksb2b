@@ -26,10 +26,12 @@ import {
   Monitor,
   Smartphone,
   Trash2,
+  FolderOpen,
 } from "lucide-react";
 import { ColdClient, ColdClientStatus, OutreachChannel } from "@/types/outreach";
 import { EmailTemplate, EmailAttachment } from "@/constants/emailTemplates";
 import { UserAccount, getUserProfile } from "@/constants/users";
+import { AttachFromLibraryModal } from "./AttachFromLibraryModal";
 import {
   subscribeToTemplates,
   getAllTemplates,
@@ -145,6 +147,7 @@ export const BulkEmailOutreachModal: React.FC<BulkEmailOutreachModalProps> = ({
   const [htmlContent, setHtmlContent] = useState<string>("");
   const [attachments, setAttachments] = useState<EmailAttachment[]>([]);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState<boolean>(false);
+  const [isLibraryModalOpen, setIsLibraryModalOpen] = useState<boolean>(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   // CC / BCC
@@ -940,16 +943,28 @@ export const BulkEmailOutreachModal: React.FC<BulkEmailOutreachModalProps> = ({
                     </span>
                   </div>
 
-                  <label className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold cursor-pointer shadow-xs transition">
-                    <span>{isUploadingAttachment ? "Uploading..." : "+ Attach Document"}</span>
-                    <input
-                      type="file"
-                      onChange={handleAttachmentUpload}
+                  <div className="flex items-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsLibraryModalOpen(true)}
                       disabled={isUploadingAttachment || attachments.length >= 6}
-                      className="hidden"
-                      accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.png,.jpg,.jpeg"
-                    />
-                  </label>
+                      className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/40 dark:hover:bg-purple-900/70 border border-purple-300 dark:border-purple-800 text-purple-700 dark:text-purple-300 text-xs font-bold transition disabled:opacity-50 cursor-pointer"
+                    >
+                      <FolderOpen className="w-3.5 h-3.5" />
+                      <span>+ From Library</span>
+                    </button>
+
+                    <label className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold cursor-pointer shadow-xs transition">
+                      <span>{isUploadingAttachment ? "Uploading..." : "+ Upload File"}</span>
+                      <input
+                        type="file"
+                        onChange={handleAttachmentUpload}
+                        disabled={isUploadingAttachment || attachments.length >= 6}
+                        className="hidden"
+                        accept="*/*"
+                      />
+                    </label>
+                  </div>
                 </div>
 
                 {uploadError && (
@@ -1136,6 +1151,31 @@ export const BulkEmailOutreachModal: React.FC<BulkEmailOutreachModalProps> = ({
           </div>
         )}
       </div>
+
+      {/* Attach from Library Modal */}
+      <AttachFromLibraryModal
+        isOpen={isLibraryModalOpen}
+        onClose={() => setIsLibraryModalOpen(false)}
+        onAttach={(libAttachments) => {
+          setAttachments((prev) => {
+            const next = [...prev];
+            for (const att of libAttachments) {
+              if (
+                !next.some(
+                  (a) =>
+                    (a.id && a.id === att.id) ||
+                    (a.name === att.name && a.size === att.size)
+                )
+              ) {
+                if (next.length < 6) next.push(att);
+              }
+            }
+            return next;
+          });
+        }}
+        alreadyAttachedIds={attachments.map((a) => a.id).filter(Boolean)}
+        maxSelectable={6 - attachments.length}
+      />
     </div>
   );
 };

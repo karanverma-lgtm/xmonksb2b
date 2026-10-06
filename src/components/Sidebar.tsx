@@ -25,6 +25,7 @@ import {
   X,
   TrendingUp,
   Layers,
+  FolderOpen,
 } from "lucide-react";
 
 import { formatINR } from "@/lib/formatters";
@@ -37,6 +38,7 @@ export type NavTab =
   | "outreach"
   | "analytics"
   | "email"
+  | "library"
   | "prospector"
   | "billing"
   | "developer";
@@ -160,6 +162,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       color: "text-purple-600 dark:text-purple-400",
       activeBg: "bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800",
       hidden: isAccounts,
+    },
+    {
+      id: "library",
+      label: "Library",
+      icon: FolderOpen,
+      color: "text-indigo-600 dark:text-indigo-400",
+      activeBg: "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800",
+      hidden: false,
     },
     {
       id: "prospector",

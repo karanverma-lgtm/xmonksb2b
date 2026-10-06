@@ -42,6 +42,8 @@ import { DeveloperTab } from "@/components/DeveloperTab";
 import { OutreachTab } from "@/components/OutreachTab";
 import { BillingTab } from "@/components/BillingTab";
 import { ProspectorTab } from "@/components/ProspectorTab";
+import { LibraryTab } from "@/components/LibraryTab";
+import { EmailAttachment } from "@/constants/emailTemplates";
 import { ColdClient, ColdClientStatus, OutreachChannel } from "@/types/outreach";
 import {
   subscribeToColdClients,
@@ -131,7 +133,7 @@ export default function Home() {
         const prefs = getLocalPreferences(u.username);
         if (
           prefs?.activeTab &&
-          ["kanban", "table", "outreach", "analytics", "email", "prospector", "billing", "developer"].includes(prefs.activeTab)
+          ["kanban", "table", "outreach", "analytics", "email", "library", "prospector", "billing", "developer"].includes(prefs.activeTab)
         ) {
           if (prefs.activeTab === "developer" && !userIsAdmin) {
             return "kanban";
@@ -189,6 +191,7 @@ export default function Home() {
   const [selectedProgram, setSelectedProgram] = useState("all");
   const [emailTabPrefill, setEmailTabPrefill] = useState<{ email: string; name?: string; company?: string } | null>(null);
   const [emailTabBulkPrefill, setEmailTabBulkPrefill] = useState<ParsedCSVEmailRecipient[] | null>(null);
+  const [emailTabAttachmentsPrefill, setEmailTabAttachmentsPrefill] = useState<EmailAttachment[] | null>(null);
 
   // Load & subscribe to user UI view & filter preferences from Firestore
   useEffect(() => {
@@ -1006,7 +1009,21 @@ export default function Home() {
             isAdmin={isAdmin}
             initialRecipient={emailTabPrefill}
             initialBulkRecipients={emailTabBulkPrefill}
+            initialAttachments={emailTabAttachmentsPrefill}
             onNavigateToDeveloper={isAdmin ? () => handleTabChange("developer") : undefined}
+          />
+        )}
+
+        {activeTab === "library" && (
+          <LibraryTab
+            currentUser={currentUser}
+            isAdmin={isAdmin}
+            onNavigateToEmailWithAttachments={(attachments) => {
+              setEmailTabAttachmentsPrefill(attachments);
+              setEmailTabPrefill(null);
+              setEmailTabBulkPrefill(null);
+              handleTabChange("email");
+            }}
           />
         )}
 
