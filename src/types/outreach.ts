@@ -58,7 +58,8 @@ export interface ColdClient {
   nextFollowUpDate?: string; // YYYY-MM-DD
   convertedLeadId?: string; // Lead ID if converted to pipeline
   sheetRowNumber?: number; // Row index in synced Google Sheet
-  sourceSheet?: string; // Google Sheet name or spreadsheet ID
+  sourceSheet?: string; // Google Sheet name
+  sourceSpreadsheetId?: string; // Google Spreadsheet ID
   companySize?: string; // Company headcount / employee size (from sheets)
   dataset?: string; // Dataset category / cohort / source identifier (e.g. Q1 Tech Founders, CFO Summit, Inbound)
   createdAt: string;

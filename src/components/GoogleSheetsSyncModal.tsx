@@ -15,17 +15,21 @@ import {
   AlertTriangle,
   ArrowRight,
   Info,
+  Sparkles,
+  Layers,
 } from "lucide-react";
 
 interface GoogleSheetsSyncModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser?: { name: string } | null;
+  initialTab?: "script" | "template" | "test" | "dedup";
 }
 
 export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
   isOpen,
   onClose,
+  initialTab = "script",
 }) => {
   const [copiedScript, setCopiedScript] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
@@ -33,11 +37,21 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
   const [copiedCsvTemplate, setCopiedCsvTemplate] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState("");
   const [syncToken, setSyncToken] = useState("xmonks_outreach_sync_2026");
-  const [activeTab, setActiveTab] = useState<"script" | "template" | "test">("script");
+  const [activeTab, setActiveTab] = useState<"script" | "template" | "test" | "dedup">(initialTab);
 
   // Diagnostic test states
   const [testStatus, setTestStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [testResult, setTestResult] = useState<string>("");
+
+  // Deduplication state
+  const [dedupStatus, setDedupStatus] = useState<"idle" | "running" | "success" | "error">("idle");
+  const [dedupResult, setDedupResult] = useState<string>("");
+
+  useEffect(() => {
+    if (isOpen && initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -49,18 +63,19 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
 
   const appScriptCode = `/**
  * ==============================================================================
- * XMONKS B2B CRM - GOOGLE SHEETS REAL-TIME SYNC APPS SCRIPT
+ * XMONKS B2B CRM - GOOGLE SHEETS REAL-TIME SYNC APPS SCRIPT (v2 - Anti-Duplicate)
  * ==============================================================================
  * Live synchronization from Google Sheets directly into Outreach CRM tab.
- * Runs on every edit or batch sync, triggering Firebase live updates!
+ * Includes concurrency locking, trigger cleanup, and auto CRM ID detection
+ * to permanently prevent duplicate leads!
  *
  * HOW TO INSTALL:
  * 1. Open your Google Sheet.
  * 2. In top menu, click: Extensions > Apps Script.
- * 3. Delete any default code and paste this ENTIRE script.
+ * 3. Delete ALL existing code in the editor and paste this ENTIRE script.
  * 4. Verify WEBHOOK_URL and SYNC_TOKEN below.
  * 5. Click the Save icon (💾) or press Ctrl+S / Cmd+S.
- * 6. Refresh your Google Sheet. You will see a new menu: "🚀 Outreach CRM"!
+ * 6. Refresh your Google Sheet. You will see the menu: "🚀 Outreach CRM"!
  * 7. Click: "🚀 Outreach CRM" > "⚙️ Setup Real-Time Edit Trigger".
  * ==============================================================================
  */
@@ -68,7 +83,7 @@ export const GoogleSheetsSyncModal: React.FC<GoogleSheetsSyncModalProps> = ({
 // ⚙️ CONFIGURATION
 const WEBHOOK_URL = "${webhookUrl || "https://YOUR_APP_DOMAIN/api/integrations/google-sheets"}";
 const SYNC_TOKEN = "${syncToken}";
-const TARGET_SHEET_NAME = ""; // Leave empty to sync whichever sheet you edit, or set "Outreach Leads"
+const TARGET_SHEET_NAME = ""; // Leave empty to sync whichever sheet you edit, or set e.g. "Outreach Leads"
 
 /**
  * Custom Menu in Google Sheets
@@ -80,34 +95,44 @@ function onOpen() {
     .addItem("📋 Insert Standard CRM Headers", "insertStandardHeaders")
     .addSeparator()
     .addItem("⚙️ Setup Real-Time Edit Trigger", "setupTriggers")
+    .addItem("🧹 Remove All Triggers (Reset)", "removeAllTriggers")
     .addItem("🔍 Test CRM Connection", "testConnection")
     .addToUi();
 }
 
 /**
- * Setup installable edit trigger so live edits stream directly into CRM
+ * Cleans up existing triggers to prevent multiple executions
  */
-function setupTriggers() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet();
-  const triggers = ScriptApp.getUserTriggers(sheet);
+function removeAllTriggers() {
+  const triggers = ScriptApp.getProjectTriggers();
   for (let i = 0; i < triggers.length; i++) {
-    if (triggers[i].getHandlerFunction() === "handleSheetEdit") {
+    const fn = triggers[i].getHandlerFunction();
+    if (fn === "handleSheetEdit" || fn === "onEdit" || fn === "syncRow") {
       ScriptApp.deleteTrigger(triggers[i]);
     }
   }
+}
 
+/**
+ * Setup clean installable edit trigger so live edits stream directly into CRM
+ */
+function setupTriggers() {
+  removeAllTriggers();
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet();
   ScriptApp.newTrigger("handleSheetEdit")
     .forSpreadsheet(sheet)
     .onEdit()
     .create();
 
   SpreadsheetApp.getUi().alert(
-    "✅ Real-Time Sync Activated!\\n\\nAny prospect edited or added in this sheet will now automatically appear in the Outreach Tab in real time."
+    "✅ Real-Time Sync Activated!\\n\\nExisting triggers were cleaned up and a fresh trigger is installed. Rapid cell typing is now safely locked to prevent duplicates."
   );
 }
 
 /**
- * Real-time event handler called whenever a row is modified
+ * Real-time event handler called whenever a row is modified.
+ * Features concurrency locks, minimum field checks, and auto CRM ID column insertion.
  */
 function handleSheetEdit(e) {
   try {
@@ -126,32 +151,83 @@ function handleSheetEdit(e) {
 
     const actualStartRow = Math.max(2, startRow);
     const actualEndRow = startRow + numRows - 1;
-    const lastCol = sheet.getLastColumn();
+    let lastCol = sheet.getLastColumn();
     if (lastCol < 2) return;
 
     const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
-    const idColIdx = findHeaderIndex(headers, ["crm id", "lead id", "id"]);
+    let idColIdx = findHeaderIndex(headers, ["crm id", "lead id", "id", "prospect id", "outreach id", "client id"]);
 
-    for (let r = actualStartRow; r <= actualEndRow; r++) {
-      const rowValues = sheet.getRange(r, 1, 1, lastCol).getValues()[0];
-      const hasContent = rowValues.some(val => val !== "" && val !== null && val !== undefined);
-      if (!hasContent) continue;
+    // If the edit was solely in the CRM ID column (e.g. script just wrote the ID or user clicked it), DO NOT re-sync
+    if (idColIdx !== -1 && e.range.getColumn() === (idColIdx + 1) && e.range.getNumColumns() === 1) {
+      return;
+    }
 
-      const payload = {
-        action: "sync_row",
-        sheetName: sheet.getName(),
-        rowNumber: r,
-        headers: headers,
-        rowData: rowValues,
-      };
+    // Auto-create CRM ID column if sheet doesn't have one, ensuring IDs are permanently stored
+    if (idColIdx === -1) {
+      lastCol = lastCol + 1;
+      sheet.getRange(1, lastCol).setValue("CRM ID").setFontWeight("bold").setBackground("#e8f0fe");
+      headers.push("CRM ID");
+      idColIdx = lastCol - 1;
+    }
 
-      const response = sendToCrm(payload);
-      if (response && response.crmId && idColIdx !== -1) {
-        const currentCrmId = rowValues[idColIdx];
-        if (!currentCrmId || String(currentCrmId).trim() === "") {
-          sheet.getRange(r, idColIdx + 1).setValue(response.crmId);
+    // Concurrency lock: multiple rapid keystrokes/cell edits wait for preceding write to finish
+    const lock = LockService.getDocumentLock();
+    if (!lock.tryLock(10000)) {
+      Logger.log("Document lock busy, skipping overlapping edit execution.");
+      return;
+    }
+
+    try {
+      const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
+      const currentLastCol = sheet.getLastColumn();
+
+      for (let r = actualStartRow; r <= actualEndRow; r++) {
+        // Re-read row after lock to capture any CRM ID written by preceding edit
+        const rowValues = sheet.getRange(r, 1, 1, currentLastCol).getValues()[0];
+        const currentCrmId = idColIdx !== -1 ? String(rowValues[idColIdx] || "").trim() : "";
+
+        // Check if row has minimum viable prospect data before creating a brand new lead
+        if (!currentCrmId) {
+          const companyIdx = findHeaderIndex(headers, ["company name", "company", "organization", "account"]);
+          const contactIdx = findHeaderIndex(headers, ["contact person", "contact name", "contact", "name", "full name"]);
+          const emailIdx = findHeaderIndex(headers, ["email", "email id", "mail", "mail id"]);
+          const phoneIdx = findHeaderIndex(headers, ["phone", "mobile", "contact no", "contact number"]);
+
+          const companyVal = companyIdx !== -1 ? String(rowValues[companyIdx] || "").trim() : "";
+          const contactVal = contactIdx !== -1 ? String(rowValues[contactIdx] || "").trim() : "";
+          const emailVal = emailIdx !== -1 ? String(rowValues[emailIdx] || "").trim() : "";
+          const phoneVal = phoneIdx !== -1 ? String(rowValues[phoneIdx] || "").trim() : "";
+
+          // Require at least: (Company + Contact) OR (Company + Email) OR (Email) OR (Contact + Phone)
+          const hasMinimumInfo =
+            (Boolean(companyVal) && (Boolean(contactVal) || Boolean(emailVal) || Boolean(phoneVal))) ||
+            (Boolean(emailVal) && emailVal.includes("@")) ||
+            (Boolean(contactVal) && Boolean(phoneVal));
+
+          if (!hasMinimumInfo) {
+            // User is still typing first cell of new row, skip premature lead creation
+            continue;
+          }
+        }
+
+        const payload = {
+          action: "sync_row",
+          spreadsheetId: spreadsheetId,
+          sheetName: sheet.getName(),
+          rowNumber: r,
+          headers: headers,
+          rowData: rowValues,
+        };
+
+        const response = sendToCrm(payload);
+        if (response && response.crmId && idColIdx !== -1) {
+          if (!currentCrmId || currentCrmId !== response.crmId) {
+            sheet.getRange(r, idColIdx + 1).setValue(response.crmId);
+          }
         }
       }
+    } finally {
+      lock.releaseLock();
     }
   } catch (err) {
     Logger.log("Error in handleSheetEdit: " + err.toString());
@@ -164,7 +240,7 @@ function handleSheetEdit(e) {
 function syncAllRows() {
   const sheet = SpreadsheetApp.getActiveSheet();
   const lastRow = sheet.getLastRow();
-  const lastCol = sheet.getLastColumn();
+  let lastCol = sheet.getLastColumn();
 
   if (lastRow < 2 || lastCol < 2) {
     SpreadsheetApp.getUi().alert("No data rows found to sync.");
@@ -172,7 +248,15 @@ function syncAllRows() {
   }
 
   const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
-  const idColIdx = findHeaderIndex(headers, ["crm id", "lead id", "id"]);
+  let idColIdx = findHeaderIndex(headers, ["crm id", "lead id", "id", "prospect id", "outreach id", "client id"]);
+
+  if (idColIdx === -1) {
+    lastCol = lastCol + 1;
+    sheet.getRange(1, lastCol).setValue("CRM ID").setFontWeight("bold").setBackground("#e8f0fe");
+    headers.push("CRM ID");
+    idColIdx = lastCol - 1;
+  }
+
   const data = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
 
   const rowsToSync = [];
@@ -192,8 +276,10 @@ function syncAllRows() {
     return;
   }
 
+  const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
   const payload = {
     action: "sync_batch",
+    spreadsheetId: spreadsheetId,
     sheetName: sheet.getName(),
     headers: headers,
     rows: rowsToSync
@@ -201,15 +287,28 @@ function syncAllRows() {
 
   const response = sendToCrm(payload);
   if (response && response.success) {
-    if (idColIdx !== -1 && Array.isArray(response.results)) {
+    if (idColIdx !== -1 && Array.isArray(response.results) && response.results.length > 0) {
+      // High-performance batch writeback: writes all CRM IDs in 1 single API call instead of slow individual cell writes
+      const numDataRows = lastRow - 1;
+      const idRange = sheet.getRange(2, idColIdx + 1, numDataRows, 1);
+      const idMatrix = idRange.getValues();
+      let hasUpdates = false;
+
       response.results.forEach(res => {
         if (res.rowNumber && res.crmId) {
-          const currentVal = sheet.getRange(res.rowNumber, idColIdx + 1).getValue();
-          if (!currentVal) {
-            sheet.getRange(res.rowNumber, idColIdx + 1).setValue(res.crmId);
+          const matrixIdx = res.rowNumber - 2;
+          if (matrixIdx >= 0 && matrixIdx < idMatrix.length) {
+            if (String(idMatrix[matrixIdx][0] || "").trim() !== res.crmId) {
+              idMatrix[matrixIdx][0] = res.crmId;
+              hasUpdates = true;
+            }
           }
         }
       });
+
+      if (hasUpdates) {
+        idRange.setValues(idMatrix);
+      }
     }
 
     SpreadsheetApp.getUi().alert(
@@ -379,6 +478,32 @@ function sendToCrm(payload) {
     document.body.removeChild(link);
   };
 
+  const handleCleanDuplicates = async () => {
+    setDedupStatus("running");
+    setDedupResult("");
+    try {
+      const res = await fetch(`/api/integrations/google-sheets`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-sync-token": syncToken,
+        },
+        body: JSON.stringify({ action: "deduplicate" }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setDedupStatus("success");
+        setDedupResult(data.message || `Cleaned up ${data.removedCount} duplicate lead(s).`);
+      } else {
+        setDedupStatus("error");
+        setDedupResult(data.error || "Failed to deduplicate leads.");
+      }
+    } catch (err: any) {
+      setDedupStatus("error");
+      setDedupResult(err?.message || "Network error contacting webhook.");
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden">
@@ -445,6 +570,17 @@ function sendToCrm(payload) {
           >
             <Zap className="w-4 h-4" />
             3. Test Webhook Connection
+          </button>
+          <button
+            onClick={() => setActiveTab("dedup")}
+            className={`pb-3 px-1 text-sm font-semibold border-b-2 flex items-center gap-2 transition ${
+              activeTab === "dedup"
+                ? "border-emerald-500 text-emerald-600 dark:text-emerald-400"
+                : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+            }`}
+          >
+            <Sparkles className="w-4 h-4 text-amber-500" />
+            4. Clean Up Duplicates
           </button>
         </div>
 
@@ -690,6 +826,55 @@ function sendToCrm(payload) {
                     {testResult}
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: CLEAN UP DUPLICATES */}
+          {activeTab === "dedup" && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/30">
+                <div className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white mb-1">
+                  <Sparkles className="w-4 h-4 text-amber-500" />
+                  <h3>Clean Up Duplicate Leads in Outreach CRM</h3>
+                </div>
+                <p className="text-xs text-slate-500 mb-4">
+                  If previous edits generated duplicate lead entries, click below to automatically scan, merge touchpoints/notes, and clean up orphaned duplicate records.
+                </p>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    onClick={handleCleanDuplicates}
+                    disabled={dedupStatus === "running"}
+                    className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white flex items-center gap-2 shadow-sm transition"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${dedupStatus === "running" ? "animate-spin" : ""}`} />
+                    {dedupStatus === "running" ? "Scanning & Cleaning Duplicates..." : "Scan & Clean Up Duplicates Now"}
+                  </button>
+
+                  {dedupStatus === "success" && (
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-3 py-1.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                      <CheckCircle2 className="w-4 h-4" />
+                      {dedupResult}
+                    </div>
+                  )}
+
+                  {dedupStatus === "error" && (
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 px-3 py-1.5 rounded-lg border border-rose-200 dark:border-rose-800">
+                      <AlertTriangle className="w-4 h-4" />
+                      {dedupResult || "Failed to deduplicate leads."}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-4 p-3 rounded-lg border border-amber-200/80 dark:border-amber-800/40 bg-amber-50/50 dark:bg-amber-950/20 text-xs text-amber-800 dark:text-amber-300">
+                  <p className="font-semibold mb-1">🛡️ Safe Intelligent Merging:</p>
+                  <ul className="list-disc list-inside space-y-0.5 text-[11px] text-amber-700 dark:text-amber-400">
+                    <li>Matches duplicates by exact Sheet + Row number, email address, or Company + Contact person.</li>
+                    <li>Preserves the most complete record, merging all notes, call logs, and touchpoints safely.</li>
+                    <li>Deletes the orphaned empty copies so your Outreach tab remains clean.</li>
+                  </ul>
+                </div>
               </div>
             </div>
           )}

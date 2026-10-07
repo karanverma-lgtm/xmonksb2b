@@ -145,7 +145,42 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSheetsModalOpen, setIsSheetsModalOpen] = useState(false);
+  const [sheetsModalInitialTab, setSheetsModalInitialTab] = useState<"script" | "template" | "test" | "dedup">("script");
   const [selectedClient, setSelectedClient] = useState<ColdClient | null>(null);
+
+  // Check for duplicate leads across outreach prospects
+  const duplicateLeadsCount = useMemo(() => {
+    const seenEmails = new Set<string>();
+    const seenSheetRows = new Set<string>();
+    const seenCompanyContacts = new Set<string>();
+    let dups = 0;
+
+    for (const c of coldClients) {
+      let isDup = false;
+      const email = (c.email || "").toLowerCase().trim();
+      const sheetRow = c.sourceSheet && c.sheetRowNumber ? `${c.sourceSheet}_${c.sheetRowNumber}`.toLowerCase() : "";
+      const compCont =
+        c.companyName && c.contactName && c.companyName !== "Unknown Organization" && c.contactName !== "Prospect Contact"
+          ? `${c.companyName.toLowerCase().trim()}_${c.contactName.toLowerCase().trim()}`
+          : "";
+
+      if (email && email.includes("@")) {
+        if (seenEmails.has(email)) isDup = true;
+        seenEmails.add(email);
+      }
+      if (sheetRow) {
+        if (seenSheetRows.has(sheetRow)) isDup = true;
+        seenSheetRows.add(sheetRow);
+      }
+      if (compCont) {
+        if (seenCompanyContacts.has(compCont)) isDup = true;
+        seenCompanyContacts.add(compCont);
+      }
+
+      if (isDup) dups++;
+    }
+    return dups;
+  }, [coldClients]);
 
   const todayStr = new Date().toISOString().split("T")[0];
 
@@ -794,9 +829,27 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
             <span className="hidden sm:inline">Export</span>
           </button>
 
+          {/* Quick Clean Up Duplicates button if duplicates detected */}
+          {duplicateLeadsCount > 0 && (
+            <button
+              onClick={() => {
+                setSheetsModalInitialTab("dedup");
+                setIsSheetsModalOpen(true);
+              }}
+              className="p-2 sm:px-3 sm:py-1.5 rounded-xl border border-amber-300 dark:border-amber-700/80 bg-amber-50 hover:bg-amber-100/80 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 text-xs font-bold text-amber-800 dark:text-amber-300 transition-all flex items-center space-x-1.5 shadow-xs animate-in fade-in"
+              title={`${duplicateLeadsCount} duplicate lead(s) detected. Click to clean up and merge.`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span>Clean Duplicates ({duplicateLeadsCount})</span>
+            </button>
+          )}
+
           {/* Google Sheets Live Sync */}
           <button
-            onClick={() => setIsSheetsModalOpen(true)}
+            onClick={() => {
+              setSheetsModalInitialTab("script");
+              setIsSheetsModalOpen(true);
+            }}
             className="p-2 sm:px-3 sm:py-1.5 rounded-xl border border-emerald-300 dark:border-emerald-700/80 bg-emerald-50 hover:bg-emerald-100/80 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 text-xs font-bold text-emerald-700 dark:text-emerald-300 transition-all flex items-center space-x-1.5 shadow-xs"
             title="Google Sheets Live Sync & Apps Script"
           >
@@ -1255,6 +1308,7 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
         isOpen={isSheetsModalOpen}
         onClose={() => setIsSheetsModalOpen(false)}
         currentUser={currentUser}
+        initialTab={sheetsModalInitialTab}
       />
 
       {/* Multi-Update Leads Modal */}

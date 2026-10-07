@@ -9,6 +9,7 @@ import {
   setDoc,
   getDoc,
   getDocs,
+  deleteDoc,
   query,
   where,
   limit,
@@ -301,10 +302,19 @@ function mapRowToColdClient(
   };
 }
 
-// Upsert a single client record into Firestore
+interface SourceMeta {
+  sheetRowNumber?: number;
+  sheetName?: string;
+  spreadsheetId?: string;
+}
+
+// In-flight operation mutex to prevent concurrent Firestore writes for the same row
+const inFlightSyncs = new Map<string, Promise<unknown>>();
+
+// Upsert a single client record into Firestore with multi-tier deduplication
 async function upsertColdClient(
   clientData: Partial<ColdClient> & { initialNote?: string },
-  sourceMeta?: { sheetRowNumber?: number; sheetName?: string }
+  sourceMeta?: SourceMeta
 ): Promise<{ id: string; action: "created" | "updated" }> {
   const collRef = collection(db, COLLECTION_NAME);
   const now = new Date();
@@ -313,7 +323,7 @@ async function upsertColdClient(
   let targetDocId: string | null = null;
   let existingClient: ColdClient | null = null;
 
-  // 1. Try resolving by explicit CRM ID
+  // 1. Tier 1: Try resolving by explicit CRM ID
   if (clientData.id && clientData.id.trim() !== "") {
     const docRef = doc(db, COLLECTION_NAME, clientData.id.trim());
     const snap = await getDoc(docRef);
@@ -323,9 +333,51 @@ async function upsertColdClient(
     }
   }
 
-  // 2. Try resolving by Email if no ID matched
+  // 2. Tier 2: Try resolving by Sheet + Row Number (matches when user types cell-by-cell in the same row)
+  if (!targetDocId && sourceMeta?.sheetRowNumber && sourceMeta?.sheetName) {
+    try {
+      const q = query(
+        collRef,
+        where("sourceSheet", "==", sourceMeta.sheetName),
+        where("sheetRowNumber", "==", sourceMeta.sheetRowNumber),
+        limit(1)
+      );
+      const querySnap = await getDocs(q);
+      if (!querySnap.empty) {
+        const foundDoc = querySnap.docs[0];
+        const foundData = { id: foundDoc.id, ...(foundDoc.data() as Omit<ColdClient, "id">) };
+
+        // Safety verification: only match if it's the same spreadsheet or same company
+        const sameSpreadsheet =
+          !sourceMeta.spreadsheetId ||
+          !foundData.sourceSpreadsheetId ||
+          foundData.sourceSpreadsheetId === sourceMeta.spreadsheetId;
+
+        const incomingCompany = (clientData.companyName || "").trim().toLowerCase();
+        const existingCompany = (foundData.companyName || "").trim().toLowerCase();
+        const companyMatches =
+          !incomingCompany ||
+          incomingCompany === "unknown organization" ||
+          !existingCompany ||
+          existingCompany === "unknown organization" ||
+          incomingCompany === existingCompany ||
+          incomingCompany.includes(existingCompany) ||
+          existingCompany.includes(incomingCompany);
+
+        if (sameSpreadsheet && companyMatches) {
+          targetDocId = foundDoc.id;
+          existingClient = foundData;
+        }
+      }
+    } catch (err) {
+      console.warn("Sheet/Row deduplication query note:", err);
+    }
+  }
+
+  // 3. Tier 3: Try resolving by Email if no ID/Row matched
   if (!targetDocId && clientData.email && clientData.email.includes("@")) {
-    const q = query(collRef, where("email", "==", clientData.email), limit(1));
+    const cleanEmail = clientData.email.toLowerCase().trim();
+    const q = query(collRef, where("email", "==", cleanEmail), limit(1));
     const querySnap = await getDocs(q);
     if (!querySnap.empty) {
       const firstDoc = querySnap.docs[0];
@@ -334,18 +386,82 @@ async function upsertColdClient(
     }
   }
 
+  // 4. Tier 4: Try resolving by Phone Number if present & length >= 8
+  if (!targetDocId && clientData.phone) {
+    const rawPhone = clientData.phone.trim();
+    const cleanDigits = rawPhone.replace(/[^0-9]/g, "");
+    if (cleanDigits.length >= 8) {
+      try {
+        const q = query(collRef, where("phone", "==", rawPhone), limit(1));
+        const querySnap = await getDocs(q);
+        if (!querySnap.empty) {
+          const firstDoc = querySnap.docs[0];
+          targetDocId = firstDoc.id;
+          existingClient = { id: firstDoc.id, ...(firstDoc.data() as Omit<ColdClient, "id">) };
+        }
+      } catch (err) {
+        console.warn("Phone deduplication query note:", err);
+      }
+    }
+  }
+
+  // 5. Tier 5: Try resolving by Company Name + Contact Person (exact / case-insensitive)
+  if (
+    !targetDocId &&
+    clientData.companyName &&
+    clientData.companyName !== "Unknown Organization" &&
+    clientData.contactName &&
+    clientData.contactName !== "Prospect Contact" &&
+    clientData.contactName.length >= 3
+  ) {
+    try {
+      const q = query(collRef, where("companyName", "==", clientData.companyName.trim()), limit(5));
+      const querySnap = await getDocs(q);
+      for (const d of querySnap.docs) {
+        const data = d.data() as Omit<ColdClient, "id">;
+        if (
+          data.contactName &&
+          data.contactName.toLowerCase().trim() === clientData.contactName.toLowerCase().trim()
+        ) {
+          targetDocId = d.id;
+          existingClient = { id: d.id, ...data };
+          break;
+        }
+      }
+    } catch (err) {
+      console.warn("Company/Contact query note:", err);
+    }
+  }
+
   if (targetDocId && existingClient) {
     // UPDATE existing record
+    // Protect good existing data from being overwritten by generic fallback defaults
+    const safeCompany =
+      clientData.companyName && clientData.companyName !== "Unknown Organization"
+        ? clientData.companyName
+        : existingClient.companyName;
+
+    const safeContact =
+      clientData.contactName && clientData.contactName !== "Prospect Contact"
+        ? clientData.contactName
+        : existingClient.contactName;
+
     const updatedClient: ColdClient = {
       ...existingClient,
-      companyName: clientData.companyName || existingClient.companyName,
-      contactName: clientData.contactName || existingClient.contactName,
+      companyName: safeCompany,
+      contactName: safeContact,
       email: clientData.email || existingClient.email,
       phone: clientData.phone || existingClient.phone,
       designation: clientData.designation || existingClient.designation,
       city: clientData.city || existingClient.city,
-      industry: clientData.industry || existingClient.industry,
-      targetProgram: clientData.targetProgram || existingClient.targetProgram,
+      industry:
+        clientData.industry && clientData.industry !== "Technology & SaaS"
+          ? clientData.industry
+          : existingClient.industry,
+      targetProgram:
+        clientData.targetProgram && clientData.targetProgram !== "Executive Coaching"
+          ? clientData.targetProgram
+          : existingClient.targetProgram,
       linkedinUrl: clientData.linkedinUrl || existingClient.linkedinUrl,
       website: clientData.website || existingClient.website,
       owner: clientData.owner || existingClient.owner,
@@ -357,6 +473,7 @@ async function upsertColdClient(
       companySize: clientData.companySize || existingClient.companySize,
       sheetRowNumber: sourceMeta?.sheetRowNumber ?? existingClient.sheetRowNumber,
       sourceSheet: sourceMeta?.sheetName ?? existingClient.sourceSheet,
+      sourceSpreadsheetId: sourceMeta?.spreadsheetId ?? existingClient.sourceSpreadsheetId,
       updatedAt: nowIso,
     };
 
@@ -401,6 +518,7 @@ async function upsertColdClient(
       touchpoints,
       sheetRowNumber: sourceMeta?.sheetRowNumber,
       sourceSheet: sourceMeta?.sheetName,
+      sourceSpreadsheetId: sourceMeta?.spreadsheetId,
       createdAt: nowIso,
       updatedAt: nowIso,
     };
@@ -459,6 +577,7 @@ export async function POST(req: NextRequest) {
     await ensureServerAuth();
 
     const action = rawBody?.action || (Array.isArray(rawBody?.rows) ? "sync_batch" : "sync_row");
+    const spreadsheetId = rawBody?.spreadsheetId || "";
     const sheetName = rawBody?.sheetName || "Outreach Leads";
 
     // 1. Single Row Sync (triggered on sheet onEdit / row change)
@@ -476,18 +595,50 @@ export async function POST(req: NextRequest) {
 
       const clientPartial = mapRowToColdClient(rowData, headers);
 
-      // Require at least companyName or email or contactName
-      if (!clientPartial.companyName && !clientPartial.email && !clientPartial.contactName) {
+      // Require real viable data (prevent creating leads from empty cells or placeholder defaults)
+      const hasRealCompany = Boolean(clientPartial.companyName && clientPartial.companyName.trim() !== "" && clientPartial.companyName !== "Unknown Organization");
+      const hasRealContact = Boolean(clientPartial.contactName && clientPartial.contactName.trim() !== "" && clientPartial.contactName !== "Prospect Contact");
+      const hasRealEmail = Boolean(clientPartial.email && clientPartial.email.includes("@"));
+      const hasRealPhone = Boolean(clientPartial.phone && clientPartial.phone.replace(/\D/g, "").length >= 8);
+
+      if (!clientPartial.id && !hasRealCompany && !hasRealContact && !hasRealEmail && !hasRealPhone) {
         return NextResponse.json(
-          { error: "Row is empty or lacks minimum required fields (Company, Name, or Email)." },
+          { error: "Row is empty or lacks minimum required prospect data (Company, Contact, Email, or Phone)." },
           { status: 400 }
         );
       }
 
-      const result = await upsertColdClient(clientPartial, {
-        sheetRowNumber: rowNumber > 0 ? rowNumber : undefined,
-        sheetName,
-      });
+      // Concurrency lock for rapid cell-by-cell keystrokes in the same row
+      const lockKey = `${spreadsheetId}_${sheetName}_${rowNumber}`;
+      if (rowNumber > 0) {
+        const prevOp = inFlightSyncs.get(lockKey);
+        if (prevOp) {
+          try {
+            await prevOp;
+          } catch {}
+        }
+      }
+
+      const syncOperation = (async () => {
+        return await upsertColdClient(clientPartial, {
+          sheetRowNumber: rowNumber > 0 ? rowNumber : undefined,
+          sheetName,
+          spreadsheetId: spreadsheetId || undefined,
+        });
+      })();
+
+      if (rowNumber > 0) {
+        inFlightSyncs.set(lockKey, syncOperation);
+      }
+
+      let result;
+      try {
+        result = await syncOperation;
+      } finally {
+        if (rowNumber > 0 && inFlightSyncs.get(lockKey) === syncOperation) {
+          inFlightSyncs.delete(lockKey);
+        }
+      }
 
       return NextResponse.json({
         success: true,
@@ -524,10 +675,17 @@ export async function POST(req: NextRequest) {
         }
 
         const clientPartial = mapRowToColdClient(rowData, headers);
-        if (clientPartial.companyName || clientPartial.email || clientPartial.contactName) {
+        const hasRealCompany = Boolean(clientPartial.companyName && clientPartial.companyName.trim() !== "" && clientPartial.companyName !== "Unknown Organization");
+        const hasRealContact = Boolean(clientPartial.contactName && clientPartial.contactName.trim() !== "" && clientPartial.contactName !== "Prospect Contact");
+        const hasRealEmail = Boolean(clientPartial.email && clientPartial.email.includes("@"));
+        const hasRealPhone = Boolean(clientPartial.phone && clientPartial.phone.replace(/\D/g, "").length >= 8);
+
+        // Only upsert rows that have actual data or an existing CRM ID
+        if (clientPartial.id || hasRealCompany || hasRealContact || hasRealEmail || hasRealPhone) {
           const res = await upsertColdClient(clientPartial, {
             sheetRowNumber: rowNum || i + 2,
             sheetName,
+            spreadsheetId: spreadsheetId || undefined,
           });
           results.push({
             rowNumber: rowNum || i + 2,
@@ -556,8 +714,148 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // 4. Clean up / Deduplicate leads across Outreach CRM
+    if (action === "deduplicate" || action === "cleanup_duplicates") {
+      const collRef = collection(db, COLLECTION_NAME);
+      const snap = await getDocs(collRef);
+      const allDocs = snap.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as Omit<ColdClient, "id">),
+      }));
+
+      const visited = new Set<string>();
+      const duplicateGroups: Array<{ primary: ColdClient; duplicates: ColdClient[] }> = [];
+
+      for (let i = 0; i < allDocs.length; i++) {
+        const a = allDocs[i];
+        if (visited.has(a.id)) continue;
+
+        const group: ColdClient[] = [a];
+        const aEmail = (a.email || "").toLowerCase().trim();
+        const aCompany = (a.companyName || "").toLowerCase().trim();
+        const aContact = (a.contactName || "").toLowerCase().trim();
+        const aSheet = (a.sourceSheet || "").toLowerCase().trim();
+        const aRow = a.sheetRowNumber;
+
+        for (let j = i + 1; j < allDocs.length; j++) {
+          const b = allDocs[j];
+          if (visited.has(b.id)) continue;
+
+          const bEmail = (b.email || "").toLowerCase().trim();
+          const bCompany = (b.companyName || "").toLowerCase().trim();
+          const bContact = (b.contactName || "").toLowerCase().trim();
+          const bSheet = (b.sourceSheet || "").toLowerCase().trim();
+          const bRow = b.sheetRowNumber;
+
+          let isMatch = false;
+
+          // Criterion 1: Valid email match
+          if (aEmail && bEmail && aEmail.includes("@") && aEmail === bEmail) {
+            isMatch = true;
+          }
+          // Criterion 2: Exact sheet + row number match
+          else if (aSheet && bSheet && aRow && bRow && aSheet === bSheet && aRow === bRow) {
+            isMatch = true;
+          }
+          // Criterion 3: Company + Contact match (if not generic placeholder)
+          else if (
+            aCompany &&
+            bCompany &&
+            aCompany !== "unknown organization" &&
+            aCompany === bCompany &&
+            aContact &&
+            bContact &&
+            aContact !== "prospect contact" &&
+            aContact === bContact
+          ) {
+            isMatch = true;
+          }
+
+          if (isMatch) {
+            group.push(b);
+            visited.add(b.id);
+          }
+        }
+
+        if (group.length > 1) {
+          visited.add(a.id);
+          // Pick the primary doc: highest completeness score
+          const score = (c: ColdClient) => {
+            let s = 0;
+            if (c.email && c.email.includes("@")) s += 10;
+            if (c.phone) s += 5;
+            if (c.companyName && c.companyName !== "Unknown Organization") s += 5;
+            if (c.contactName && c.contactName !== "Prospect Contact") s += 5;
+            if (c.designation) s += 3;
+            if (c.city) s += 2;
+            if (c.status && c.status !== "uncontacted" && c.status !== "cold_no_answer") s += 4;
+            if (c.touchpoints && c.touchpoints.length > 0) s += c.touchpoints.length * 2;
+            if (c.sheetRowNumber) s += 2;
+            return s;
+          };
+
+          group.sort((x, y) => score(y) - score(x));
+          const primary = group[0];
+          const duplicates = group.slice(1);
+          duplicateGroups.push({ primary, duplicates });
+        }
+      }
+
+      let removedCount = 0;
+      for (const { primary, duplicates } of duplicateGroups) {
+        const existingTouchpointSummaries = new Set(
+          (primary.touchpoints || []).map((tp) => tp.summary + tp.timestamp)
+        );
+        const mergedTouchpoints = [...(primary.touchpoints || [])];
+
+        for (const dup of duplicates) {
+          if (!primary.email && dup.email) primary.email = dup.email;
+          if (!primary.phone && dup.phone) primary.phone = dup.phone;
+          if (!primary.designation && dup.designation) primary.designation = dup.designation;
+          if (!primary.city && dup.city) primary.city = dup.city;
+          if (!primary.linkedinUrl && dup.linkedinUrl) primary.linkedinUrl = dup.linkedinUrl;
+          if (!primary.website && dup.website) primary.website = dup.website;
+          if (!primary.sheetRowNumber && dup.sheetRowNumber) primary.sheetRowNumber = dup.sheetRowNumber;
+          if (!primary.sourceSheet && dup.sourceSheet) primary.sourceSheet = dup.sourceSheet;
+          if (!primary.sourceSpreadsheetId && dup.sourceSpreadsheetId) {
+            primary.sourceSpreadsheetId = dup.sourceSpreadsheetId;
+          }
+          if ((!primary.companyName || primary.companyName === "Unknown Organization") && dup.companyName) {
+            primary.companyName = dup.companyName;
+          }
+          if ((!primary.contactName || primary.contactName === "Prospect Contact") && dup.contactName) {
+            primary.contactName = dup.contactName;
+          }
+
+          for (const tp of dup.touchpoints || []) {
+            const key = tp.summary + tp.timestamp;
+            if (!existingTouchpointSummaries.has(key)) {
+              existingTouchpointSummaries.add(key);
+              mergedTouchpoints.push(tp);
+            }
+          }
+
+          await deleteDoc(doc(db, COLLECTION_NAME, dup.id));
+          removedCount++;
+        }
+
+        primary.touchpoints = mergedTouchpoints;
+        primary.updatedAt = new Date().toISOString();
+        await setDoc(doc(db, COLLECTION_NAME, primary.id), sanitizeForFirestore(primary), { merge: true });
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Deduplication complete. Cleaned up ${removedCount} duplicate lead(s) across ${duplicateGroups.length} unique prospect(s).`,
+        removedCount,
+        mergedCount: duplicateGroups.length,
+      });
+    }
+
     return NextResponse.json(
-      { error: `Unrecognized action '${action}'. Expected 'sync_row', 'sync_batch', or 'ping'.` },
+      {
+        error: `Unrecognized action '${action}'. Expected 'sync_row', 'sync_batch', 'ping', or 'deduplicate'.`,
+      },
       { status: 400 }
     );
   } catch (error: any) {
