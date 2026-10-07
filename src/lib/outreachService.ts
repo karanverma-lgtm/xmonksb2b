@@ -355,12 +355,81 @@ export async function logOutreachTouchpoint(
   await updateColdClient(clientId, updates);
 }
 
-// Bulk Add Cold Clients
+// Helper to clean phone digits for matching
+function cleanDigits(val?: string): string {
+  return (val || "").replace(/\D/g, "");
+}
+
+// Bulk Add Cold Clients with deduplication
 export async function bulkAddColdClients(
   clientsData: Array<Omit<ColdClient, "id" | "createdAt" | "updatedAt" | "touchpoints">>
 ): Promise<number> {
+  if (clientsData.length === 0) return 0;
+
   const now = new Date().toISOString();
-  const newClients: ColdClient[] = clientsData.map((data, index) => ({
+
+  // 1. Fetch current cold clients for deduplication
+  const current = getStoredLocalColdClients();
+  const existingEmails = new Set<string>();
+  const existingPhones = new Set<string>();
+  const existingCompanyContacts = new Set<string>();
+
+  current.forEach((c) => {
+    if (c.email && c.email.includes("@")) {
+      existingEmails.add(c.email.toLowerCase().trim());
+    }
+    const phoneDig = cleanDigits(c.phone);
+    if (phoneDig.length >= 8) {
+      existingPhones.add(phoneDig.slice(-10));
+    }
+    const comp = (c.companyName || "").toLowerCase().trim();
+    const cont = (c.contactName || "").toLowerCase().trim();
+    if (comp && cont && comp !== "unknown organization" && cont !== "prospect contact") {
+      existingCompanyContacts.add(`${comp}|${cont}`);
+    }
+  });
+
+  // Track duplicates within the incoming batch itself
+  const batchEmails = new Set<string>();
+  const batchPhones = new Set<string>();
+  const batchCompCont = new Set<string>();
+
+  const nonDuplicateInputs = clientsData.filter((data) => {
+    const email = (data.email || "").toLowerCase().trim();
+    const phone = cleanDigits(data.phone).slice(-10);
+    const comp = (data.companyName || "").toLowerCase().trim();
+    const cont = (data.contactName || "").toLowerCase().trim();
+    const compContKey = `${comp}|${cont}`;
+
+    // Deduplication against existing database
+    if (email && email.includes("@") && existingEmails.has(email)) return false;
+    if (phone && phone.length >= 8 && existingPhones.has(phone)) return false;
+    if (comp && cont && comp !== "unknown organization" && cont !== "prospect contact" && existingCompanyContacts.has(compContKey)) {
+      return false;
+    }
+
+    // Deduplication within current batch
+    if (email && email.includes("@")) {
+      if (batchEmails.has(email)) return false;
+      batchEmails.add(email);
+    }
+    if (phone && phone.length >= 8) {
+      if (batchPhones.has(phone)) return false;
+      batchPhones.add(phone);
+    }
+    if (comp && cont && comp !== "unknown organization" && cont !== "prospect contact") {
+      if (batchCompCont.has(compContKey)) return false;
+      batchCompCont.add(compContKey);
+    }
+
+    return true;
+  });
+
+  if (nonDuplicateInputs.length === 0) {
+    return 0;
+  }
+
+  const newClients: ColdClient[] = nonDuplicateInputs.map((data, index) => ({
     ...data,
     id: "cold-" + (Date.now() + index),
     touchpoints: [],
@@ -369,19 +438,28 @@ export async function bulkAddColdClients(
   }));
 
   // 1. Local update
-  const current = getStoredLocalColdClients();
   saveStoredLocalColdClients([...newClients, ...current]);
 
-  // 2. Firestore batch write
-  try {
-    const batch = writeBatch(db);
-    for (const client of newClients) {
-      const docRef = doc(db, COLLECTION_NAME, client.id);
-      batch.set(docRef, sanitizeForFirestore(client));
+  // 2. Firestore batch write (max 450 per batch)
+  const BATCH_SIZE = 450;
+  for (let i = 0; i < newClients.length; i += BATCH_SIZE) {
+    const chunk = newClients.slice(i, i + BATCH_SIZE);
+    try {
+      const batch = writeBatch(db);
+      for (const client of chunk) {
+        const docRef = doc(db, COLLECTION_NAME, client.id);
+        batch.set(docRef, sanitizeForFirestore(client));
+      }
+      await batch.commit();
+    } catch (error) {
+      console.warn("Saved bulk cold clients locally (Firestore offline or batch write fallback)", error);
+      for (const client of chunk) {
+        try {
+          const docRef = doc(db, COLLECTION_NAME, client.id);
+          await setDoc(docRef, sanitizeForFirestore(client));
+        } catch {}
+      }
     }
-    await batch.commit();
-  } catch (error) {
-    console.warn("Saved bulk cold clients locally (Firestore offline)", error);
   }
 
   return newClients.length;

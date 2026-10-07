@@ -27,6 +27,9 @@ import { COLD_STATUS_CONFIG, OUTREACH_CHANNELS, OUTREACH_INDUSTRIES } from "@/co
 import { PRESET_PROGRAMS } from "@/constants/programs";
 import { UserAccount, VALID_USERS } from "@/constants/users";
 import { formatINR } from "@/lib/formatters";
+import { parseCSVToRows } from "@/lib/csvParser";
+
+import { getStoredLocalColdClients } from "@/lib/outreachService";
 
 const SAMPLE_OUTREACH_CSV = `Company Name,Contact Person,Email,Designation,Phone,City,Industry,Target Program,Estimated Value,Channel,Dataset,Initial Note
 Acme Corporation,Vikram Malhotra,vikram@acme.com,VP Human Resources,+91 98200 11223,Mumbai,Technology & SaaS,Executive Coaching,1200000,email,Q1 Tech Enterprise,Met at HR Leadership Summit
@@ -84,6 +87,8 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
   const [parsedUploadClients, setParsedUploadClients] = useState<
     Array<Omit<ColdClient, "id" | "createdAt" | "updatedAt" | "touchpoints">>
   >([]);
+  const [uploadDuplicateCount, setUploadDuplicateCount] = useState(0);
+  const [skipUploadDuplicates, setSkipUploadDuplicates] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<ColdClientStatus>("uncontacted");
   const [uploadChannel, setUploadChannel] = useState<OutreachChannel>("email");
@@ -96,6 +101,43 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
   const [bulkStatus, setBulkStatus] = useState<ColdClientStatus>("uncontacted");
   const [bulkChannel, setBulkChannel] = useState<OutreachChannel>("email");
   const [bulkDataset, setBulkDataset] = useState("");
+
+  // Reset all form fields to initial state
+  const resetAllForms = () => {
+    setFormError("");
+    setCompanyName("");
+    setContactName("");
+    setDesignation("");
+    setEmail("");
+    setPhone("");
+    setLinkedinUrl("");
+    setWebsite("");
+    setCity("");
+    setIndustry(OUTREACH_INDUSTRIES[0]);
+    setTargetProgram(PRESET_PROGRAMS[0]?.name || "Executive Coaching");
+    setEstimatedValue("500000");
+    setStatus("uncontacted");
+    setChannel("email");
+    setDataset("");
+    setInitialNote("");
+    setNextFollowUpDate(new Date(Date.now() + 2 * 86400000).toISOString().split("T")[0]);
+
+    setUploadFile(null);
+    setParsedUploadClients([]);
+    setUploadDuplicateCount(0);
+    setUploadDataset("");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+
+    setBulkText("");
+    setBulkDataset("");
+  };
+
+  const handleModalClose = () => {
+    resetAllForms();
+    onClose();
+  };
 
   if (!isOpen) return null;
 
@@ -139,6 +181,7 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
         nextFollowUpDate: nextFollowUpDate || undefined,
         initialNote: initialNote.trim() || undefined,
       });
+      resetAllForms();
       onClose();
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : "Failed to add cold prospect.");
@@ -150,19 +193,23 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
   // CSV File parser
   const parseUploadedCsv = (text: string) => {
     try {
-      const lines = text.split(/\r\n|\n/).filter((l) => l.trim().length > 0);
-      if (lines.length === 0) {
+      const rows = parseCSVToRows(text);
+      if (rows.length === 0) {
         setFormError("The uploaded CSV file contains no rows.");
         setParsedUploadClients([]);
         return;
       }
 
-      const headerLine = lines[0].toLowerCase();
+      const headerRow = rows[0].map((h) => h.toLowerCase().trim());
       const hasHeader =
-        headerLine.includes("company") ||
-        headerLine.includes("contact") ||
-        headerLine.includes("email") ||
-        headerLine.includes("name");
+        headerRow.some(
+          (h) =>
+            h.includes("company") ||
+            h.includes("contact") ||
+            h.includes("email") ||
+            h.includes("phone") ||
+            h.includes("name")
+        );
 
       let startIdx = 0;
       let companyIdx = 0;
@@ -180,11 +227,7 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
 
       if (hasHeader) {
         startIdx = 1;
-        const headers = lines[0]
-          .split(/,(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)/)
-          .map((h) => h.replace(/^"|"$/g, "").trim().toLowerCase());
-
-        headers.forEach((h, idx) => {
+        headerRow.forEach((h, idx) => {
           if (h.includes("company") || h.includes("organization") || h.includes("account")) {
             companyIdx = idx;
           } else if (
@@ -240,13 +283,9 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
 
       const parsed: Array<Omit<ColdClient, "id" | "createdAt" | "updatedAt" | "touchpoints">> = [];
 
-      for (let i = startIdx; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-
-        const cols = line
-          .split(/,(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)/)
-          .map((col) => col.replace(/^"|"$/g, "").trim());
+      for (let i = startIdx; i < rows.length; i++) {
+        const cols = rows[i];
+        if (!cols || cols.length === 0) continue;
 
         const company = cols[companyIdx] || (cols[0] ? cols[0] : "");
         const contact = cols[contactIdx] || (cols[1] ? cols[1] : "");
@@ -291,6 +330,52 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
           nextFollowUpDate: new Date(Date.now() + 2 * 86400000).toISOString().split("T")[0],
         });
       }
+
+      // Deduplication check against existing stored cold clients
+      const existingClients = getStoredLocalColdClients();
+      const existingEmails = new Set<string>();
+      const existingPhones = new Set<string>();
+      const existingCompCont = new Set<string>();
+
+      existingClients.forEach((c) => {
+        if (c.email && c.email.includes("@")) {
+          existingEmails.add(c.email.toLowerCase().trim());
+        }
+        const ph = (c.phone || "").replace(/\D/g, "");
+        if (ph.length >= 8) {
+          existingPhones.add(ph.slice(-10));
+        }
+        const comp = (c.companyName || "").toLowerCase().trim();
+        const cont = (c.contactName || "").toLowerCase().trim();
+        if (comp && cont && comp !== "unnamed company" && cont !== "key stakeholder") {
+          existingCompCont.add(`${comp}|${cont}`);
+        }
+      });
+
+      let dupCount = 0;
+      const seenBatch = new Set<string>();
+
+      parsed.forEach((c) => {
+        const email = (c.email || "").toLowerCase().trim();
+        const ph = (c.phone || "").replace(/\D/g, "").slice(-10);
+        const comp = (c.companyName || "").toLowerCase().trim();
+        const cont = (c.contactName || "").toLowerCase().trim();
+        const key = `${comp}|${cont}`;
+
+        const isDup =
+          (email && email.includes("@") && !email.includes(".com") && existingEmails.has(email)) ||
+          (email && email.includes("@") && existingEmails.has(email)) ||
+          (ph && ph.length >= 8 && existingPhones.has(ph)) ||
+          (comp && cont && comp !== "unnamed company" && cont !== "key stakeholder" && existingCompCont.has(key)) ||
+          seenBatch.has(email || key);
+
+        if (email) seenBatch.add(email);
+        else seenBatch.add(key);
+
+        if (isDup) dupCount++;
+      });
+
+      setUploadDuplicateCount(dupCount);
 
       if (parsed.length === 0) {
         setFormError("Could not extract any valid prospect rows. Please verify CSV formatting.");
@@ -381,13 +466,69 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
 
     try {
       setIsSubmitting(true);
-      const finalClients = parsedUploadClients.map((c) => ({
+      let clientsToImport = parsedUploadClients;
+
+      if (skipUploadDuplicates) {
+        const existingClients = getStoredLocalColdClients();
+        const existingEmails = new Set<string>();
+        const existingPhones = new Set<string>();
+        const existingCompCont = new Set<string>();
+
+        existingClients.forEach((c) => {
+          if (c.email && c.email.includes("@")) {
+            existingEmails.add(c.email.toLowerCase().trim());
+          }
+          const ph = (c.phone || "").replace(/\D/g, "");
+          if (ph.length >= 8) {
+            existingPhones.add(ph.slice(-10));
+          }
+          const comp = (c.companyName || "").toLowerCase().trim();
+          const cont = (c.contactName || "").toLowerCase().trim();
+          if (comp && cont && comp !== "unnamed company" && cont !== "key stakeholder") {
+            existingCompCont.add(`${comp}|${cont}`);
+          }
+        });
+
+        const seenBatch = new Set<string>();
+        clientsToImport = parsedUploadClients.filter((c) => {
+          const email = (c.email || "").toLowerCase().trim();
+          const ph = (c.phone || "").replace(/\D/g, "").slice(-10);
+          const comp = (c.companyName || "").toLowerCase().trim();
+          const cont = (c.contactName || "").toLowerCase().trim();
+          const key = `${comp}|${cont}`;
+
+          if (email && email.includes("@") && existingEmails.has(email)) return false;
+          if (ph && ph.length >= 8 && existingPhones.has(ph)) return false;
+          if (comp && cont && comp !== "unnamed company" && cont !== "key stakeholder" && existingCompCont.has(key)) {
+            return false;
+          }
+
+          if (email) {
+            if (seenBatch.has(email)) return false;
+            seenBatch.add(email);
+          } else {
+            if (seenBatch.has(key)) return false;
+            seenBatch.add(key);
+          }
+
+          return true;
+        });
+      }
+
+      if (clientsToImport.length === 0) {
+        setFormError("All prospects in this file were identified as duplicates and skipped.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      const finalClients = clientsToImport.map((c) => ({
         ...c,
         owner: uploadOwner,
         status: uploadStatus,
         dataset: uploadDataset.trim() ? uploadDataset.trim() : c.dataset,
       }));
       await onBulkAdd(finalClients);
+      resetAllForms();
       onClose();
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : "Failed to import uploaded prospects.");
@@ -439,6 +580,7 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
     try {
       setIsSubmitting(true);
       await onBulkAdd(parsedClients);
+      resetAllForms();
       onClose();
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : "Failed to import prospects.");
@@ -469,7 +611,7 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleModalClose}
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
             <X className="w-5 h-5" />
@@ -808,7 +950,7 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
             <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end space-x-3">
               <button
                 type="button"
-                onClick={onClose}
+                onClick={handleModalClose}
                 className="px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
               >
                 Cancel
@@ -929,13 +1071,44 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
               )}
             </div>
 
-            {/* Parsed Preview Table */}
+            {/* Parsed Preview Table & Duplicate Protection */}
             {parsedUploadClients.length > 0 && (
-              <div className="space-y-2">
+              <div className="space-y-3">
+                {/* Duplicate Notification Banner */}
+                {uploadDuplicateCount > 0 ? (
+                  <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center space-x-2">
+                      <span className="p-1 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold">⚠️</span>
+                      <span>
+                        <strong>{uploadDuplicateCount} duplicate prospect(s)</strong> detected matching existing records in Outreach CRM (by Email, Phone, or Company + Name).
+                      </span>
+                    </div>
+                    <label className="flex items-center space-x-2 cursor-pointer font-bold bg-white dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-amber-300 dark:border-amber-700/60 flex-shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={skipUploadDuplicates}
+                        onChange={(e) => setSkipUploadDuplicates(e.target.checked)}
+                        className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4"
+                      />
+                      <span>Skip Duplicates ({uploadDuplicateCount})</span>
+                    </label>
+                  </div>
+                ) : (
+                  <div className="p-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs flex items-center space-x-2 font-medium">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                    <span>All {parsedUploadClients.length} prospects in file are unique. No duplicates detected!</span>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
                   <span className="flex items-center gap-1.5">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                    Previewing First {Math.min(5, parsedUploadClients.length)} of {parsedUploadClients.length} Prospects
+                    Previewing First {Math.min(5, parsedUploadClients.length)} of {parsedUploadClients.length} Prospects &bull; Assigned to: <span className="text-blue-600 dark:text-blue-400 font-extrabold">{uploadOwner}</span>
+                    {uploadDuplicateCount > 0 && skipUploadDuplicates && (
+                      <span className="text-amber-600 text-[11px] font-normal">
+                        ({parsedUploadClients.length - uploadDuplicateCount} will be imported)
+                      </span>
+                    )}
                   </span>
                   <span className="text-[11px] text-slate-500">
                     Ready to populate Outreach board
@@ -1054,7 +1227,7 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
             <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end space-x-3">
               <button
                 type="button"
-                onClick={onClose}
+                onClick={handleModalClose}
                 className="px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
               >
                 Cancel
@@ -1176,7 +1349,7 @@ export const AddColdClientModal: React.FC<AddColdClientModalProps> = ({
             <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end space-x-3">
               <button
                 type="button"
-                onClick={onClose}
+                onClick={handleModalClose}
                 className="px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
               >
                 Cancel

@@ -48,6 +48,9 @@ Quantum Medical Systems,Dr. Vikram Sethi,Head of R&D,v.sethi@quantummed.org,+91 
 `;
 
 import { saveCSVUploadArchive } from "@/lib/uploadService";
+import { VALID_USERS } from "@/constants/users";
+import { getStoredLocalLeads } from "@/lib/leadsService";
+import { parseCSVToRows } from "@/lib/csvParser";
 
 export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
   isOpen,
@@ -58,9 +61,13 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
   const [file, setFile] = useState<File | null>(null);
   const [rawCsvText, setRawCsvText] = useState<string>("");
   const [parsedLeads, setParsedLeads] = useState<ParsedCSVLead[]>([]);
+  const [duplicateCount, setDuplicateCount] = useState<number>(0);
+  const [skipDuplicates, setSkipDuplicates] = useState<boolean>(true);
+  const [selectedAssignee, setSelectedAssignee] = useState<string>(
+    currentUser?.name || "Amit"
+  );
   const [error, setError] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const assignToCurrentAccount = true;
 
   if (!isOpen) return null;
 
@@ -87,95 +94,195 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
     return "interest";
   };
 
-  // Parse CSV Text
-  const parseCSVText = (text: string) => {
-    const lines = text.split(/\r\n|\n/).filter((line) => line.trim().length > 0);
-    if (lines.length <= 1) {
+  // Parse CSV Text with duplicate detection and dynamic header detection
+  const parseCSVText = (text: string, currentAssignee: string) => {
+    const rows = parseCSVToRows(text);
+    if (rows.length <= 1) {
       setError("CSV file is empty or missing data rows.");
       return;
     }
 
-    const leads: ParsedCSVLead[] = [];
-    const activeUserName = currentUser?.name || "Amit";
-    const isAdmin =
-      currentUser?.username.toLowerCase() === "admin" ||
-      currentUser?.role.toLowerCase().includes("admin");
+    // Existing leads map for duplicate checking
+    const existingLeads = getStoredLocalLeads();
+    const existingEmails = new Set<string>();
+    const existingPhones = new Set<string>();
+    const existingCompCont = new Set<string>();
 
-    // Skip header line
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
+    existingLeads.forEach((l) => {
+      if (l.contactEmail && l.contactEmail.includes("@")) {
+        existingEmails.add(l.contactEmail.toLowerCase().trim());
+      }
+      const ph = (l.contactPhone || "").replace(/\D/g, "");
+      if (ph.length >= 8) {
+        existingPhones.add(ph.slice(-10));
+      }
+      const comp = (l.companyName || "").toLowerCase().trim();
+      const cont = (l.contactName || "").toLowerCase().trim();
+      if (comp && cont) {
+        existingCompCont.add(`${comp}|${cont}`);
+      }
+    });
 
-      // Handle simple CSV splitting (supporting quoted strings)
-      const cols = line.split(/,(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)/).map((col) =>
-        col.replace(/^"|"$/g, "").trim()
+    const headerRow = rows[0].map((h) => h.toLowerCase().trim());
+    const hasHeader =
+      headerRow.some(
+        (h) =>
+          h.includes("company") ||
+          h.includes("contact") ||
+          h.includes("email") ||
+          h.includes("phone")
       );
 
-      if (cols.length >= 3) {
-        const companyName = cols[0] || `Imported Company ${i}`;
-        const contactName = cols[1] || "Primary Contact";
+    let startIdx = 0;
+    let companyIdx = 0;
+    let contactIdx = 1;
+    let desigIdx = 2;
+    let emailIdx = 3;
+    let phoneIdx = 4;
+    let cityIdx = 5;
+    let indIdx = 6;
+    let dealIdx = 7;
+    let stageIdx = 8;
+    let closeDateIdx = 9;
+    let ownerIdx = 10;
+    let notesIdx = 11;
+    let programIdx = -1;
 
-        let designation: string | undefined = undefined;
-        let contactEmail = "contact@company.com";
-        let contactPhone = "";
-        let city = "";
-        let industry = "SaaS & Software";
-        let dealValue = 500000;
-        let stage: LeadStage = "interest";
-        let expectedCloseDate = "2026-10-31";
-        let ownerCol = "";
-        let journeyNotes = "Bulk imported from CSV file.";
-
-        if (cols[2] && cols[2].includes("@")) {
-          // Legacy format without Designation column
-          contactEmail = cols[2];
-          contactPhone = cols[3] || "";
-          city = cols[4] || "";
-          industry = cols[5] || "SaaS & Software";
-          dealValue = parseFloat(cols[6]) || 500000;
-          stage = parseStageKey(cols[7]);
-          expectedCloseDate = cols[8] || "2026-10-31";
-          ownerCol = cols[9];
-          journeyNotes = cols[10] || "Bulk imported from CSV file.";
-        } else {
-          // Format with Designation column
-          designation = cols[2] || undefined;
-          contactEmail = cols[3] || "contact@company.com";
-          contactPhone = cols[4] || "";
-          city = cols[5] || "";
-          industry = cols[6] || "SaaS & Software";
-          dealValue = parseFloat(cols[7]) || 500000;
-          stage = parseStageKey(cols[8]);
-          expectedCloseDate = cols[9] || "2026-10-31";
-          ownerCol = cols[10];
-          journeyNotes = cols[11] || "Bulk imported from CSV file.";
+    if (hasHeader) {
+      startIdx = 1;
+      headerRow.forEach((h, idx) => {
+        if (h.includes("company") || h.includes("organization") || h.includes("account")) {
+          companyIdx = idx;
+        } else if (
+          h.includes("contact") ||
+          (h.includes("person") && !h.includes("company")) ||
+          (h.includes("name") && !h.includes("company"))
+        ) {
+          contactIdx = idx;
+        } else if (h.includes("email") || h.includes("mail")) {
+          emailIdx = idx;
+        } else if (
+          h.includes("designation") ||
+          h.includes("role") ||
+          h.includes("title") ||
+          h.includes("position")
+        ) {
+          desigIdx = idx;
+        } else if (
+          h.includes("phone") ||
+          h.includes("mobile") ||
+          h.includes("cell") ||
+          h.includes("tel")
+        ) {
+          phoneIdx = idx;
+        } else if (h.includes("city") || h.includes("location")) {
+          cityIdx = idx;
+        } else if (h.includes("industry") || h.includes("sector")) {
+          indIdx = idx;
+        } else if (h.includes("program") || h.includes("offering") || h.includes("service")) {
+          programIdx = idx;
+        } else if (
+          h.includes("deal") ||
+          h.includes("value") ||
+          h.includes("budget") ||
+          h.includes("amount")
+        ) {
+          dealIdx = idx;
+        } else if (h.includes("stage") || h.includes("status")) {
+          stageIdx = idx;
+        } else if (h.includes("date") || h.includes("close")) {
+          closeDateIdx = idx;
+        } else if (h.includes("owner") || h.includes("assigned") || h.includes("rep")) {
+          ownerIdx = idx;
+        } else if (h.includes("note") || h.includes("comment") || h.includes("remark")) {
+          notesIdx = idx;
         }
-
-        // Owner determination: Regular users always own their imported leads
-        let owner = activeUserName;
-        if (isAdmin && ownerCol && ownerCol.trim().length > 0) {
-          owner = ownerCol.trim();
-        }
-
-        leads.push({
-          companyName,
-          contactName,
-          designation,
-          contactEmail,
-          contactPhone,
-          city,
-          industry,
-          program: "Executive Coaching",
-          leadSource: "Event Based",
-          dealValue,
-          stage,
-          expectedCloseDate,
-          closureMonth: expectedCloseDate ? expectedCloseDate.substring(0, 7) : undefined,
-          owner,
-          journeyNotes,
-        });
-      }
+      });
     }
+
+    const leads: ParsedCSVLead[] = [];
+    let dupCount = 0;
+    const seenInBatch = new Set<string>();
+
+    for (let i = startIdx; i < rows.length; i++) {
+      const cols = rows[i];
+      if (!cols || cols.length === 0) continue;
+
+      const rawComp = cols[companyIdx] || (cols[0] ? cols[0] : "");
+      const rawContact = cols[contactIdx] || (cols[1] ? cols[1] : "");
+      const rawEmail = cols[emailIdx] || "";
+
+      if (!rawComp && !rawContact && !rawEmail) continue;
+
+      const companyName = rawComp.trim() || `Imported Company ${i}`;
+      const contactName = rawContact.trim() || "Primary Contact";
+      const designation = (desigIdx !== -1 && cols[desigIdx] ? cols[desigIdx].trim() : undefined) || undefined;
+      const contactEmail =
+        rawEmail && rawEmail.includes("@")
+          ? rawEmail.trim()
+          : `${contactName.toLowerCase().replace(/\s+/g, ".")}@${companyName.toLowerCase().replace(/[^a-z0-9]/g, "")}.com`;
+      const contactPhone = phoneIdx !== -1 && cols[phoneIdx] ? cols[phoneIdx].trim() : "";
+      const city = cityIdx !== -1 && cols[cityIdx] ? cols[cityIdx].trim() : "";
+      const industry = indIdx !== -1 && cols[indIdx] ? cols[indIdx].trim() : "SaaS & Software";
+      const rawVal = dealIdx !== -1 && cols[dealIdx] ? cols[dealIdx].replace(/[^\d.-]/g, "") : "";
+      const dealValue = rawVal ? Math.round(parseFloat(rawVal)) || 500000 : 500000;
+      const stage = stageIdx !== -1 && cols[stageIdx] ? parseStageKey(cols[stageIdx]) : "interest";
+      const expectedCloseDate =
+        closeDateIdx !== -1 && cols[closeDateIdx] && cols[closeDateIdx].includes("-")
+          ? cols[closeDateIdx].trim()
+          : "2026-10-31";
+      const ownerCol = ownerIdx !== -1 && cols[ownerIdx] ? cols[ownerIdx].trim() : "";
+      const journeyNotes =
+        notesIdx !== -1 && cols[notesIdx] ? cols[notesIdx].trim() : "Bulk imported from CSV file.";
+      const targetProgram =
+        programIdx !== -1 && cols[programIdx] ? cols[programIdx].trim() : "Executive Coaching";
+
+      const cleanEmail = contactEmail.toLowerCase().trim();
+      const cleanPh = contactPhone.replace(/\D/g, "").slice(-10);
+      const compContKey = `${companyName.toLowerCase().trim()}|${contactName.toLowerCase().trim()}`;
+
+      // Check if duplicate
+      const isDuplicate =
+        (cleanEmail && !cleanEmail.includes("company.com") && existingEmails.has(cleanEmail)) ||
+        (cleanPh && cleanPh.length >= 8 && existingPhones.has(cleanPh)) ||
+        existingCompCont.has(compContKey) ||
+        seenInBatch.has(cleanEmail || compContKey);
+
+      if (cleanEmail && !cleanEmail.includes("company.com")) {
+        seenInBatch.add(cleanEmail);
+      } else {
+        seenInBatch.add(compContKey);
+      }
+
+      if (isDuplicate) {
+        dupCount++;
+      }
+
+      // Assigned Owner priority:
+      // 1. If user picked a specific owner from dropdown, use it!
+      // 2. Otherwise fallback to CSV row owner or current user
+      const owner = currentAssignee || ownerCol || currentUser?.name || "Amit";
+
+      leads.push({
+        companyName,
+        contactName,
+        designation,
+        contactEmail,
+        contactPhone,
+        city,
+        industry,
+        program: targetProgram,
+        leadSource: "Event Based",
+        dealValue,
+        stage,
+        expectedCloseDate,
+        closureMonth: expectedCloseDate ? expectedCloseDate.substring(0, 7) : undefined,
+        owner,
+        journeyNotes,
+      });
+    }
+
+    setDuplicateCount(dupCount);
 
     if (leads.length === 0) {
       setError("Could not parse any valid lead records from CSV.");
@@ -199,30 +306,89 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
     reader.onload = (evt) => {
       const content = evt.target?.result as string;
       setRawCsvText(content || "");
-      parseCSVText(content);
+      parseCSVText(content, selectedAssignee);
     };
     reader.readAsText(selected);
+  };
+
+  // Re-parse when user changes the assignee dropdown
+  const handleAssigneeChange = (newAssignee: string) => {
+    setSelectedAssignee(newAssignee);
+    if (rawCsvText) {
+      parseCSVText(rawCsvText, newAssignee);
+    }
   };
 
   const handleImportSubmit = async () => {
     if (parsedLeads.length === 0) return;
     setIsProcessing(true);
     try {
+      // If skipDuplicates is enabled, filter out duplicate records
+      let finalLeadsToImport = parsedLeads;
+      if (skipDuplicates) {
+        const existingLeads = getStoredLocalLeads();
+        const existingEmails = new Set<string>();
+        const existingPhones = new Set<string>();
+        const existingCompCont = new Set<string>();
+
+        existingLeads.forEach((l) => {
+          if (l.contactEmail && l.contactEmail.includes("@")) {
+            existingEmails.add(l.contactEmail.toLowerCase().trim());
+          }
+          const ph = (l.contactPhone || "").replace(/\D/g, "");
+          if (ph.length >= 8) {
+            existingPhones.add(ph.slice(-10));
+          }
+          const comp = (l.companyName || "").toLowerCase().trim();
+          const cont = (l.contactName || "").toLowerCase().trim();
+          if (comp && cont) {
+            existingCompCont.add(`${comp}|${cont}`);
+          }
+        });
+
+        const seenInBatch = new Set<string>();
+        finalLeadsToImport = parsedLeads.filter((l) => {
+          const email = (l.contactEmail || "").toLowerCase().trim();
+          const ph = (l.contactPhone || "").replace(/\D/g, "").slice(-10);
+          const compContKey = `${(l.companyName || "").toLowerCase().trim()}|${(l.contactName || "").toLowerCase().trim()}`;
+
+          if (email && email !== "contact@company.com" && existingEmails.has(email)) return false;
+          if (ph && ph.length >= 8 && existingPhones.has(ph)) return false;
+          if (existingCompCont.has(compContKey)) return false;
+
+          if (email && email !== "contact@company.com") {
+            if (seenInBatch.has(email)) return false;
+            seenInBatch.add(email);
+          } else {
+            if (seenInBatch.has(compContKey)) return false;
+            seenInBatch.add(compContKey);
+          }
+
+          return true;
+        });
+      }
+
+      if (finalLeadsToImport.length === 0) {
+        setError("All leads in this file were identified as duplicates and skipped.");
+        setIsProcessing(false);
+        return;
+      }
+
       // 1. Archive raw CSV file to Firestore b2b_csv_uploads
       if (file && rawCsvText) {
         await saveCSVUploadArchive({
           fileName: file.name,
           fileSize: file.size,
           rowCount: parsedLeads.length,
-          uploadedBy: currentUser?.name || "Administrator",
+          uploadedBy: currentUser?.name || selectedAssignee,
           rawContent: rawCsvText,
-          importedCount: parsedLeads.length,
-          sampleRows: parsedLeads.slice(0, 3).map((l) => `${l.companyName} (${l.contactName})`),
+          importedCount: finalLeadsToImport.length,
+          sampleRows: finalLeadsToImport.slice(0, 3).map((l) => `${l.companyName} (${l.contactName})`),
         });
       }
 
       // 2. Import parsed leads into Firestore b2b_leads
-      await onBulkImport(parsedLeads);
+      await onBulkImport(finalLeadsToImport);
       setIsProcessing(false);
       setParsedLeads([]);
       setFile(null);
@@ -316,13 +482,82 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
             </div>
           )}
 
+          {/* Import Settings & Duplicate Alert */}
+          {parsedLeads.length > 0 && (
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                {/* Specific User Assignment */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Assign All Imported Leads To:
+                  </label>
+                  <select
+                    value={selectedAssignee}
+                    onChange={(e) => handleAssigneeChange(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-semibold focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                  >
+                    {VALID_USERS.map((u) => (
+                      <option key={u.username} value={u.name}>
+                        {u.name} ({u.role})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Duplicate Handling Option */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Duplicate Protection:
+                  </label>
+                  <label className="flex items-center space-x-2 text-xs text-slate-700 dark:text-slate-300 font-medium cursor-pointer p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={skipDuplicates}
+                      onChange={(e) => setSkipDuplicates(e.target.checked)}
+                      className="rounded text-purple-600 focus:ring-purple-500 h-4 w-4"
+                    />
+                    <span>Automatically skip existing duplicate leads</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Duplicate Detection Alert */}
+              {duplicateCount > 0 ? (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                    <span>
+                      <strong>{duplicateCount} duplicate lead(s)</strong> detected matching existing database records (by Email, Phone, or Company + Contact).
+                    </span>
+                  </div>
+                  <span className="font-bold text-[11px] bg-amber-500/20 px-2 py-0.5 rounded-full">
+                    {skipDuplicates ? "Will be skipped safely" : "Will be imported as duplicate"}
+                  </span>
+                </div>
+              ) : (
+                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs flex items-center space-x-2 font-medium">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                  <span>All {parsedLeads.length} leads are unique! No duplicates detected against database.</span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Preview Parsed Table */}
           {parsedLeads.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center space-x-1.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                  <span>Preview Parsed Records ({parsedLeads.length} leads)</span>
+                  <span>
+                    Previewing {parsedLeads.length} Leads &bull; Assigned to:{" "}
+                    <span className="text-purple-600 dark:text-purple-400 font-extrabold">{selectedAssignee}</span>
+                    {duplicateCount > 0 && skipDuplicates && (
+                      <span className="text-amber-600 text-[11px] font-normal ml-2">
+                        ({parsedLeads.length - duplicateCount} will be imported, {duplicateCount} skipped)
+                      </span>
+                    )}
+                  </span>
                 </h4>
               </div>
 

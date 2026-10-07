@@ -186,7 +186,12 @@ export async function createLead(
   return newLead;
 }
 
-// Bulk create B2B Leads in Firestore with atomic batching (guarantees all client data stored)
+// Helper to clean phone digits for matching
+function cleanDigits(val?: string): string {
+  return (val || "").replace(/\D/g, "");
+}
+
+// Bulk create B2B Leads in Firestore with deduplication and atomic batching
 export async function createLeadsBulk(
   leadsData: Array<
     Omit<Lead, "id" | "createdAt" | "updatedAt" | "journeyLogs" | "weightage"> & {
@@ -200,7 +205,66 @@ export async function createLeadsBulk(
   const timestampIso = now.toISOString();
   const formattedDate = formatTimestamp(now);
 
-  const createdLeads: Lead[] = leadsData.map((data, idx) => {
+  // 1. Fetch current leads to perform deduplication (by Email, Phone, Company+Contact)
+  const currentLeads = getStoredLocalLeads();
+  const existingEmails = new Set<string>();
+  const existingPhones = new Set<string>();
+  const existingCompanyContacts = new Set<string>();
+
+  currentLeads.forEach((l) => {
+    if (l.contactEmail && l.contactEmail.includes("@")) {
+      existingEmails.add(l.contactEmail.toLowerCase().trim());
+    }
+    const phoneDig = cleanDigits(l.contactPhone);
+    if (phoneDig.length >= 8) {
+      existingPhones.add(phoneDig.slice(-10));
+    }
+    const comp = (l.companyName || "").toLowerCase().trim();
+    const cont = (l.contactName || "").toLowerCase().trim();
+    if (comp && cont) {
+      existingCompanyContacts.add(`${comp}|${cont}`);
+    }
+  });
+
+  // Also track duplicates within the incoming batch itself
+  const batchEmails = new Set<string>();
+  const batchPhones = new Set<string>();
+  const batchCompCont = new Set<string>();
+
+  const nonDuplicateInputs = leadsData.filter((data) => {
+    const email = (data.contactEmail || "").toLowerCase().trim();
+    const phone = cleanDigits(data.contactPhone).slice(-10);
+    const comp = (data.companyName || "").toLowerCase().trim();
+    const cont = (data.contactName || "").toLowerCase().trim();
+    const compContKey = `${comp}|${cont}`;
+
+    // Check against existing database
+    if (email && email.includes("@") && existingEmails.has(email)) return false;
+    if (phone && phone.length >= 8 && existingPhones.has(phone)) return false;
+    if (comp && cont && existingCompanyContacts.has(compContKey)) return false;
+
+    // Check against current batch
+    if (email && email.includes("@")) {
+      if (batchEmails.has(email)) return false;
+      batchEmails.add(email);
+    }
+    if (phone && phone.length >= 8) {
+      if (batchPhones.has(phone)) return false;
+      batchPhones.add(phone);
+    }
+    if (comp && cont) {
+      if (batchCompCont.has(compContKey)) return false;
+      batchCompCont.add(compContKey);
+    }
+
+    return true;
+  });
+
+  if (nonDuplicateInputs.length === 0) {
+    return [];
+  }
+
+  const createdLeads: Lead[] = nonDuplicateInputs.map((data, idx) => {
     const uniqueId = `lead-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
     const weightage = STAGES[data.stage]?.weightage ?? 0;
     const initialLog: JourneyLog = {
@@ -251,8 +315,7 @@ export async function createLeadsBulk(
   }
 
   // Update local storage backup
-  const current = getStoredLocalLeads();
-  const updated = [...createdLeads, ...current];
+  const updated = [...createdLeads, ...currentLeads];
   saveStoredLocalLeads(updated);
 
   return createdLeads;

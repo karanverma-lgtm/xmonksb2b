@@ -486,17 +486,10 @@ export default function Home() {
 
   const handleBulkImport = async (importedLeads: Parameters<typeof createLead>[0][]) => {
     const activeUserName = currentUser?.name || "Unassigned";
-    const isAdmin =
-      currentUser?.username.toLowerCase() === "admin" ||
-      currentUser?.role.toLowerCase().includes("admin");
 
     const preparedList = importedLeads.map((item) => ({
       ...item,
-      owner: !isAdmin
-        ? item.owner && item.owner.trim() !== ""
-          ? item.owner
-          : activeUserName
-        : item.owner || activeUserName,
+      owner: item.owner && item.owner.trim() !== "" ? item.owner.trim() : activeUserName,
     }));
 
     const createdList = await createLeadsBulk(preparedList);
