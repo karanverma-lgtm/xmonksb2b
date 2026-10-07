@@ -809,6 +809,7 @@ export default function Home() {
       author: string;
       nextStatus?: ColdClientStatus;
       nextFollowUpDate?: string;
+      nextFollowUpTime?: string;
       activityDate?: string;
       activityTime?: string;
       time?: string;

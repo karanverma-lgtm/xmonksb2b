@@ -74,6 +74,7 @@ const VALID_STATUSES: ColdClientStatus[] = [
   "pricing_negotiations",
   "closure_won",
   "not_interested_lost",
+  "invalid",
   "future_prospect",
   "uncontacted",
   "email_sent",
@@ -93,6 +94,7 @@ function normalizeStatus(val?: string): ColdClientStatus {
     return clean as ColdClientStatus;
   }
   // Exact matches for the user's dropdown options:
+  if (clean.includes("invalid") || clean.includes("wrong") || clean.includes("bounce")) return "invalid";
   if (clean.includes("commercial")) return "share_commercial";
   if (clean.includes("stakeholder") || clean.includes("discussion") || clean.includes("meeting") || clean.includes("call")) return "interest";
   if (clean.includes("pricing") || clean.includes("negotiat")) return "pricing_negotiations";

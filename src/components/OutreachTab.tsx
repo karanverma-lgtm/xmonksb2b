@@ -68,6 +68,7 @@ interface OutreachTabProps {
       author: string;
       nextStatus?: ColdClientStatus;
       nextFollowUpDate?: string;
+      nextFollowUpTime?: string;
       activityDate?: string;
       activityTime?: string;
       time?: string;
@@ -1061,6 +1062,11 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
                               >
                                 <Calendar className="w-3 h-3" />
                                 <span>{client.nextFollowUpDate}</span>
+                                {client.nextFollowUpTime && (
+                                  <span className="text-[9px] text-blue-600 dark:text-blue-400 font-bold">
+                                    {client.nextFollowUpTime}
+                                  </span>
+                                )}
                               </span>
                             ) : (
                               <span className="text-[10px] text-slate-400">Owner: {client.owner}</span>
@@ -1232,6 +1238,11 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
                             >
                               <Calendar className="w-3.5 h-3.5" />
                               <span>{client.nextFollowUpDate}</span>
+                              {client.nextFollowUpTime && (
+                                <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold">
+                                  {client.nextFollowUpTime}
+                                </span>
+                              )}
                               {isDue && (
                                 <span className="ml-1 px-1.5 py-0.2 rounded-full text-[9px] bg-amber-500/10 border border-amber-500/20">
                                   Due

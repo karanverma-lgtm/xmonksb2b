@@ -282,6 +282,7 @@ export async function logOutreachTouchpoint(
     author: string;
     nextStatus?: ColdClientStatus;
     nextFollowUpDate?: string;
+    nextFollowUpTime?: string;
     activityDate?: string;
     activityTime?: string;
     time?: string;
@@ -350,6 +351,9 @@ export async function logOutreachTouchpoint(
   }
   if (touchpoint.nextFollowUpDate !== undefined) {
     updates.nextFollowUpDate = touchpoint.nextFollowUpDate;
+  }
+  if (touchpoint.nextFollowUpTime !== undefined) {
+    updates.nextFollowUpTime = touchpoint.nextFollowUpTime;
   }
 
   await updateColdClient(clientId, updates);

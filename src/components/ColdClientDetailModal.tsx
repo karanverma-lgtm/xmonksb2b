@@ -158,6 +158,7 @@ interface ColdClientDetailModalProps {
       author: string;
       nextStatus?: ColdClientStatus;
       nextFollowUpDate?: string;
+      nextFollowUpTime?: string;
       activityDate?: string;
       activityTime?: string;
       time?: string;
@@ -218,6 +219,7 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
   const [tpSummary, setTpSummary] = useState("");
   const [tpNextStatus, setTpNextStatus] = useState<ColdClientStatus | "">("");
   const [tpFollowUpDate, setTpFollowUpDate] = useState("");
+  const [tpFollowUpTime, setTpFollowUpTime] = useState("");
   const [isLoggingTp, setIsLoggingTp] = useState(false);
 
   // Convert state
@@ -455,6 +457,7 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
       setTpSummary("");
       setTpNextStatus("");
       setTpFollowUpDate("");
+      setTpFollowUpTime("");
       setTpDate(getTodayDateString());
       setTpTime(getCurrentTimeString());
       setEmailCc("");
@@ -516,12 +519,14 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
         author: currentUser?.name || currentUser?.username || "Admin User",
         nextStatus: tpNextStatus ? (tpNextStatus as ColdClientStatus) : undefined,
         nextFollowUpDate: tpFollowUpDate || undefined,
+        nextFollowUpTime: tpFollowUpTime || undefined,
         activityDate: tpDate || getTodayDateString(),
         activityTime: tpTime || getCurrentTimeString(),
       });
       setTpSummary("");
       setTpNextStatus("");
       setTpFollowUpDate("");
+      setTpFollowUpTime("");
       setTpDate(getTodayDateString());
       setTpTime(getCurrentTimeString());
       if (tpNextStatus) {
@@ -713,8 +718,8 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
   const isFollowUpDue = client.nextFollowUpDate && client.nextFollowUpDate <= new Date().toISOString().split("T")[0];
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
-      <div className="relative w-full max-w-4xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5">
+      <div className="relative w-full max-w-5xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         {/* Top Header */}
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-gradient-to-r from-slate-50 via-blue-50/20 to-transparent dark:from-slate-950 dark:via-blue-950/20 flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -1030,7 +1035,18 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
                       }`}
                     >
                       {isFollowUpDue && <Clock className="w-3 h-3" />}
-                      {client.nextFollowUpDate || "Not scheduled"}
+                      {client.nextFollowUpDate ? (
+                        <span>
+                          {client.nextFollowUpDate}
+                          {client.nextFollowUpTime && (
+                            <span className="ml-1 text-[11px] text-blue-600 dark:text-blue-400 font-semibold">
+                              @ {client.nextFollowUpTime}
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        "Not scheduled"
+                      )}
                     </p>
                   </div>
                 </div>
@@ -1374,107 +1390,177 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
             {/* Quick Action: Log Touchpoint */}
             <form
               onSubmit={handleLogTouchpointSubmit}
-              className="p-4 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3"
+              className="p-5 bg-gradient-to-b from-white to-slate-50/80 dark:from-slate-900 dark:to-slate-900/60 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-4"
             >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                  <Send className="w-3.5 h-3.5 text-blue-500" />
-                  Log New Touchpoint / Activity
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center space-x-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                    <Send className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-slate-900 dark:text-white block leading-tight">
+                      Log New Touchpoint / Activity
+                    </span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Record outbound interaction, responses &amp; next follow-up
+                    </span>
+                  </div>
+                </div>
+                <span className="text-[10px] text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-full font-semibold border border-blue-200/60 dark:border-blue-900/60 flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  IST Timezone
                 </span>
-                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1">
-                  <Clock className="w-3 h-3 text-slate-400" />
-                  Custom time &amp; date support
+              </div>
+
+              {/* Section 1: Interaction Metadata (Channel + Activity Date & Time) */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Activity Details
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                  <div className="sm:col-span-5">
+                    <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                      Channel / Medium
+                    </label>
+                    <select
+                      value={tpChannel}
+                      onChange={(e) => setTpChannel(e.target.value as OutreachChannel | "note")}
+                      className="w-full h-9 px-3 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                    >
+                      <option value="email">✉️ Sent Cold Email</option>
+                      <option value="linkedin">💼 LinkedIn InMail / Message</option>
+                      <option value="call">📞 Phone Discovery Call</option>
+                      <option value="note">📝 Internal Note / Memo</option>
+                      <option value="event">🤝 Meeting / Product Demo</option>
+                    </select>
+                  </div>
+
+                  <div className="sm:col-span-4">
+                    <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                      Activity Date
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={tpDate}
+                      onChange={(e) => setTpDate(e.target.value)}
+                      className="w-full h-9 px-3 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                    >
+                    </input>
+                  </div>
+
+                  <div className="sm:col-span-3">
+                    <ModernTimePicker
+                      value={tpTime}
+                      onChange={(newTime) => setTpTime(newTime)}
+                      onResetNow={() => {
+                        setTpDate(getTodayDateString());
+                        setTpTime(getCurrentTimeString());
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 2: Pipeline State & Next Action */}
+              <div className="p-3 bg-slate-50/80 dark:bg-slate-800/40 rounded-xl border border-slate-200/80 dark:border-slate-700/60 space-y-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                  Pipeline &amp; Next Follow-Up
                 </span>
-              </div>
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                  <div className="sm:col-span-5">
+                    <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                      New Status (Optional)
+                    </label>
+                    <select
+                      value={tpNextStatus}
+                      onChange={(e) => setTpNextStatus(e.target.value as ColdClientStatus | "")}
+                      className="w-full h-9 px-3 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                    >
+                      <option value="">Keep current status</option>
+                      {Object.entries(COLD_STATUS_CONFIG).map(([k, cfg]) => (
+                        <option key={k} value={k}>
+                          {cfg.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-              {/* Row 1: Channel, Activity Date, Activity Time */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Channel</label>
-                  <select
-                    value={tpChannel}
-                    onChange={(e) => setTpChannel(e.target.value as OutreachChannel | "note")}
-                    className="w-full mt-0.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                  >
-                    <option value="email">✉️ Sent Cold Email</option>
-                    <option value="linkedin">💼 LinkedIn InMail</option>
-                    <option value="call">📞 Phone Discovery Call</option>
-                    <option value="note">📝 Internal Note</option>
-                    <option value="event">🤝 Meeting / Event</option>
-                  </select>
-                </div>
+                  <div className="sm:col-span-4">
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                        Follow-up Date
+                      </label>
+                      {tpFollowUpDate && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTpFollowUpDate("");
+                            setTpFollowUpTime("");
+                          }}
+                          className="text-[10px] font-semibold text-rose-500 hover:text-rose-600 hover:underline cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="date"
+                      value={tpFollowUpDate}
+                      onChange={(e) => setTpFollowUpDate(e.target.value)}
+                      className="w-full h-9 px-3 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                    />
+                  </div>
 
-                <div>
-                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
-                    Activity Date
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={tpDate}
-                    onChange={(e) => setTpDate(e.target.value)}
-                    className="w-full mt-0.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                  />
-                </div>
-
-                <ModernTimePicker
-                  value={tpTime}
-                  onChange={(newTime) => setTpTime(newTime)}
-                  onResetNow={() => {
-                    setTpDate(getTodayDateString());
-                    setTpTime(getCurrentTimeString());
-                  }}
-                />
-              </div>
-
-              {/* Row 2: Status & Follow-up */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">New Status (Optional)</label>
-                  <select
-                    value={tpNextStatus}
-                    onChange={(e) => setTpNextStatus(e.target.value as ColdClientStatus | "")}
-                    className="w-full mt-0.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                  >
-                    <option value="">Keep current status</option>
-                    {Object.entries(COLD_STATUS_CONFIG).map(([k, cfg]) => (
-                      <option key={k} value={k}>
-                        {cfg.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Next Follow-up Date (Optional)</label>
-                  <input
-                    type="date"
-                    value={tpFollowUpDate}
-                    onChange={(e) => setTpFollowUpDate(e.target.value)}
-                    className="w-full mt-0.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                  />
+                  <div className="sm:col-span-3">
+                    <ModernTimePicker
+                      value={tpFollowUpTime || "11:00"}
+                      label="Follow-up Time"
+                      onChange={(newTime) => {
+                        setTpFollowUpTime(newTime);
+                        if (!tpFollowUpDate) {
+                          setTpFollowUpDate(getTodayDateString());
+                        }
+                      }}
+                      onResetNow={() => {
+                        setTpFollowUpTime(getCurrentTimeString());
+                        if (!tpFollowUpDate) {
+                          setTpFollowUpDate(getTodayDateString());
+                        }
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
 
+              {/* Section 3: Summary / Notes */}
               <div>
+                <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                  Activity Summary / Discussion Notes <span className="text-rose-500">*</span>
+                </label>
                 <textarea
-                  rows={2}
+                  rows={3}
                   required
                   value={tpSummary}
                   onChange={(e) => setTpSummary(e.target.value)}
                   placeholder="Record summary of outreach note, response received, objection, or next step..."
-                  className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none"
+                  className="w-full p-3 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none resize-none leading-relaxed"
                 />
               </div>
 
-              <div className="flex justify-end">
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-[11px] text-slate-400">
+                  {currentUser?.name ? `Logged by: ${currentUser.name}` : ""}
+                </span>
                 <button
                   type="submit"
                   disabled={isLoggingTp || !tpSummary.trim()}
-                  className="px-4 py-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-xs transition-all disabled:opacity-50 flex items-center space-x-1"
+                  className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-sm hover:shadow transition-all disabled:opacity-50 flex items-center space-x-1.5 cursor-pointer active:scale-98"
                 >
-                  <Send className="w-3 h-3" />
-                  <span>{isLoggingTp ? "Logging..." : "Log Activity"}</span>
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{isLoggingTp ? "Logging Activity..." : "Log Activity"}</span>
                 </button>
               </div>
             </form>

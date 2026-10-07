@@ -11,6 +11,7 @@ export type ColdClientStatus =
   | "closure_won"
   | "future_prospect"
   | "not_interested_lost"
+  | "invalid"
   | "uncontacted"
   | "email_sent"
   | "follow_up_1"
@@ -56,6 +57,7 @@ export interface ColdClient {
   touchpoints: OutreachTouchpoint[];
   lastContactDate?: string; // ISO string or YYYY-MM-DD
   nextFollowUpDate?: string; // YYYY-MM-DD
+  nextFollowUpTime?: string; // HH:mm format (e.g. "14:30")
   convertedLeadId?: string; // Lead ID if converted to pipeline
   sheetRowNumber?: number; // Row index in synced Google Sheet
   sourceSheet?: string; // Google Sheet name

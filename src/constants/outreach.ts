@@ -10,6 +10,7 @@ export const PRIMARY_OUTREACH_STATUSES: ColdClientStatus[] = [
   "closure_won",
   "future_prospect",
   "not_interested_lost",
+  "invalid",
 ];
 
 export const COLD_STATUS_CONFIG: Record<ColdClientStatus, ColdStatusConfig> = {
@@ -103,6 +104,16 @@ export const COLD_STATUS_CONFIG: Record<ColdClientStatus, ColdStatusConfig> = {
     headerBg: "bg-rose-950/40",
     iconName: "XCircle",
     description: "Client passed or decided not to proceed at this time.",
+  },
+  invalid: {
+    id: "invalid",
+    label: "Invalid",
+    badgeBg: "bg-slate-700 text-slate-100",
+    badgeText: "text-slate-100 font-bold",
+    borderColor: "border-slate-600",
+    headerBg: "bg-slate-800/60",
+    iconName: "Ban",
+    description: "Invalid contact details, wrong number, bounced email, or defunct account.",
   },
   future_prospect: {
     id: "future_prospect",
