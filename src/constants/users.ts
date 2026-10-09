@@ -153,3 +153,60 @@ export function authenticateUser(usernameInput: string, passwordInput: string): 
   );
   return found || null;
 }
+
+/**
+ * Resolves a given owner/user string to their canonical display name.
+ * Handles known aliases: "Amit" <-> "Amit Shelly", "Ruby" <-> "Ruby Dayal", etc.
+ */
+export function getCanonicalOwnerName(name?: string | null): string {
+  if (!name) return "Unassigned";
+  const clean = name.trim();
+  const lower = clean.toLowerCase();
+  if (!lower || lower === "all" || lower === "unassigned") return clean;
+  if (lower === "amit" || lower === "amit shelly") return "Amit Shelly";
+  if (lower === "ruby" || lower === "ruby dayal") return "Ruby Dayal";
+  if (lower === "gaurav") return "Gaurav";
+  if (lower === "preeti" || lower === "pooja") return "Preeti";
+  if (lower === "nikhil") return "Nikhil";
+  if (lower === "admin" || lower === "admin user") return "Admin User";
+  if (lower === "accounts" || lower === "accounts department") return "Accounts Department";
+
+  for (const u of VALID_USERS) {
+    const uName = u.name.toLowerCase();
+    const uUser = u.username.toLowerCase();
+    if (
+      lower === uUser ||
+      lower === uName ||
+      lower.includes(uUser) ||
+      uName.includes(lower) ||
+      lower.includes(uName)
+    ) {
+      return u.name;
+    }
+  }
+  return clean;
+}
+
+/**
+ * Compares two owner names using a flexible contains & canonical alias condition.
+ * e.g. "Amit Shelly" matches "Amit", "Ruby Dayal" matches "Ruby".
+ */
+export function isSameOwner(ownerA?: string | null, ownerB?: string | null): boolean {
+  if (!ownerA || !ownerB) return false;
+  const a = ownerA.toLowerCase().trim();
+  const b = ownerB.toLowerCase().trim();
+  if (a === "all" || b === "all") return true;
+  if (a === b) return true;
+
+  // Two-way contains check
+  if (a.includes(b) || b.includes(a)) return true;
+
+  // Canonical name equivalence check
+  const canonA = getCanonicalOwnerName(a).toLowerCase();
+  const canonB = getCanonicalOwnerName(b).toLowerCase();
+  if (canonA === canonB) return true;
+  if (canonA.includes(canonB) || canonB.includes(canonA)) return true;
+
+  return false;
+}
+

@@ -31,10 +31,13 @@ import {
   UserPlus,
   Pencil,
   Star,
-  Eye,
   Paperclip,
+  ShieldAlert,
+  SendHorizontal,
+  Bell,
+  Eye,
 } from "lucide-react";
-import { ColdClient, ColdClientStatus, OutreachChannel, OutreachTouchpoint } from "@/types/outreach";
+import { ColdClient, ColdClientStatus, OutreachChannel, OutreachTouchpoint, AdminComment } from "@/types/outreach";
 import { ContactPerson } from "@/types/lead";
 import { COLD_STATUS_CONFIG, OUTREACH_CHANNELS, OUTREACH_INDUSTRIES, PRIMARY_OUTREACH_STATUSES } from "@/constants/outreach";
 import { PRESET_PROGRAMS } from "@/constants/programs";
@@ -174,6 +177,8 @@ interface ColdClientDetailModalProps {
   onDeleteClient: (id: string) => Promise<void>;
   currentUser?: UserAccount | null;
   onNavigateToEmail?: (recipientEmail: string, recipientName: string, companyName: string) => void;
+  onAddAdminComment?: (clientId: string, commentText: string) => Promise<void>;
+  onMarkAdminCommentRead?: (clientId: string, commentId: string) => Promise<void>;
 }
 
 export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
@@ -186,6 +191,8 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
   onDeleteClient,
   currentUser,
   onNavigateToEmail,
+  onAddAdminComment,
+  onMarkAdminCommentRead,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -467,6 +474,40 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
     }
   }, [client, currentUser]);
 
+  // Admin Directives & Comments state
+  const [adminCommentText, setAdminCommentText] = useState("");
+  const [isPostingComment, setIsPostingComment] = useState(false);
+
+  const isAdmin = Boolean(
+    currentUser?.username?.toLowerCase() === "admin" ||
+    currentUser?.role?.toLowerCase().includes("admin") ||
+    currentUser?.role?.toLowerCase().includes("manager")
+  );
+
+  const isOwner = Boolean(
+    client &&
+    currentUser &&
+    ((client.owner || "").toLowerCase().trim() === (currentUser.name || "").toLowerCase().trim() ||
+     (client.owner || "").toLowerCase().trim() === (currentUser.username || "").toLowerCase().trim() ||
+     (client.owner && currentUser.name && (client.owner.toLowerCase().includes(currentUser.name.toLowerCase()) || currentUser.name.toLowerCase().includes(client.owner.toLowerCase()))))
+  );
+
+  const handlePostAdminComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminCommentText.trim() || !client) return;
+    try {
+      setIsPostingComment(true);
+      if (onAddAdminComment) {
+        await onAddAdminComment(client.id, adminCommentText.trim());
+      }
+      setAdminCommentText("");
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsPostingComment(false);
+    }
+  };
+
   if (!isOpen || !client) return null;
 
   const statusConfig = COLD_STATUS_CONFIG[status] || COLD_STATUS_CONFIG.uncontacted;
@@ -475,6 +516,35 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
     if (!companyName.trim() || !contactName.trim() || !email.trim()) return;
     try {
       setIsSaving(true);
+      const now = new Date();
+      const timestampIso = now.toISOString();
+
+      // Check what changed to create a helpful summary
+      const updatedFields: string[] = [];
+      if (companyName.trim() !== client.companyName) updatedFields.push("Company");
+      if (contactName.trim() !== client.contactName) updatedFields.push("Contact");
+      if (email.trim().toLowerCase() !== (client.email || "").toLowerCase()) updatedFields.push("Email");
+      if (status !== client.status) updatedFields.push(`Status: ${status}`);
+      if (owner !== client.owner) updatedFields.push(`Owner: ${owner}`);
+      if (notes.trim() !== (client.notes || "").trim()) updatedFields.push("Notes");
+
+      const changeSummary = updatedFields.length > 0
+        ? `Lead profile updated (${updatedFields.join(", ")})`
+        : "Lead details updated";
+
+      const autoTp: OutreachTouchpoint = {
+        id: "tp-upd-" + Date.now(),
+        timestamp: timestampIso,
+        formattedDate: now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        channel: "note",
+        summary: changeSummary,
+        author: currentUser?.name || currentUser?.username || "Lead Partner",
+        time: now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }),
+        activityDate: timestampIso.split("T")[0],
+      };
+
+      const updatedTouchpoints = [autoTp, ...(client.touchpoints || [])];
+
       await onUpdateClient(client.id, {
         companyName: companyName.trim(),
         contactName: contactName.trim(),
@@ -493,6 +563,8 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
         dataset: dataset.trim() || undefined,
         nextFollowUpDate: nextFollowUpDate || undefined,
         notes: notes.trim() || undefined,
+        touchpoints: updatedTouchpoints,
+        updatedAt: timestampIso,
       });
       setIsEditing(false);
     } catch (e) {
@@ -1566,8 +1638,112 @@ export const ColdClientDetailModal: React.FC<ColdClientDetailModalProps> = ({
             </form>
           </div>
 
-          {/* Right Column: Touchpoint Timeline & Journey History (5 cols) */}
-          <div className="lg:col-span-5 flex flex-col space-y-3">
+          {/* Right Column: Admin Directives + Touchpoint Timeline & Journey History (5 cols) */}
+          <div className="lg:col-span-5 flex flex-col space-y-4">
+            {/* Admin Directives & Leadership Comments Card */}
+            <div className="p-4 bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-slate-50 dark:to-slate-900 border border-amber-300 dark:border-amber-700/60 rounded-2xl shadow-xs space-y-3">
+              <div className="flex items-center justify-between pb-1.5 border-b border-amber-200/80 dark:border-amber-800/40">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center justify-center font-bold">
+                    <ShieldAlert className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                      <span>Admin Directives & Notes</span>
+                      {client.adminComments && client.adminComments.length > 0 && (
+                        <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-white shadow-xs">
+                          {client.adminComments.length}
+                        </span>
+                      )}
+                    </h4>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Leadership comments & directives for {client.owner || "Lead Owner"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Admin Comment Input (Visible to Admin/Manager users) */}
+              {isAdmin && (
+                <form onSubmit={handlePostAdminComment} className="space-y-2 pt-0.5">
+                  <textarea
+                    rows={2}
+                    value={adminCommentText}
+                    onChange={(e) => setAdminCommentText(e.target.value)}
+                    placeholder={`Write instruction or directive for ${client.owner || "lead owner"}...`}
+                    className="w-full p-2.5 text-xs rounded-xl border border-amber-300/80 dark:border-amber-700/80 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 focus:outline-none resize-none leading-relaxed placeholder:text-slate-400"
+                  />
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-amber-700 dark:text-amber-400 font-medium flex items-center gap-1">
+                      <Bell className="w-3 h-3 text-amber-600 dark:text-amber-400 animate-pulse" />
+                      Will notify {client.owner || "owner"} on screen
+                    </span>
+                    <button
+                      type="submit"
+                      disabled={isPostingComment || !adminCommentText.trim()}
+                      className="px-3 py-1.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-xl shadow-xs hover:shadow transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer active:scale-98"
+                    >
+                      <SendHorizontal className="w-3.5 h-3.5" />
+                      <span>{isPostingComment ? "Posting..." : "Post Directive"}</span>
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Existing Comments List */}
+              <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
+                {!client.adminComments || client.adminComments.length === 0 ? (
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 italic py-1 text-center">
+                    No admin directives logged for this account yet.
+                  </p>
+                ) : (
+                  client.adminComments.map((cm) => (
+                    <div
+                      key={cm.id}
+                      className={`p-2.5 rounded-xl border text-xs space-y-1.5 transition-all ${
+                        !cm.readByOwner && isOwner
+                          ? "bg-amber-100/90 dark:bg-amber-950/60 border-amber-400 dark:border-amber-600 ring-2 ring-amber-400/20"
+                          : "bg-white dark:bg-slate-800/90 border-slate-200 dark:border-slate-700/80"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1 flex-wrap">
+                        <span className="font-bold text-[11px] text-amber-800 dark:text-amber-300 flex items-center gap-1">
+                          <ShieldAlert className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                          {cm.author} ({cm.authorRole || "Admin"})
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-medium">
+                          {cm.createdAt ? new Date(cm.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " " + new Date(cm.createdAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }) : ""}
+                        </span>
+                      </div>
+                      <p className="text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed text-[11px] font-medium">
+                        {cm.comment}
+                      </p>
+                      <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-700/50">
+                        {cm.readByOwner ? (
+                          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                            <Check className="w-3 h-3 text-emerald-500" /> Read by {client.owner}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-amber-500" /> Pending review by {client.owner}
+                          </span>
+                        )}
+                        {!cm.readByOwner && isOwner && onMarkAdminCommentRead && (
+                          <button
+                            type="button"
+                            onClick={() => onMarkAdminCommentRead(client.id, cm.id)}
+                            className="px-2 py-0.5 text-[10px] font-bold bg-amber-500 text-white rounded-md hover:bg-amber-600 transition shadow-2xs cursor-pointer"
+                          >
+                            Mark Read
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
             <div className="flex items-center justify-between pb-1 border-b border-slate-200 dark:border-slate-800">
               <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 text-slate-400" />

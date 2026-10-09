@@ -35,6 +35,18 @@ export interface OutreachTouchpoint {
   activityDate?: string; // Date string e.g. "2026-09-30"
 }
 
+export interface AdminComment {
+  id: string;
+  clientId: string;
+  author: string; // e.g. "Admin User"
+  authorUsername: string; // e.g. "admin"
+  authorRole?: string;
+  comment: string;
+  createdAt: string; // ISO date string
+  readByOwner?: boolean;
+  readAt?: string;
+}
+
 export interface ColdClient {
   id: string;
   companyName: string;
@@ -55,6 +67,7 @@ export interface ColdClient {
   owner: string; // User assigned
   notes?: string;
   touchpoints: OutreachTouchpoint[];
+  adminComments?: AdminComment[];
   lastContactDate?: string; // ISO string or YYYY-MM-DD
   nextFollowUpDate?: string; // YYYY-MM-DD
   nextFollowUpTime?: string; // HH:mm format (e.g. "14:30")

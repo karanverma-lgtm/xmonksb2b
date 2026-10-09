@@ -3,7 +3,7 @@
 import React, { useMemo } from "react";
 import { Lead } from "@/types/lead";
 import { STAGES } from "@/constants/stages";
-import { VALID_USERS } from "@/constants/users";
+import { VALID_USERS, getCanonicalOwnerName, isSameOwner } from "@/constants/users";
 import { formatINR } from "@/lib/formatters";
 import { Trophy, Award, Medal, User, ArrowUpRight } from "lucide-react";
 
@@ -52,9 +52,9 @@ export const SalesLeaderboard: React.FC<SalesLeaderboardProps> = ({
       // Find matching user or create entry
       let entry = map.get(key);
       if (!entry) {
-        // Check partial match
+        // Check partial match with contains & canonical aliases
         for (const [k, val] of map.entries()) {
-          if (k.includes(key) || key.includes(k)) {
+          if (isSameOwner(k, key)) {
             entry = val;
             break;
           }
@@ -63,7 +63,7 @@ export const SalesLeaderboard: React.FC<SalesLeaderboardProps> = ({
 
       if (!entry) {
         entry = {
-          ownerName: rawOwner,
+          ownerName: getCanonicalOwnerName(rawOwner),
           totalValue: 0,
           weightedValue: 0,
           leads: [],

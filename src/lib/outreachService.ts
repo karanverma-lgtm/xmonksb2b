@@ -10,8 +10,9 @@ import {
   orderBy,
   writeBatch,
 } from "firebase/firestore";
-import { ColdClient, OutreachTouchpoint, ColdClientStatus, OutreachChannel } from "@/types/outreach";
+import { ColdClient, OutreachTouchpoint, ColdClientStatus, OutreachChannel, AdminComment } from "@/types/outreach";
 import { formatTimestamp, sanitizeForFirestore, createLead } from "./leadsService";
+import { UserAccount } from "@/constants/users";
 
 const COLLECTION_NAME = "b2b_cold_clients";
 const LOCAL_STORAGE_KEY = "xmonks_b2b_cold_clients_v1";
@@ -128,6 +129,7 @@ export function subscribeToColdClients(
                 id: docSnap.id,
                 ...data,
                 touchpoints: Array.isArray(data.touchpoints) ? data.touchpoints : [],
+                adminComments: Array.isArray(data.adminComments) ? data.adminComments : [],
               });
             }
           });
@@ -614,4 +616,77 @@ export async function convertColdClientToLead(
   });
 
   return createdLead.id;
+}
+
+// Add Admin Comment to Cold Client & Notify Lead Owner
+export async function addAdminCommentToColdClient(
+  clientId: string,
+  commentText: string,
+  author: UserAccount | { name: string; username: string; role?: string }
+): Promise<AdminComment | null> {
+  const current = getStoredLocalColdClients();
+  const client = current.find((c) => c.id === clientId);
+  if (!client || !commentText.trim()) return null;
+
+  const now = new Date();
+  const newComment: AdminComment = {
+    id: "comment-" + Date.now(),
+    clientId,
+    author: author.name || "Admin User",
+    authorUsername: author.username || "admin",
+    authorRole: author.role || "Administrator",
+    comment: commentText.trim(),
+    createdAt: now.toISOString(),
+    readByOwner: false,
+  };
+
+  const updatedComments = [newComment, ...(client.adminComments || [])];
+
+  // Also log an automated touchpoint note in Touchpoint History
+  const formattedDate = formatTimestamp(now);
+  const formattedTime = now.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+  const touchpointNote: OutreachTouchpoint = {
+    id: "tp-admin-" + Date.now(),
+    timestamp: now.toISOString(),
+    formattedDate,
+    channel: "note",
+    summary: `Admin Instruction (${author.name}): ${commentText.trim()}`,
+    author: author.name || "Admin User",
+    time: formattedTime,
+    activityDate: now.toISOString().split("T")[0],
+  };
+
+  const updatedTouchpoints = [touchpointNote, ...(client.touchpoints || [])];
+
+  const updates: Partial<ColdClient> = {
+    adminComments: updatedComments,
+    touchpoints: updatedTouchpoints,
+    updatedAt: now.toISOString(),
+  };
+
+  await updateColdClient(clientId, updates);
+  return newComment;
+}
+
+// Mark Admin Comment as Read
+export async function markAdminCommentRead(
+  clientId: string,
+  commentId: string
+): Promise<void> {
+  const current = getStoredLocalColdClients();
+  const client = current.find((c) => c.id === clientId);
+  if (!client || !client.adminComments) return;
+
+  const updatedComments = client.adminComments.map((c) =>
+    c.id === commentId ? { ...c, readByOwner: true, readAt: new Date().toISOString() } : c
+  );
+
+  await updateColdClient(clientId, {
+    adminComments: updatedComments,
+  });
 }

@@ -26,6 +26,7 @@ import {
   TrendingUp,
   Layers,
   FolderOpen,
+  Clock,
 } from "lucide-react";
 
 import { formatINR } from "@/lib/formatters";
@@ -36,6 +37,7 @@ export type NavTab =
   | "kanban"
   | "table"
   | "outreach"
+  | "touchpoints"
   | "analytics"
   | "email"
   | "library"
@@ -140,6 +142,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: "outreach",
       label: "Outreach",
       icon: SendHorizontal,
+      color: "text-blue-600 dark:text-blue-400",
+      activeBg: "bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800",
+      hidden: isAccounts,
+    },
+    {
+      id: "touchpoints",
+      label: "Touchpoint History",
+      icon: Clock,
       color: "text-blue-600 dark:text-blue-400",
       activeBg: "bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800",
       hidden: isAccounts,

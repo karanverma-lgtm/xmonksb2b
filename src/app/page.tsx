@@ -40,11 +40,12 @@ import { AnalyticsCharts } from "@/components/AnalyticsCharts";
 import { EmailCampaignTab, ParsedCSVEmailRecipient } from "@/components/EmailCampaignTab";
 import { DeveloperTab } from "@/components/DeveloperTab";
 import { OutreachTab } from "@/components/OutreachTab";
+import { TouchpointHistoryTab } from "@/components/TouchpointHistoryTab";
 import { BillingTab } from "@/components/BillingTab";
 import { ProspectorTab } from "@/components/ProspectorTab";
 import { LibraryTab } from "@/components/LibraryTab";
 import { EmailAttachment } from "@/constants/emailTemplates";
-import { ColdClient, ColdClientStatus, OutreachChannel } from "@/types/outreach";
+import { ColdClient, ColdClientStatus, OutreachChannel, AdminComment } from "@/types/outreach";
 import {
   subscribeToColdClients,
   addColdClient,
@@ -55,18 +56,20 @@ import {
   bulkUpdateColdClients,
   bulkDeleteColdClients,
   convertColdClientToLead,
+  addAdminCommentToColdClient,
+  markAdminCommentRead,
 } from "@/lib/outreachService";
 import { STAGES } from "@/constants/stages";
 import { LoginForm } from "@/components/LoginForm";
 import { ChangePasswordModal } from "@/components/ChangePasswordModal";
-import { UserAccount } from "@/constants/users";
+import { UserAccount, isSameOwner } from "@/constants/users";
 import {
   subscribeToUserPreferences,
   saveUserPreferencesToFirestore,
   getLocalPreferences,
 } from "@/lib/preferencesService";
 import { migrateLeadToBilling } from "@/lib/billingService";
-import { Receipt, CheckCircle2, ArrowRight, X } from "lucide-react";
+import { Receipt, CheckCircle2, ArrowRight, X, Bell, ShieldAlert, MessageSquare } from "lucide-react";
 import confetti from "canvas-confetti";
 import { useRef, useSyncExternalStore } from "react";
 
@@ -426,12 +429,7 @@ export default function Home() {
       currentUser?.role.toLowerCase().includes("admin");
 
     if (isAdmin && selectedPartner !== "all") {
-      const partnerClean = selectedPartner.toLowerCase().trim();
-      const leadOwner = (lead.owner || "").toLowerCase().trim();
-      const match =
-        leadOwner === partnerClean ||
-        leadOwner.includes(partnerClean) ||
-        partnerClean.includes(leadOwner);
+      const match = isSameOwner(lead.owner, selectedPartner);
       if (!match) return false;
     }
 
@@ -849,6 +847,56 @@ export default function Home() {
     await bulkDeleteColdClients(clientIds);
   };
 
+  const handleAddOutreachAdminComment = async (clientId: string, commentText: string) => {
+    if (!currentUser) return;
+    await addAdminCommentToColdClient(clientId, commentText, currentUser);
+  };
+
+  const handleMarkOutreachAdminCommentRead = async (clientId: string, commentId: string) => {
+    await markAdminCommentRead(clientId, commentId);
+  };
+
+  // Outreach selected client & Screen Notifications state
+  const [selectedOutreachClientId, setSelectedOutreachClientId] = useState<string | null>(null);
+  const [dismissedDirectiveIds, setDismissedDirectiveIds] = useState<string[]>([]);
+  const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
+
+  // Compute unread leadership directives for currentUser's owned leads
+  const unreadAdminDirectives = useMemo(() => {
+    if (!currentUser) return [];
+    const uName = (currentUser.name || "").toLowerCase().trim();
+    const uUser = (currentUser.username || "").toLowerCase().trim();
+
+    const list: Array<{
+      clientId: string;
+      client: ColdClient;
+      comment: AdminComment;
+    }> = [];
+
+    for (const client of coldClients) {
+      const owner = (client.owner || "").toLowerCase().trim();
+      const isOwner =
+        owner === uName ||
+        owner === uUser ||
+        (uName.length > 0 && (owner.includes(uName) || uName.includes(owner))) ||
+        (uUser.length > 0 && (owner.includes(uUser) || uUser.includes(owner)));
+
+      if (isOwner && Array.isArray(client.adminComments)) {
+        for (const cm of client.adminComments) {
+          if (!cm.readByOwner) {
+            list.push({ clientId: client.id, client, comment: cm });
+          }
+        }
+      }
+    }
+
+    return list;
+  }, [coldClients, currentUser]);
+
+  const activeFloatingDirective = useMemo(() => {
+    return unreadAdminDirectives.find((d) => !dismissedDirectiveIds.includes(d.comment.id)) || null;
+  }, [unreadAdminDirectives, dismissedDirectiveIds]);
+
   // Move / Duplicate Closure Lead to Billing
   const [billingToast, setBillingToast] = useState<{
     show: boolean;
@@ -899,7 +947,7 @@ export default function Home() {
         currentUser={currentUser}
         isFirebaseSyncing={isFirebaseSyncing}
         totalLeadsCount={
-          activeTab === "outreach"
+          activeTab === "outreach" || activeTab === "touchpoints"
             ? (outreachFilteredCount ?? userScopedColdClients.length)
             : filteredLeads.length
         }
@@ -909,6 +957,122 @@ export default function Home() {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 min-h-screen overflow-x-hidden">
         <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          {/* Top Header Status & Notification Center Strip */}
+          <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-200 dark:border-slate-800">
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Logged in as <span className="font-bold text-slate-900 dark:text-white">{currentUser?.name || "User"}</span>
+              </span>
+              <span className="text-xs text-slate-300 dark:text-slate-700">•</span>
+              <span className="text-xs text-slate-400 font-medium capitalize">
+                {currentUser?.role || "Team Member"}
+              </span>
+            </div>
+
+            {/* Notification Center Trigger */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsNotificationCenterOpen(!isNotificationCenterOpen)}
+                className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  unreadAdminDirectives.length > 0
+                    ? "bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 ring-2 ring-amber-400/20"
+                    : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
+                }`}
+                title="Leadership Directives & Notifications"
+              >
+                <Bell className={`w-3.5 h-3.5 ${unreadAdminDirectives.length > 0 ? "text-amber-600 dark:text-amber-400 animate-bounce" : ""}`} />
+                <span className="hidden sm:inline">Admin Directives</span>
+                {unreadAdminDirectives.length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-amber-500 text-white shadow-xs">
+                    {unreadAdminDirectives.length}
+                  </span>
+                )}
+              </button>
+
+              {/* Notification Center Dropdown */}
+              {isNotificationCenterOpen && (
+                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-4 z-50 space-y-3 animate-in fade-in zoom-in-95">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <ShieldAlert className="w-4 h-4 text-amber-500" />
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                        Admin Directives ({unreadAdminDirectives.length})
+                      </h4>
+                    </div>
+                    {unreadAdminDirectives.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          for (const d of unreadAdminDirectives) {
+                            await handleMarkOutreachAdminCommentRead(d.clientId, d.comment.id);
+                          }
+                        }}
+                        className="text-[10px] text-amber-600 hover:text-amber-700 font-bold cursor-pointer underline"
+                      >
+                        Mark all as read
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {unreadAdminDirectives.length === 0 ? (
+                      <div className="py-6 text-center text-xs text-slate-400">
+                        <CheckCircle2 className="w-6 h-6 mx-auto mb-1 text-emerald-500" />
+                        <p className="font-semibold text-slate-600 dark:text-slate-300">All caught up!</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">No pending leadership directives on your leads.</p>
+                      </div>
+                    ) : (
+                      unreadAdminDirectives.map((d) => (
+                        <div
+                          key={d.comment.id}
+                          className="p-3 rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/60 dark:bg-amber-950/30 text-xs space-y-1.5 hover:border-amber-400 transition"
+                        >
+                          <div className="flex items-center justify-between font-bold text-slate-900 dark:text-white">
+                            <span className="truncate">{d.client.companyName}</span>
+                            <span className="text-[10px] text-slate-400 font-normal">
+                              {new Date(d.comment.createdAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-700 dark:text-slate-300 leading-relaxed italic">
+                            "{d.comment.comment}"
+                          </p>
+                          <div className="flex items-center justify-between pt-1">
+                            <span className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold">
+                              From: {d.comment.author}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await handleMarkOutreachAdminCommentRead(d.clientId, d.comment.id);
+                                }}
+                                className="text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                              >
+                                Mark Read
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedOutreachClientId(d.clientId);
+                                  handleTabChange("outreach");
+                                  setIsNotificationCenterOpen(false);
+                                }}
+                                className="px-2 py-0.5 text-[10px] font-bold bg-blue-600 text-white rounded-md hover:bg-blue-700 cursor-pointer"
+                              >
+                                View Lead
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
         {/* KPI Dashboard Summary Bar & Filter Bar for Lead Management tabs */}
         {!isAccounts && (activeTab === "kanban" || activeTab === "table" || activeTab === "analytics") && (
           <>
@@ -986,6 +1150,29 @@ export default function Home() {
               handleTabChange("email");
             }}
             onFilteredCountChange={setOutreachFilteredCount}
+            onAddAdminComment={handleAddOutreachAdminComment}
+            onMarkAdminCommentRead={handleMarkOutreachAdminCommentRead}
+            selectedClientId={selectedOutreachClientId}
+            onSelectClientId={setSelectedOutreachClientId}
+          />
+        )}
+
+        {!isAccounts && activeTab === "touchpoints" && (
+          <TouchpointHistoryTab
+            coldClients={userScopedColdClients}
+            currentUser={currentUser}
+            isAdmin={isAdmin}
+            onUpdateColdClient={handleUpdateColdClient}
+            onLogTouchpoint={handleLogOutreachTouchpoint}
+            onConvertToLead={handleConvertToLead}
+            onDeleteColdClient={handleDeleteColdClient}
+            onNavigateToTab={handleTabChange}
+            onSelectOutreachClient={(clientId) => {
+              setSelectedOutreachClientId(clientId);
+              handleTabChange("outreach");
+            }}
+            onAddAdminComment={handleAddOutreachAdminComment}
+            onMarkAdminCommentRead={handleMarkOutreachAdminCommentRead}
           />
         )}
 
@@ -1078,6 +1265,79 @@ export default function Home() {
               <X className="w-4 h-4" />
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Real-time Floating Directive Screen Notification for Lead Owner */}
+      {activeFloatingDirective && (
+        <div
+          className={`fixed ${
+            billingToast?.show ? "bottom-32" : "bottom-6"
+          } right-6 z-50 max-w-md w-full p-4 bg-slate-900/95 dark:bg-slate-900/95 text-white rounded-2xl shadow-2xl border border-amber-500/50 backdrop-blur-md flex items-start space-x-3.5 animate-slideUp`}
+        >
+          <div className="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/30 shrink-0 mt-0.5">
+            <ShieldAlert className="w-5 h-5 text-amber-400 animate-pulse" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">
+                Admin Directive • Outreach
+              </span>
+              <span className="text-[10px] text-slate-400">
+                {new Date(activeFloatingDirective.comment.createdAt).toLocaleTimeString("en-US", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: true,
+                })}
+              </span>
+            </div>
+            <h4 className="text-sm font-bold text-white truncate mt-0.5">
+              {activeFloatingDirective.client.companyName}
+            </h4>
+            <p className="text-xs text-slate-300 mt-1 line-clamp-2 italic leading-snug">
+              "{activeFloatingDirective.comment.comment}"
+            </p>
+            <div className="text-[11px] text-slate-400 mt-1">
+              By <span className="font-semibold text-slate-200">{activeFloatingDirective.comment.author}</span>
+            </div>
+
+            <div className="flex items-center space-x-2 mt-3 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedOutreachClientId(activeFloatingDirective.clientId);
+                  handleTabChange("outreach");
+                  setDismissedDirectiveIds((prev) => [...prev, activeFloatingDirective.comment.id]);
+                }}
+                className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-bold rounded-xl transition shadow flex items-center space-x-1 cursor-pointer"
+              >
+                <span>View Lead in Outreach</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await handleMarkOutreachAdminCommentRead(
+                    activeFloatingDirective.clientId,
+                    activeFloatingDirective.comment.id
+                  );
+                }}
+                className="px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:text-white rounded-xl hover:bg-slate-800 transition cursor-pointer"
+              >
+                Mark as Read
+              </button>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setDismissedDirectiveIds((prev) => [...prev, activeFloatingDirective.comment.id]);
+            }}
+            className="p-1 text-slate-400 hover:text-white rounded-lg transition cursor-pointer shrink-0"
+            title="Dismiss notification"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 

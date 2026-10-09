@@ -48,6 +48,7 @@ import {
 } from "./analytics/AnalyticsFilterBar";
 import { ExecutiveReportModal } from "./analytics/ExecutiveReportModal";
 import { exportAnalyticsToCSV } from "./analytics/exportAnalyticsReport";
+import { getCanonicalOwnerName, isSameOwner } from "@/constants/users";
 
 interface AnalyticsChartsProps {
   leads: Lead[];
@@ -112,7 +113,7 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
   const availableOwners = useMemo(() => {
     const set = new Set<string>();
     leads.forEach((l) => {
-      if (l.owner?.trim()) set.add(l.owner.trim());
+      if (l.owner?.trim()) set.add(getCanonicalOwnerName(l.owner.trim()));
     });
     return Array.from(set).sort();
   }, [leads]);
@@ -135,8 +136,8 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
       if (filters.program !== "all" && lead.program !== filters.program) {
         return false;
       }
-      // 2. Owner filter
-      if (filters.owner !== "all" && lead.owner !== filters.owner) {
+      // 2. Owner filter (Contains & Canonical condition: "Amit" & "Amit Shelly", "Ruby" & "Ruby Dayal")
+      if (filters.owner !== "all" && !isSameOwner(lead.owner, filters.owner)) {
         return false;
       }
       // 3. Industry filter
