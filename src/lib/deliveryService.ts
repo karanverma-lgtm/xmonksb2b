@@ -161,6 +161,290 @@ export function createDefaultContractSchedule(dealValue: number): {
   };
 }
 
+export type MilestonePresetType = "three_stage" | "fifty_fifty" | "monthly_retainer";
+
+export interface MilestonePresetConfig {
+  id: MilestonePresetType;
+  label: string;
+  badge: string;
+  description: string;
+  formula: string;
+}
+
+export const MILESTONE_PRESETS: MilestonePresetConfig[] = [
+  {
+    id: "three_stage",
+    label: "3-Stage Delivery",
+    badge: "30% - 40% - 30%",
+    description: "Phase 1 Kickoff (30%) → Phase 2 Execution (40%) → Phase 3 Final Sign-off (30%)",
+    formula: "30% / 40% / 30%",
+  },
+  {
+    id: "fifty_fifty",
+    label: "50 / 50 Standard",
+    badge: "50% - 50%",
+    description: "50% Advance on Agreement → 50% on Final Completion & Sign-off",
+    formula: "50% / 50%",
+  },
+  {
+    id: "monthly_retainer",
+    label: "Monthly Retainer",
+    badge: "4 × 25%",
+    description: "4 equal monthly execution tranches (Month 1 to Month 4)",
+    formula: "25% / 25% / 25% / 25%",
+  },
+];
+
+/**
+ * 1-Click Milestone Presets Generator (Eliminates percentage math for users)
+ */
+export function createMilestonesFromPreset(
+  preset: MilestonePresetType,
+  dealValue: number,
+  startDateStr?: string
+): DeliveryMilestoneTranche[] {
+  const start = startDateStr ? new Date(startDateStr).getTime() : Date.now();
+  const DAY = 86400000;
+
+  if (preset === "fifty_fifty") {
+    return [
+      {
+        id: `milestone-${Date.now()}-1`,
+        milestoneTitle: "Phase 1: Mobilization & Advance Kickoff",
+        projectCompletionPercent: 50,
+        paymentPercent: 50,
+        amount: Math.round(dealValue * 0.5),
+        milestoneStatus: "in_progress",
+        paymentStatus: "pending",
+        targetDate: new Date(start + 15 * DAY).toISOString().split("T")[0],
+        notes: "50% advance on agreement signing and project mobilization.",
+      },
+      {
+        id: `milestone-${Date.now()}-2`,
+        milestoneTitle: "Phase 2: Project Delivery Completion & Sign-off",
+        projectCompletionPercent: 100,
+        paymentPercent: 50,
+        amount: Math.round(dealValue * 0.5),
+        milestoneStatus: "pending",
+        paymentStatus: "pending",
+        targetDate: new Date(start + 90 * DAY).toISOString().split("T")[0],
+        notes: "50% upon final deliverable completion and client acceptance sign-off.",
+      },
+    ];
+  }
+
+  if (preset === "monthly_retainer") {
+    return [
+      {
+        id: `milestone-${Date.now()}-1`,
+        milestoneTitle: "Month 1: Discovery & Cohort Onboarding",
+        projectCompletionPercent: 25,
+        paymentPercent: 25,
+        amount: Math.round(dealValue * 0.25),
+        milestoneStatus: "in_progress",
+        paymentStatus: "pending",
+        targetDate: new Date(start + 30 * DAY).toISOString().split("T")[0],
+        notes: "Month 1 engagement deliverables and initial coaching sessions.",
+      },
+      {
+        id: `milestone-${Date.now()}-2`,
+        milestoneTitle: "Month 2: Core Sprint 1 Execution",
+        projectCompletionPercent: 50,
+        paymentPercent: 25,
+        amount: Math.round(dealValue * 0.25),
+        milestoneStatus: "pending",
+        paymentStatus: "pending",
+        targetDate: new Date(start + 60 * DAY).toISOString().split("T")[0],
+        notes: "Month 2 coaching cadence and mid-point reviews.",
+      },
+      {
+        id: `milestone-${Date.now()}-3`,
+        milestoneTitle: "Month 3: Core Sprint 2 Execution",
+        projectCompletionPercent: 75,
+        paymentPercent: 25,
+        amount: Math.round(dealValue * 0.25),
+        milestoneStatus: "pending",
+        paymentStatus: "pending",
+        targetDate: new Date(start + 90 * DAY).toISOString().split("T")[0],
+        notes: "Month 3 coaching cadence and leadership assessments.",
+      },
+      {
+        id: `milestone-${Date.now()}-4`,
+        milestoneTitle: "Month 4: Final Wrap-up & Evaluation",
+        projectCompletionPercent: 100,
+        paymentPercent: 25,
+        amount: Math.round(dealValue * 0.25),
+        milestoneStatus: "pending",
+        paymentStatus: "pending",
+        targetDate: new Date(start + 120 * DAY).toISOString().split("T")[0],
+        notes: "Month 4 impact reporting and executive sign-off.",
+      },
+    ];
+  }
+
+  // Default: 3-Stage Delivery (30% - 40% - 30%)
+  return [
+    {
+      id: `milestone-${Date.now()}-1`,
+      milestoneTitle: "Phase 1: Kickoff, Diagnostic & Discovery",
+      projectCompletionPercent: 30,
+      paymentPercent: 30,
+      amount: Math.round(dealValue * 0.3),
+      milestoneStatus: "in_progress",
+      paymentStatus: "pending",
+      targetDate: new Date(start + 20 * DAY).toISOString().split("T")[0],
+      notes: "Discovery interviews, stakeholder alignment, and kickoff workshop.",
+    },
+    {
+      id: `milestone-${Date.now()}-2`,
+      milestoneTitle: "Phase 2: Core Program Execution & Mid-term Cohort",
+      projectCompletionPercent: 70,
+      paymentPercent: 40,
+      amount: Math.round(dealValue * 0.4),
+      milestoneStatus: "pending",
+      paymentStatus: "pending",
+      targetDate: new Date(start + 70 * DAY).toISOString().split("T")[0],
+      notes: "Group workshops, 1-on-1 coaching sessions, and development sprints.",
+    },
+    {
+      id: `milestone-${Date.now()}-3`,
+      milestoneTitle: "Phase 3: Final Delivery, Evaluation & Sign-off",
+      projectCompletionPercent: 100,
+      paymentPercent: 30,
+      amount: Math.round(dealValue * 0.3),
+      milestoneStatus: "pending",
+      paymentStatus: "pending",
+      targetDate: new Date(start + 120 * DAY).toISOString().split("T")[0],
+      notes: "Final evaluation, client leadership debrief, and sign-off certificate.",
+    },
+  ];
+}
+
+/**
+ * 1-Click Payment Terms Generator
+ */
+export function createPaymentTermsFromPreset(
+  preset: MilestonePresetType,
+  dealValue: number,
+  startDateStr?: string
+): PaymentTermTranche[] {
+  const start = startDateStr ? new Date(startDateStr).getTime() : Date.now();
+  const DAY = 86400000;
+
+  if (preset === "fifty_fifty") {
+    return [
+      {
+        id: `term-${Date.now()}-1`,
+        termLabel: "Advance Payment (50%)",
+        isAdvance: true,
+        timeframe: "Advance (Immediate on Contract)",
+        paymentPercent: 50,
+        amount: Math.round(dealValue * 0.5),
+        dueDate: new Date(start).toISOString().split("T")[0],
+        paymentStatus: "pending",
+        notes: "50% upfront advance upon contract signing.",
+      },
+      {
+        id: `term-${Date.now()}-2`,
+        termLabel: "Completion Payment (50%)",
+        isAdvance: false,
+        timeframe: "On Final Completion / Sign-off",
+        paymentPercent: 50,
+        amount: Math.round(dealValue * 0.5),
+        dueDate: new Date(start + 90 * DAY).toISOString().split("T")[0],
+        paymentStatus: "pending",
+        notes: "50% balance upon final delivery sign-off.",
+      },
+    ];
+  }
+
+  if (preset === "monthly_retainer") {
+    return [
+      {
+        id: `term-${Date.now()}-1`,
+        termLabel: "Month 1 Retainer (25%)",
+        isAdvance: true,
+        timeframe: "Month 1 Advance",
+        paymentPercent: 25,
+        amount: Math.round(dealValue * 0.25),
+        dueDate: new Date(start).toISOString().split("T")[0],
+        paymentStatus: "pending",
+        notes: "Month 1 upfront retainer installment.",
+      },
+      {
+        id: `term-${Date.now()}-2`,
+        termLabel: "Month 2 Retainer (25%)",
+        isAdvance: false,
+        timeframe: "After 1 Month",
+        paymentPercent: 25,
+        amount: Math.round(dealValue * 0.25),
+        dueDate: new Date(start + 30 * DAY).toISOString().split("T")[0],
+        paymentStatus: "pending",
+        notes: "Month 2 scheduled installment.",
+      },
+      {
+        id: `term-${Date.now()}-3`,
+        termLabel: "Month 3 Retainer (25%)",
+        isAdvance: false,
+        timeframe: "After 2 Months",
+        paymentPercent: 25,
+        amount: Math.round(dealValue * 0.25),
+        dueDate: new Date(start + 60 * DAY).toISOString().split("T")[0],
+        paymentStatus: "pending",
+        notes: "Month 3 scheduled installment.",
+      },
+      {
+        id: `term-${Date.now()}-4`,
+        termLabel: "Month 4 Retainer (25%)",
+        isAdvance: false,
+        timeframe: "After 3 Months",
+        paymentPercent: 25,
+        amount: Math.round(dealValue * 0.25),
+        dueDate: new Date(start + 90 * DAY).toISOString().split("T")[0],
+        paymentStatus: "pending",
+        notes: "Month 4 final scheduled installment.",
+      },
+    ];
+  }
+
+  // 3-Stage (30% - 40% - 30%)
+  return [
+    {
+      id: `term-${Date.now()}-1`,
+      termLabel: "Advance Payment (30%)",
+      isAdvance: true,
+      timeframe: "Advance (Immediate on Contract)",
+      paymentPercent: 30,
+      amount: Math.round(dealValue * 0.3),
+      dueDate: new Date(start).toISOString().split("T")[0],
+      paymentStatus: "pending",
+      notes: "30% upfront advance mobilization payment.",
+    },
+    {
+      id: `term-${Date.now()}-2`,
+      termLabel: "Mid-Term Installment (40%)",
+      isAdvance: false,
+      timeframe: "After 2 Months",
+      paymentPercent: 40,
+      amount: Math.round(dealValue * 0.4),
+      dueDate: new Date(start + 60 * DAY).toISOString().split("T")[0],
+      paymentStatus: "pending",
+      notes: "40% mid-point project installment.",
+    },
+    {
+      id: `term-${Date.now()}-3`,
+      termLabel: "Final Settlement (30%)",
+      isAdvance: false,
+      timeframe: "On Completion / Sign-off",
+      paymentPercent: 30,
+      amount: Math.round(dealValue * 0.3),
+      dueDate: new Date(start + 120 * DAY).toISOString().split("T")[0],
+      paymentStatus: "pending",
+      notes: "Final 30% balance upon delivery sign-off.",
+    },
+  ];
+}
+
 // Initial demonstration seed records so the delivery workspace is immediately rich & usable
 export const INITIAL_DELIVERY_RECORDS: DeliveryRecord[] = [
   {

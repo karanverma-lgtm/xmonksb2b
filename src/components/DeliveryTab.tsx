@@ -79,6 +79,10 @@ import {
   ClientSignoff,
   ProjectHealthStatus,
   DeliveryLog,
+  getSimpleDeliveryStatus,
+  getSimpleBillingStatus,
+  SimpleDeliveryStatus,
+  SimpleBillingStatus,
 } from "@/types/delivery";
 import { SpringButton, SpringWidget, SpringCounter } from "@/components/spring";
 import {
@@ -88,7 +92,13 @@ import {
   deleteDeliveryRecord,
   createDefaultDeliveryMilestones,
   createDefaultPaymentTerms,
+  createMilestonesFromPreset,
+  createPaymentTermsFromPreset,
+  MILESTONE_PRESETS,
+  MilestonePresetType,
 } from "@/lib/deliveryService";
+import { DeliveryNextActionCard } from "@/components/DeliveryNextActionCard";
+import { DeliveryPhaseStepper } from "@/components/DeliveryPhaseStepper";
 import { ProjectProgressBar } from "@/components/ProjectProgressBar";
 import { DeliveryRiskRadar } from "@/components/DeliveryRiskRadar";
 import { DeliveryInvoiceModal } from "@/components/DeliveryInvoiceModal";
@@ -126,8 +136,8 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
   const [isSyncing, setIsSyncing] = useState<boolean>(true);
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [projectSubTab, setProjectSubTab] = useState<
-    "tenure" | "pipeline_data" | "coaches" | "signoff"
-  >("tenure");
+    "delivery_coaching" | "billing_invoices" | "dossier" | "tenure" | "pipeline_data" | "coaches" | "signoff"
+  >("delivery_coaching");
 
   // Delivery View Mode Switcher: Operations Table vs Interactive Gantt Timeline View
   const [deliveryViewMode, setDeliveryViewMode] = useState<"table" | "timeline">("table");
@@ -146,7 +156,7 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
   const [headerAnalyticsTab, setHeaderAnalyticsTab] = useState<
     "realization_report" | "owner_matrix" | "month_wise" | "payment_insights" | "risk_radar"
   >("realization_report");
-  const [isAnalyticsExpanded, setIsAnalyticsExpanded] = useState<boolean>(true);
+  const [isAnalyticsExpanded, setIsAnalyticsExpanded] = useState<boolean>(false);
 
   // Modals & Drawers
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -181,6 +191,7 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
     clientPartner: currentUser?.name || "Sales Lead",
     deliveryLead: "Delivery Team",
     tenureType: "delivery" as TenureType,
+    milestonePreset: "three_stage" as MilestonePresetType,
   });
 
   // Helper to compute payment realization for any record
@@ -376,8 +387,14 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
   const metrics = useMemo(() => {
     let totalPortfolio = 0;
     let totalInvoiced = 0;
+    let invoicedThisMonth = 0;
     let activeCount = 0;
     let deliveredCount = 0;
+    let onTrackCount = 0;
+    let pendingSignoffs = 0;
+
+    const now = new Date();
+    const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
     accessibleDeliveryRecords.forEach((r) => {
       totalPortfolio += r.dealValue || 0;
@@ -387,19 +404,54 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
         deliveredCount++;
       }
 
+      const health = r.projectHealth || "on_track";
+      if (health === "on_track") {
+        onTrackCount++;
+      }
+
+      const isNearlyDone =
+        (r.overallCompletionPercent || 0) >= 80 || r.deliveryStatus === "delivered";
+      if (isNearlyDone && !r.clientSignoff) {
+        pendingSignoffs++;
+      }
+
       const fin = getRecordFinancials(r);
       totalInvoiced += fin.invoiced;
+
+      // Invoiced in current calendar month
+      (r.deliveryMilestones || []).forEach((m) => {
+        if ((m.paymentStatus === "invoiced" || m.paymentStatus === "received") && m.invoiceDate) {
+          if (m.invoiceDate.startsWith(currentYearMonth)) {
+            invoicedThisMonth += m.amount || 0;
+          }
+        }
+      });
+      (r.paymentTerms || []).forEach((t) => {
+        if ((t.paymentStatus === "invoiced" || t.paymentStatus === "received") && t.invoiceDate) {
+          if (t.invoiceDate.startsWith(currentYearMonth)) {
+            invoicedThisMonth += t.amount || 0;
+          }
+        }
+      });
     });
 
     const pendingInvoicing = Math.max(0, totalPortfolio - totalInvoiced);
     const invoicingRate = totalPortfolio > 0 ? (totalInvoiced / totalPortfolio) * 100 : 0;
+    const onTrackPercent =
+      accessibleDeliveryRecords.length > 0
+        ? Math.round((onTrackCount / accessibleDeliveryRecords.length) * 100)
+        : 100;
 
     return {
       totalPortfolio,
       totalInvoiced,
+      invoicedThisMonth,
       pendingInvoicing,
       activeCount,
       deliveredCount,
+      onTrackCount,
+      onTrackPercent,
+      pendingSignoffs,
       invoicingRate,
       totalProjects: accessibleDeliveryRecords.length,
     };
@@ -1004,6 +1056,19 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
       newProjectForm.deliveryLead
     );
 
+    // Auto-apply selected 1-click milestone preset
+    const dealVal = Number(newProjectForm.dealValue) || 1000000;
+    const initialMilestones = createMilestonesFromPreset(newProjectForm.milestonePreset, dealVal);
+    const initialTerms = createPaymentTermsFromPreset(newProjectForm.milestonePreset, dealVal);
+    await updateDeliveryRecord(
+      created.id,
+      {
+        deliveryMilestones: initialMilestones,
+        paymentTerms: initialTerms,
+      },
+      currentUser?.name || "User"
+    );
+
     setIsNewProjectModalOpen(false);
     setSelectedRecordId(created.id);
     setNewProjectForm({
@@ -1013,7 +1078,94 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
       clientPartner: currentUser?.name || "Sales Lead",
       deliveryLead: "Delivery Team",
       tenureType: "delivery",
+      milestonePreset: "three_stage",
     });
+  };
+
+  const handleApplyMilestonePreset = async (preset: MilestonePresetType) => {
+    if (!selectedRecord) return;
+    const newMilestones = createMilestonesFromPreset(
+      preset,
+      selectedRecord.dealValue,
+      selectedRecord.startDate
+    );
+    const newTerms = createPaymentTermsFromPreset(
+      preset,
+      selectedRecord.dealValue,
+      selectedRecord.startDate
+    );
+
+    await updateDeliveryRecord(
+      selectedRecord.id,
+      {
+        deliveryMilestones: newMilestones,
+        paymentTerms: newTerms,
+      },
+      currentUser?.name || "User"
+    );
+    try {
+      confetti({ particleCount: 60, spread: 60, origin: { y: 0.6 } });
+    } catch {}
+  };
+
+  const handleQuickCompleteMilestone = async (milestoneId: string) => {
+    if (!selectedRecord) return;
+    const currentList = [...selectedRecord.deliveryMilestones];
+    const idx = currentList.findIndex((m) => m.id === milestoneId);
+    if (idx === -1) return;
+
+    const m = currentList[idx];
+    const newStatus: MilestoneCompletionStatus =
+      m.milestoneStatus === "completed" ? "in_progress" : "completed";
+    const completionDate =
+      newStatus === "completed" ? new Date().toISOString().split("T")[0] : undefined;
+
+    currentList[idx] = {
+      ...m,
+      milestoneStatus: newStatus,
+      completionDate,
+    };
+
+    let maxCompleted = 0;
+    currentList.forEach((item) => {
+      if (item.milestoneStatus === "completed") {
+        maxCompleted = Math.max(maxCompleted, item.projectCompletionPercent);
+      }
+    });
+
+    const updates: Partial<DeliveryRecord> = {
+      deliveryMilestones: currentList,
+      overallCompletionPercent: maxCompleted,
+    };
+
+    if (maxCompleted === 100) {
+      updates.deliveryStatus = "delivered";
+      try {
+        confetti({ particleCount: 100, spread: 75, origin: { y: 0.6 } });
+      } catch {}
+    } else if (maxCompleted > 0 && selectedRecord.deliveryStatus === "not_started") {
+      updates.deliveryStatus = "in_progress";
+    }
+
+    await updateDeliveryRecord(selectedRecord.id, updates, currentUser?.name || "User");
+  };
+
+  const handleRescheduleMilestone = async (milestoneId: string, newDate: string) => {
+    if (!selectedRecord || !newDate) return;
+    const currentList = [...selectedRecord.deliveryMilestones];
+    const idx = currentList.findIndex((m) => m.id === milestoneId);
+    if (idx === -1) return;
+
+    currentList[idx] = {
+      ...currentList[idx],
+      targetDate: newDate,
+    };
+
+    await updateDeliveryRecord(
+      selectedRecord.id,
+      { deliveryMilestones: currentList },
+      currentUser?.name || "User"
+    );
   };
 
   const handleUpdateTenureType = async (newType: TenureType) => {
@@ -1402,20 +1554,24 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
           </div>
         </div>
 
-        {/* Global Delivery Stats KPI Strip */}
+        {/* Clean 4 Top-Level KPI Pills */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 pt-6 border-t border-slate-100 dark:border-slate-800">
           <SpringWidget
             delay={0}
-            className="p-3.5 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200/60 dark:border-slate-800"
+            className="p-3.5 bg-indigo-50/50 dark:bg-indigo-950/30 rounded-xl border border-indigo-200/60 dark:border-indigo-900/50"
           >
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-              Total Delivery Portfolio
-            </span>
-            <div className="text-lg font-black text-slate-900 dark:text-white mt-1">
-              <SpringCounter value={metrics.totalPortfolio} isCurrency />
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-wider block">
+                Active Deliveries
+              </span>
+              <Truck className="w-4 h-4 text-indigo-500" />
             </div>
-            <div className="text-[11px] text-slate-400 mt-0.5">
-              {metrics.totalProjects} tracked project{metrics.totalProjects !== 1 ? "s" : ""}
+            <div className="text-xl font-black text-slate-900 dark:text-white mt-1">
+              <span>{metrics.activeCount}</span>
+              <span className="text-xs font-bold text-slate-400 ml-1.5">projects</span>
+            </div>
+            <div className="text-[11px] text-indigo-600/80 dark:text-indigo-400/80 mt-0.5">
+              {formatINR(metrics.totalPortfolio)} Total Portfolio
             </div>
           </SpringWidget>
 
@@ -1423,53 +1579,94 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
             delay={70}
             className="p-3.5 bg-emerald-50/60 dark:bg-emerald-950/30 rounded-xl border border-emerald-200/60 dark:border-emerald-900/50"
           >
-            <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider block">
-              Total Invoiced
-            </span>
-            <div className="text-lg font-black text-emerald-700 dark:text-emerald-300 mt-1">
-              <SpringCounter value={metrics.totalInvoiced} isCurrency />
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-wider block">
+                On Track %
+              </span>
+              <ShieldCheck className="w-4 h-4 text-emerald-500" />
             </div>
-            <div className="text-[11px] text-emerald-600/80 dark:text-emerald-400/80 mt-0.5 flex items-center space-x-1">
-              <Receipt className="w-3 h-3" />
-              <span><SpringCounter value={metrics.invoicingRate} decimals={1} suffix="% invoiced" /></span>
+            <div className="text-xl font-black text-emerald-700 dark:text-emerald-300 mt-1">
+              <span>{metrics.onTrackPercent}%</span>
+            </div>
+            <div className="text-[11px] text-emerald-600/80 dark:text-emerald-400/80 mt-0.5">
+              {metrics.onTrackCount} on schedule execution
             </div>
           </SpringWidget>
 
           <SpringWidget
             delay={140}
-            className="p-3.5 bg-amber-50/60 dark:bg-amber-950/30 rounded-xl border border-amber-200/60 dark:border-amber-900/50"
+            className="p-3.5 bg-blue-50/60 dark:bg-blue-950/30 rounded-xl border border-blue-200/60 dark:border-blue-900/50"
           >
-            <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider block">
-              Unbilled Book
-            </span>
-            <div className="text-lg font-black text-amber-700 dark:text-amber-300 mt-1">
-              <SpringCounter value={metrics.pendingInvoicing} isCurrency />
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black text-blue-700 dark:text-blue-400 uppercase tracking-wider block">
+                Invoiced This Month
+              </span>
+              <Receipt className="w-4 h-4 text-blue-500" />
             </div>
-            <div className="text-[11px] text-amber-600/80 dark:text-amber-400/80 mt-0.5">
-              Unbilled milestones & terms
+            <div className="text-xl font-black text-blue-700 dark:text-blue-300 mt-1">
+              <SpringCounter
+                value={metrics.invoicedThisMonth > 0 ? metrics.invoicedThisMonth : metrics.totalInvoiced}
+                isCurrency
+              />
+            </div>
+            <div className="text-[11px] text-blue-600/80 dark:text-blue-400/80 mt-0.5">
+              {metrics.invoicingRate.toFixed(1)}% total portfolio realization
             </div>
           </SpringWidget>
 
           <SpringWidget
             delay={210}
-            className="p-3.5 bg-blue-50/60 dark:bg-blue-950/30 rounded-xl border border-blue-200/60 dark:border-blue-900/50"
+            className="p-3.5 bg-amber-50/60 dark:bg-amber-950/30 rounded-xl border border-amber-200/60 dark:border-amber-900/50"
           >
-            <span className="text-[11px] font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider block">
-              Delivery Execution
-            </span>
-            <div className="text-lg font-black text-blue-700 dark:text-blue-300 mt-1 flex items-center space-x-1.5">
-              <span>{metrics.activeCount} In Progress</span>
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black text-amber-700 dark:text-amber-400 uppercase tracking-wider block">
+                Pending Sign-offs
+              </span>
+              <Award className="w-4 h-4 text-amber-500" />
             </div>
-            <div className="text-[11px] text-blue-600/80 dark:text-blue-400/80 mt-0.5">
-              {metrics.deliveredCount} successfully delivered
+            <div className="text-xl font-black text-amber-700 dark:text-amber-300 mt-1">
+              <span>{metrics.pendingSignoffs}</span>
+              <span className="text-xs font-bold text-slate-400 ml-1.5">awaiting pulse</span>
+            </div>
+            <div className="text-[11px] text-amber-600/80 dark:text-amber-400/80 mt-0.5">
+              {metrics.deliveredCount} delivered engagements
             </div>
           </SpringWidget>
         </div>
 
+        {/* Admin Collapsible Executive CFO Analytics Trigger Bar */}
+        {isAdmin && (
+          <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setIsAnalyticsExpanded(!isAnalyticsExpanded)}
+              className="flex items-center space-x-2.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/80 dark:hover:bg-slate-750 text-xs font-bold text-slate-700 dark:text-slate-200 transition shadow-2xs cursor-pointer self-start sm:self-center"
+            >
+              <BarChart3 className="w-4 h-4 text-indigo-500" />
+              <span>Executive CFO Analytics & Risk Radar</span>
+              <span
+                className={`text-[10px] px-2 py-0.5 rounded-full font-black transition ${
+                  isAnalyticsExpanded
+                    ? "bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300"
+                    : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
+                }`}
+              >
+                {isAnalyticsExpanded ? "Hide Reports ▲" : "Expand 5 Reports ▼"}
+              </span>
+            </button>
+            <span className="text-[11px] text-slate-400">
+              {isAnalyticsExpanded
+                ? "Full revenue realization, owner matrix, month-wise trends, and delivery radar"
+                : "Progressive disclosure • Collapsed by default to keep the workspace clean"}
+            </span>
+          </div>
+        )}
+
         {/* ========================================================= */}
-        {/* EXECUTIVE PAYMENTS & REVENUE ANALYTICS PANEL */}
+        {/* EXECUTIVE PAYMENTS & REVENUE ANALYTICS PANEL (COLLAPSED BY DEFAULT) */}
         {/* ========================================================= */}
-        <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800 space-y-4">
+        {isAdmin && isAnalyticsExpanded && (
+        <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800 space-y-4 animate-fadeIn">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center space-x-2.5">
               <div className="p-2 bg-indigo-50 dark:bg-indigo-950/60 rounded-xl text-indigo-600 dark:text-indigo-400 shadow-sm">
@@ -2254,6 +2451,7 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* DETAILED PROJECT DELIVERY & TENURE MANAGER (When a project is selected) */}
@@ -2457,89 +2655,49 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
             </div>
           )}
 
-          {/* Sub-navigation: Delivery Tenure vs Pipeline Preexisting Data */}
+          {/* Sub-navigation: 2 Main Operational Views + Dossier */}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-1 pb-1 border-b border-slate-200 dark:border-slate-800">
             <div className="flex items-center space-x-2 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl">
               <button
                 type="button"
-                onClick={() => setProjectSubTab("tenure")}
+                onClick={() => setProjectSubTab("delivery_coaching")}
                 className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-black transition cursor-pointer ${
-                  projectSubTab === "tenure"
+                  projectSubTab === "delivery_coaching" || projectSubTab === "tenure"
                     ? "bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm"
                     : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
-                <Receipt className="w-4 h-4" />
-                <span>Delivery & Tenure Schedule</span>
+                <Truck className="w-4 h-4 text-indigo-500" />
+                <span>🎯 Delivery & Coaching</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => setProjectSubTab("coaches")}
+                onClick={() => setProjectSubTab("billing_invoices")}
                 className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-black transition cursor-pointer ${
-                  projectSubTab === "coaches"
+                  projectSubTab === "billing_invoices"
                     ? "bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm"
                     : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
-                <Users className="w-4 h-4 text-indigo-500" />
-                <span>Coaches & Faculty</span>
-                {selectedRecord.coaches && selectedRecord.coaches.length > 0 && (
-                  <span
-                    className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
-                      projectSubTab === "coaches"
-                        ? "bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400"
-                        : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
-                    }`}
-                  >
-                    {selectedRecord.coaches.length}
-                  </span>
-                )}
+                <Receipt className="w-4 h-4 text-indigo-500" />
+                <span>💳 Billing & Invoices</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => setProjectSubTab("signoff")}
+                onClick={() => setProjectSubTab("dossier")}
                 className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-black transition cursor-pointer ${
+                  projectSubTab === "dossier" ||
+                  projectSubTab === "pipeline_data" ||
+                  projectSubTab === "coaches" ||
                   projectSubTab === "signoff"
                     ? "bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm"
                     : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
-                <Award className="w-4 h-4 text-amber-500" />
-                <span>Client Sign-off</span>
-                {selectedRecord.clientSignoff && (
-                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                    ★ {selectedRecord.clientSignoff.csatRating}/5
-                  </span>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setProjectSubTab("pipeline_data")}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-black transition cursor-pointer ${
-                  projectSubTab === "pipeline_data"
-                    ? "bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm"
-                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-                }`}
-              >
                 <FolderOpen className="w-4 h-4 text-indigo-500" />
-                <span>Preexisting Pipeline Data & Dossier</span>
-                {effectivePipelineData && (
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-                      projectSubTab === "pipeline_data"
-                        ? "bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400"
-                        : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
-                    }`}
-                  >
-                    {effectivePipelineData.journeyLogs.length +
-                      effectivePipelineData.approachNotes.length +
-                      effectivePipelineData.financialDocuments.length +
-                      effectivePipelineData.additionalContacts.length}
-                  </span>
-                )}
+                <span>📋 Dossier & Details</span>
               </button>
             </div>
 
@@ -2588,1651 +2746,787 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
             </div>
           </div>
 
-          {/* VIEW 1: TENURE & PAYMENT MILESTONES */}
-          {projectSubTab === "tenure" && (
-            <div className="space-y-4 pt-1 animate-fadeIn">
-            <div className="border-b border-slate-200 dark:border-slate-800 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center space-x-2.5">
-                <div className="p-2 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-lg">
-                  <Receipt className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">
-                    Tenure
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Select how project payments and tranches are structured for this client.
-                  </p>
-                </div>
-              </div>
+          {/* ========================================================= */}
+          {/* TAB A: DELIVERY & COACHING (For Program Leads & Coaches) */}
+          {/* ========================================================= */}
+          {(projectSubTab === "delivery_coaching" || projectSubTab === "tenure") && (
+            <div className="space-y-5 pt-1 animate-fadeIn">
+              {/* 1. Hero Next Required Action Card */}
+              <DeliveryNextActionCard
+                record={selectedRecord}
+                onMarkMilestoneCompleted={handleQuickCompleteMilestone}
+                onRescheduleMilestone={handleRescheduleMilestone}
+                onOpenCoachDrawer={() => setProjectSubTab("coaches")}
+                onOpenSignoffModal={() => setIsSignoffModalOpen(true)}
+              />
 
-              {/* Add via AI Button */}
-              <button
-                type="button"
-                onClick={() => setIsAiImportModalOpen(true)}
-                className="flex items-center space-x-2 px-3.5 py-2 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl text-xs font-black shadow-md shadow-indigo-500/20 transition cursor-pointer shrink-0"
-                title="Upload Proposal or Contract (.pdf or .docx) to auto-extract tenure & milestones using Gemini AI"
-              >
-                <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
-                <span>✨ Add via AI (PDF / DOCX)</span>
-              </button>
-            </div>
+              {/* 2. Interactive Delivery Phase Stepper & Runway */}
+              <DeliveryPhaseStepper
+                milestones={selectedRecord.deliveryMilestones}
+                onToggleMilestoneStatus={handleQuickCompleteMilestone}
+              />
 
-            {/* The Three Main Options: 1. Delivery  vs  2. Payment Terms  vs  3. Contract (Combined) */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Option 1: Delivery */}
-              <div
-                onClick={() => handleUpdateTenureType("delivery")}
-                className={`p-5 rounded-2xl border-2 transition-all cursor-pointer relative overflow-hidden ${
-                  selectedRecord.tenureType === "delivery"
-                    ? "border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/40 shadow-md ring-2 ring-indigo-500/20"
-                    : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900"
-                }`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div
-                      className={`p-2.5 rounded-xl ${
-                        selectedRecord.tenureType === "delivery"
-                          ? "bg-indigo-600 text-white"
-                          : "bg-slate-100 dark:bg-slate-800 text-slate-500"
-                      }`}
-                    >
-                      <Truck className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h4 className="text-base font-black text-slate-900 dark:text-white">
-                        Delivery
-                      </h4>
-                      <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
-                        Project Completion Linked
-                      </span>
-                    </div>
-                  </div>
-
-                  <div
-                    className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                      selectedRecord.tenureType === "delivery"
-                        ? "border-indigo-600 bg-indigo-600 text-white"
-                        : "border-slate-300 dark:border-slate-700"
-                    }`}
-                  >
-                    {selectedRecord.tenureType === "delivery" && <Check className="w-3 h-3 stroke-[3]" />}
-                  </div>
-                </div>
-
-                <p className="text-xs text-slate-600 dark:text-slate-300 mt-3 leading-relaxed">
-                  Payment comes in milestones tied directly to delivery progress. E.g., when <strong>20% of the project</strong> is completed then <strong>30% payment</strong> is released.
-                </p>
-
-                <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-slate-500">
-                  <span>Tranches configured:</span>
-                  <span className="text-indigo-600 dark:text-indigo-400 font-black">
-                    {selectedRecord.deliveryMilestones.length} Milestones
-                  </span>
-                </div>
-              </div>
-
-              {/* Option 2: Payment Terms */}
-              <div
-                onClick={() => handleUpdateTenureType("payment_terms")}
-                className={`p-5 rounded-2xl border-2 transition-all cursor-pointer relative overflow-hidden ${
-                  selectedRecord.tenureType === "payment_terms"
-                    ? "border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/40 shadow-md ring-2 ring-indigo-500/20"
-                    : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900"
-                }`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div
-                      className={`p-2.5 rounded-xl ${
-                        selectedRecord.tenureType === "payment_terms"
-                          ? "bg-indigo-600 text-white"
-                          : "bg-slate-100 dark:bg-slate-800 text-slate-500"
-                      }`}
-                    >
-                      <Calendar className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h4 className="text-base font-black text-slate-900 dark:text-white">
-                        Payment Terms
-                      </h4>
-                      <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
-                        Advance & Time Schedule
-                      </span>
-                    </div>
-                  </div>
-
-                  <div
-                    className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                      selectedRecord.tenureType === "payment_terms"
-                        ? "border-indigo-600 bg-indigo-600 text-white"
-                        : "border-slate-300 dark:border-slate-700"
-                    }`}
-                  >
-                    {selectedRecord.tenureType === "payment_terms" && <Check className="w-3 h-3 stroke-[3]" />}
-                  </div>
-                </div>
-
-                <p className="text-xs text-slate-600 dark:text-slate-300 mt-3 leading-relaxed">
-                  Payment comes in scheduled time intervals. E.g., <strong>30% advance payment upfront</strong>, then <strong>20% after 3 months</strong>, and remaining terms according to agreement.
-                </p>
-
-                <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-slate-500">
-                  <span>Terms configured:</span>
-                  <span className="text-indigo-600 dark:text-indigo-400 font-black">
-                    {selectedRecord.paymentTerms.length} Installments
-                  </span>
-                </div>
-              </div>
-
-              {/* Option 3: Contract (Combined Delivery + Payment Terms) */}
-              <div
-                onClick={() => handleUpdateTenureType("contract")}
-                className={`p-5 rounded-2xl border-2 transition-all cursor-pointer relative overflow-hidden ${
-                  selectedRecord.tenureType === "contract"
-                    ? "border-emerald-600 bg-emerald-50/50 dark:bg-emerald-950/40 shadow-md ring-2 ring-emerald-500/20"
-                    : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900"
-                }`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div
-                      className={`p-2.5 rounded-xl ${
-                        selectedRecord.tenureType === "contract"
-                          ? "bg-emerald-600 text-white"
-                          : "bg-slate-100 dark:bg-slate-800 text-slate-500"
-                      }`}
-                    >
-                      <FileText className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h4 className="text-base font-black text-slate-900 dark:text-white">
-                        Contract
-                      </h4>
-                      <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
-                        Combined (Delivery + Terms)
-                      </span>
-                    </div>
-                  </div>
-
-                  <div
-                    className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                      selectedRecord.tenureType === "contract"
-                        ? "border-emerald-600 bg-emerald-600 text-white"
-                        : "border-slate-300 dark:border-slate-700"
-                    }`}
-                  >
-                    {selectedRecord.tenureType === "contract" && <Check className="w-3 h-3 stroke-[3]" />}
-                  </div>
-                </div>
-
-                <p className="text-xs text-slate-600 dark:text-slate-300 mt-3 leading-relaxed">
-                  Master contract model combining <strong>delivery milestones</strong> and <strong>scheduled payment terms</strong>. Upfront advance & time terms work alongside progress completion releases.
-                </p>
-
-                <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-slate-500">
-                  <span>Contract Structure:</span>
-                  <span className="text-emerald-600 dark:text-emerald-400 font-black">
-                    {selectedRecord.deliveryMilestones.length} Milestones + {selectedRecord.paymentTerms.length} Terms
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* ========================================================= */}
-            {/* MASTER CONTRACT COMBINED WORKSPACE HEADER & SUMMARY */}
-            {/* ========================================================= */}
-            {selectedRecord.tenureType === "contract" && (() => {
-              const mAllocPct = (selectedRecord.deliveryMilestones || []).reduce((sum, m) => sum + (m.paymentPercent || 0), 0);
-              const mAllocAmt = (selectedRecord.deliveryMilestones || []).reduce((sum, m) => sum + (m.amount || 0), 0);
-              const mInvAmt = (selectedRecord.deliveryMilestones || [])
-                .filter(m => m.paymentStatus === "invoiced" || m.paymentStatus === "received" || Boolean(m.invoiceNumber))
-                .reduce((sum, m) => sum + (m.amount || 0), 0);
-
-              const tAllocPct = (selectedRecord.paymentTerms || []).reduce((sum, t) => sum + (t.paymentPercent || 0), 0);
-              const tAllocAmt = (selectedRecord.paymentTerms || []).reduce((sum, t) => sum + (t.amount || 0), 0);
-              const tInvAmt = (selectedRecord.paymentTerms || [])
-                .filter(t => t.paymentStatus === "invoiced" || t.paymentStatus === "received" || Boolean(t.invoiceNumber))
-                .reduce((sum, t) => sum + (t.amount || 0), 0);
-
-              const totalAllocPct = mAllocPct + tAllocPct;
-              const totalInvAmt = mInvAmt + tInvAmt;
-              const totalInvPct = selectedRecord.dealValue > 0 ? Math.round((totalInvAmt / selectedRecord.dealValue) * 100) : 0;
-
-              return (
-                <div className="mt-6 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-indigo-500/10 border-2 border-emerald-400/40 dark:border-emerald-600/40 space-y-4 shadow-sm animate-fadeIn">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center space-x-3">
-                      <div className="p-2.5 rounded-xl bg-emerald-600 text-white shadow-md shadow-emerald-600/20">
-                        <FileText className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center space-x-2 flex-wrap">
-                          <span>Master Contract Schedule</span>
-                          <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                            Delivery + Payment Terms Hybrid
-                          </span>
-                        </h4>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Track and manage both upfront/time scheduled installments and completion milestone releases under this master agreement.
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Sub-view toggle buttons */}
-                    <div className="flex items-center gap-1.5 p-1 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xs self-start sm:self-center">
-                      <button
-                        type="button"
-                        onClick={() => setContractSubView("all")}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center space-x-1.5 ${
-                          contractSubView === "all"
-                            ? "bg-emerald-600 text-white shadow-xs"
-                            : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
-                        }`}
-                      >
-                        <Layers className="w-3.5 h-3.5" />
-                        <span>Combined ({selectedRecord.deliveryMilestones.length + selectedRecord.paymentTerms.length})</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setContractSubView("milestones")}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center space-x-1.5 ${
-                          contractSubView === "milestones"
-                            ? "bg-indigo-600 text-white shadow-xs"
-                            : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
-                        }`}
-                      >
-                        <Truck className="w-3.5 h-3.5" />
-                        <span>Milestones ({selectedRecord.deliveryMilestones.length})</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setContractSubView("terms")}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center space-x-1.5 ${
-                          contractSubView === "terms"
-                            ? "bg-blue-600 text-white shadow-xs"
-                            : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
-                        }`}
-                      >
-                        <Calendar className="w-3.5 h-3.5" />
-                        <span>Terms ({selectedRecord.paymentTerms.length})</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Contract Realization Breakdown Strip */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-emerald-200/60 dark:border-emerald-800/60 text-xs">
-                    <div className="p-3 bg-white/80 dark:bg-slate-900/80 rounded-xl border border-slate-200 dark:border-slate-800 space-y-0.5">
-                      <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">
-                        1. Advance & Terms Allocation
-                      </span>
-                      <div className="flex items-center justify-between">
-                        <strong className="text-slate-900 dark:text-white font-black">{formatINR(tAllocAmt)}</strong>
-                        <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400">{tAllocPct}% of deal</span>
-                      </div>
-                      <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
-                        Invoiced: {formatINR(tInvAmt)}
-                      </div>
-                    </div>
-
-                    <div className="p-3 bg-white/80 dark:bg-slate-900/80 rounded-xl border border-slate-200 dark:border-slate-800 space-y-0.5">
-                      <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">
-                        2. Delivery Milestones Allocation
-                      </span>
-                      <div className="flex items-center justify-between">
-                        <strong className="text-slate-900 dark:text-white font-black">{formatINR(mAllocAmt)}</strong>
-                        <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400">{mAllocPct}% of deal</span>
-                      </div>
-                      <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
-                        Invoiced: {formatINR(mInvAmt)}
-                      </div>
-                    </div>
-
-                    <div className="p-3 bg-white/80 dark:bg-slate-900/80 rounded-xl border border-emerald-300/80 dark:border-emerald-700/80 space-y-0.5 bg-emerald-50/40 dark:bg-emerald-950/20">
-                      <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold block uppercase tracking-wider">
-                        Combined Contract Invoiced
-                      </span>
-                      <div className="flex items-center justify-between">
-                        <strong className="text-emerald-700 dark:text-emerald-300 font-black text-sm">{formatINR(totalInvAmt)}</strong>
-                        <span className="text-[11px] font-black text-emerald-600 dark:text-emerald-400">{totalInvPct}%</span>
-                      </div>
-                      <div className="text-[10px] text-slate-500">
-                        Total Allocation: {totalAllocPct}% (Target: 100%)
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* ========================================================= */}
-            {/* SUB-SECTION A: When "Delivery" or "Contract" is Active */}
-            {/* ========================================================= */}
-            {(selectedRecord.tenureType === "delivery" ||
-              (selectedRecord.tenureType === "contract" &&
-                (contractSubView === "all" || contractSubView === "milestones"))) && (
-              <div className="mt-6 bg-slate-50/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-200 dark:border-slate-800">
+              {/* 3. 1-Click Milestone Presets (Eliminate the Math) */}
+              <div className="p-4 bg-gradient-to-r from-indigo-50/70 via-purple-50/40 to-slate-50 dark:from-indigo-950/40 dark:via-purple-950/20 dark:to-slate-900 border border-indigo-200/80 dark:border-indigo-800/80 rounded-2xl space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
-                    <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center space-x-2">
-                      <Truck className="w-4 h-4 text-indigo-600" />
-                      <span>Project Completion Milestone Tranches</span>
-                    </h4>
-                    <p className="text-xs text-slate-500">
-                      Configure the project completion target and corresponding payment release for each milestone.
+                    <div className="flex items-center space-x-2">
+                      <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" />
+                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white">
+                        1-Click Milestone Presets (Eliminate the Math)
+                      </h4>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      Instantly structures delivery phases and calculates exact rupee amounts from deal size ({formatINR(selectedRecord.dealValue)}).
                     </p>
                   </div>
-                  <SpringButton
-                    size="sm"
-                    variant="primary"
-                    onClick={handleAddMilestone}
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Milestone</span>
-                  </SpringButton>
+                  <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-950/80 px-2 py-0.5 rounded-full shrink-0">
+                    Auto-Calculates ₹
+                  </span>
                 </div>
 
-                {/* Milestones Table */}
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                        <th className="py-2.5 px-3">Milestone Scope / Title</th>
-                        <th className="py-2.5 px-3">Project Completion (%)</th>
-                        <th className="py-2.5 px-3">Invoicing Share (%)</th>
-                        <th className="py-2.5 px-3">Amount (INR)</th>
-                        <th className="py-2.5 px-3">Target / Due Date</th>
-                        <th className="py-2.5 px-3">Work Status</th>
-                        <th className="py-2.5 px-3">Invoicing Status</th>
-                        <th className="py-2.5 px-3">Invoice Date & Ref</th>
-                        <th className="py-2.5 px-3 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                      {selectedRecord.deliveryMilestones.map((m, idx) => (
-                        <tr key={m.id} className="hover:bg-slate-100/50 dark:hover:bg-slate-800/40 transition">
-                          <td className="py-3 px-3 min-w-[200px]">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                  {/* 3-Stage Delivery */}
+                  <button
+                    type="button"
+                    onClick={() => handleApplyMilestonePreset("three_stage")}
+                    className="p-3 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/50 text-left transition group cursor-pointer shadow-2xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-slate-900 dark:text-white group-hover:text-indigo-600">
+                        3-Stage Delivery
+                      </span>
+                      <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
+                        30 - 40 - 30
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1 line-clamp-1">
+                      Kickoff & Discovery → Mid Execution → Final Sign-off
+                    </p>
+                    <div className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mt-1.5">
+                      {formatINR(selectedRecord.dealValue * 0.3)} • {formatINR(selectedRecord.dealValue * 0.4)} • {formatINR(selectedRecord.dealValue * 0.3)}
+                    </div>
+                  </button>
+
+                  {/* 50 / 50 Standard */}
+                  <button
+                    type="button"
+                    onClick={() => handleApplyMilestonePreset("fifty_fifty")}
+                    className="p-3 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/50 text-left transition group cursor-pointer shadow-2xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-slate-900 dark:text-white group-hover:text-indigo-600">
+                        50 / 50 Standard
+                      </span>
+                      <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
+                        50% / 50%
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1 line-clamp-1">
+                      50% Advance on Agreement → 50% on Project Completion
+                    </p>
+                    <div className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mt-1.5">
+                      2 x {formatINR(selectedRecord.dealValue * 0.5)}
+                    </div>
+                  </button>
+
+                  {/* Monthly Retainer */}
+                  <button
+                    type="button"
+                    onClick={() => handleApplyMilestonePreset("monthly_retainer")}
+                    className="p-3 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/50 text-left transition group cursor-pointer shadow-2xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-slate-900 dark:text-white group-hover:text-indigo-600">
+                        Monthly Retainer
+                      </span>
+                      <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
+                        4 x 25%
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1 line-clamp-1">
+                      4 Equal monthly tranches over engagement duration
+                    </p>
+                    <div className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mt-1.5">
+                      4 x {formatINR(selectedRecord.dealValue * 0.25)}
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+                        {/* 4. Clean Delivery Phase Checklist (Zero GST, UTR, or Invoice Clutter) */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 space-y-4 shadow-xs mt-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center space-x-2">
+                    <Truck className="w-4 h-4 text-indigo-600" />
+                    <span>Delivery Phases & Execution Checklist</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Focus purely on milestone delivery, cohort sessions, and faculty assignment. Financial details stay in Billing.
+                  </p>
+                </div>
+                <SpringButton
+                  size="sm"
+                  variant="primary"
+                  onClick={handleAddMilestone}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Phase</span>
+                </SpringButton>
+              </div>
+
+              {/* Clean Phase Checklist Items */}
+              <div className="space-y-3">
+                {selectedRecord.deliveryMilestones.map((m) => {
+                  const isCompleted = m.milestoneStatus === "completed";
+                  const isInProgress = m.milestoneStatus === "in_progress";
+                  return (
+                    <div
+                      key={m.id}
+                      className={`p-4 rounded-xl border transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                        isCompleted
+                          ? "bg-emerald-50/30 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/60"
+                          : isInProgress
+                          ? "bg-indigo-50/30 dark:bg-indigo-950/20 border-indigo-200 dark:border-indigo-800"
+                          : "bg-slate-50/50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700/80"
+                      }`}
+                    >
+                      {/* Left: Phase Title, Scope & Target % */}
+                      <div className="flex items-start space-x-3 flex-1 min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => handleQuickCompleteMilestone(m.id)}
+                          className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 mt-1 transition cursor-pointer ${
+                            isCompleted
+                              ? "bg-emerald-600 text-white shadow-xs"
+                              : "border-2 border-slate-300 dark:border-slate-600 hover:border-indigo-500"
+                          }`}
+                          title={isCompleted ? "Phase Completed (Click to reopen)" : "Mark phase completed"}
+                        >
+                          {isCompleted && <Check className="w-4 h-4 stroke-[3]" />}
+                        </button>
+                        <div className="space-y-1.5 flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
                             <input
                               type="text"
                               value={m.milestoneTitle}
                               onChange={(e) =>
                                 handleUpdateMilestone(m.id, { milestoneTitle: e.target.value })
                               }
-                              className="w-full px-2 py-1 text-xs font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
-                              placeholder="e.g. 20% Project Kickoff"
+                              className="font-black text-sm text-slate-900 dark:text-white bg-transparent border-b border-transparent hover:border-slate-300 dark:hover:border-slate-600 focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-900 px-1 py-0.5 rounded outline-none flex-1 min-w-[200px]"
+                              placeholder="Milestone Phase Scope..."
                             />
-                          </td>
-
-                          <td className="py-3 px-3">
-                            <div className="flex items-center space-x-1.5">
-                              <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                value={m.projectCompletionPercent}
-                                onChange={(e) =>
-                                  handleUpdateMilestone(m.id, {
-                                    projectCompletionPercent: Number(e.target.value),
-                                  })
-                                }
-                                className="w-16 px-2 py-1 text-xs font-bold text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-indigo-600 dark:text-indigo-400"
-                              />
-                              <span className="font-bold text-slate-400">%</span>
-                            </div>
-                          </td>
-
-                          <td className="py-3 px-3">
-                            <div className="flex items-center space-x-1.5">
-                              <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                value={m.paymentPercent}
-                                onChange={(e) =>
-                                  handleUpdateMilestone(m.id, {
-                                    paymentPercent: Number(e.target.value),
-                                  })
-                                }
-                                className="w-16 px-2 py-1 text-xs font-bold text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-emerald-600 dark:text-emerald-400"
-                              />
-                              <span className="font-bold text-slate-400">%</span>
-                            </div>
-                          </td>
-
-                          <td className="py-3 px-3 font-black text-slate-900 dark:text-white whitespace-nowrap">
-                            {formatINR(m.amount)}
-                          </td>
-
-                          <td className="py-3 px-3">
-                            <input
-                              type="date"
-                              value={m.targetDate || ""}
-                              onChange={(e) =>
-                                handleUpdateMilestone(m.id, { targetDate: e.target.value })
-                              }
-                              className="px-2 py-1 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300"
-                              title="Milestone Target Date"
-                            />
-                          </td>
-
-                          <td className="py-3 px-3">
-                            <select
-                              value={m.milestoneStatus}
-                              onChange={(e) =>
-                                handleUpdateMilestone(m.id, {
-                                  milestoneStatus: e.target.value as MilestoneCompletionStatus,
-                                })
-                              }
-                              className={`px-2 py-1 text-xs font-bold rounded-lg border ${
-                                m.milestoneStatus === "completed"
-                                  ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800"
-                                  : m.milestoneStatus === "in_progress"
-                                  ? "bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800"
-                                  : "bg-slate-50 text-slate-600 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700"
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 shrink-0">
+                              {m.projectCompletionPercent}% Progress Target
+                            </span>
+                            <span
+                              className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full shrink-0 ${
+                                isCompleted
+                                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                                  : isInProgress
+                                  ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                                  : "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300"
                               }`}
                             >
-                              <option value="pending">⏳ Pending</option>
-                              <option value="in_progress">⚙️ In Progress</option>
-                              <option value="completed">✅ Completed</option>
-                            </select>
-                          </td>
+                              {isCompleted ? "🟢 Delivered" : isInProgress ? "🟡 In Delivery" : "⚪ Not Started"}
+                            </span>
+                          </div>
 
-                          <td className="py-3 px-3">
-                            <div className="flex items-center space-x-1.5">
-                              <select
-                                value={m.paymentStatus === "received" ? "invoiced" : m.paymentStatus}
-                                onChange={(e) => {
-                                  const newStatus = e.target.value as TranchePaymentStatus;
-                                  handleUpdateMilestone(m.id, { paymentStatus: newStatus });
-                                }}
-                                className={`px-2 py-1 text-xs font-bold rounded-lg border ${
-                                  m.paymentStatus === "invoiced" || m.paymentStatus === "received"
-                                    ? "bg-indigo-50 text-indigo-700 border-indigo-300 dark:bg-indigo-950 dark:text-indigo-300 dark:border-indigo-800"
-                                    : m.paymentStatus === "overdue"
-                                    ? "bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800"
-                                    : "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800"
-                                }`}
-                              >
-                                <option value="pending">⏳ Pending</option>
-                                <option value="invoiced">📄 Invoiced</option>
-                                <option value="overdue">⚠️ Overdue</option>
-                              </select>
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setInvoiceModalState({
-                                    isOpen: true,
-                                    record: selectedRecord,
-                                    item: m,
-                                    itemType: "milestone",
-                                  })
+                          {/* Due Date & Coach Assignment Strip */}
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500 dark:text-slate-400 pt-0.5">
+                            <div className="flex items-center space-x-1">
+                              <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                              <span>Target Due:</span>
+                              <input
+                                type="date"
+                                value={m.targetDate || ""}
+                                onChange={(e) =>
+                                  handleUpdateMilestone(m.id, { targetDate: e.target.value })
                                 }
-                                className="p-1.5 text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900 border border-indigo-200 dark:border-indigo-800 rounded-lg transition shrink-0 cursor-pointer"
-                                title="One-Click Tax Invoice Generator & Record"
-                              >
-                                <Receipt className="w-3.5 h-3.5" />
-                              </button>
+                                className="text-xs font-bold text-slate-800 dark:text-slate-200 bg-transparent hover:bg-white dark:hover:bg-slate-800 px-1 py-0.5 rounded border border-transparent hover:border-slate-200 dark:border-slate-700 outline-none cursor-pointer"
+                              />
                             </div>
-                          </td>
 
-                          {/* Invoice Date & Reference Column */}
-                          <td className="py-3 px-3 min-w-[150px]">
-                            {m.paymentStatus === "invoiced" || m.paymentStatus === "received" || m.invoiceNumber ? (
-                              <div className="flex items-center space-x-1.5">
-                                <input
-                                  type="date"
-                                  value={m.invoiceDate || m.targetDate || ""}
-                                  onChange={(e) => {
-                                    handleUpdateMilestone(m.id, {
-                                      invoiceDate: e.target.value,
-                                      paymentStatus: "invoiced",
-                                    });
-                                  }}
-                                  className="px-2 py-1 text-xs font-bold bg-indigo-50 dark:bg-indigo-950/80 border border-indigo-300 dark:border-indigo-700 rounded-lg text-indigo-800 dark:text-indigo-300 focus:ring-2 focus:ring-indigo-500"
-                                  title="Invoice Issue Date"
-                                />
-                                {m.invoiceNumber ? (
-                                  <span
-                                    className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 border border-indigo-300 dark:border-indigo-700 shrink-0"
-                                    title={`Invoice Ref: ${m.invoiceNumber}`}
-                                  >
-                                    {m.invoiceNumber}
-                                  </span>
-                                ) : (
-                                  <span
-                                    className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700 shrink-0"
-                                  >
-                                    Invoiced
-                                  </span>
-                                )}
-                              </div>
-                            ) : m.paymentStatus === "overdue" ? (
-                              <div className="flex items-center space-x-1.5">
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
-                                  Overdue
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleUpdateMilestone(m.id, {
-                                      paymentStatus: "invoiced",
-                                      invoiceDate: m.targetDate || new Date().toISOString().split("T")[0],
-                                    })
-                                  }
-                                  className="px-2 py-0.5 text-[10px] font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-md shadow-2xs transition cursor-pointer"
-                                  title="Mark milestone as invoiced"
-                                >
-                                  📄 Invoice
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="flex items-center space-x-1.5">
-                                <span className="text-[11px] text-slate-400 italic">
-                                  Unbilled
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleUpdateMilestone(m.id, {
-                                      paymentStatus: "invoiced",
-                                      invoiceDate: m.targetDate || new Date().toISOString().split("T")[0],
-                                    })
-                                  }
-                                  className="px-2 py-0.5 text-[10px] font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-md transition cursor-pointer"
-                                  title="Mark milestone as invoiced"
-                                >
-                                  📄 Invoice
-                                </button>
-                              </div>
+                            <div className="flex items-center space-x-1.5">
+                              <Users className="w-3.5 h-3.5 text-indigo-500" />
+                              <span>Faculty:</span>
+                              <input
+                                type="text"
+                                value={m.assignedCoach || (selectedRecord.coaches && selectedRecord.coaches[0]?.name) || ""}
+                                placeholder="Assign Coach..."
+                                onChange={(e) =>
+                                  handleUpdateMilestone(m.id, { assignedCoach: e.target.value })
+                                }
+                                className="text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-white dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 outline-none w-36"
+                              />
+                            </div>
+
+                            {isCompleted && m.completionDate && (
+                              <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">
+                                ✓ Completed on {m.completionDate}
+                              </span>
                             )}
-                          </td>
+                          </div>
+                        </div>
+                      </div>
 
-                          <td className="py-3 px-3 text-right">
-                            <button
-                              onClick={() => handleDeleteMilestone(m.id)}
-                              className="p-1 text-slate-400 hover:text-rose-600 rounded-md transition"
-                              title="Delete milestone"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      {/* Right: Big Simple Action & Delete */}
+                      <div className="flex items-center space-x-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleQuickCompleteMilestone(m.id)}
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition flex items-center space-x-1.5 cursor-pointer shadow-2xs ${
+                            isCompleted
+                              ? "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
+                              : "bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-500/20"
+                          }`}
+                        >
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                          <span>{isCompleted ? "Reopen Phase" : "Mark Phase Completed"}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteMilestone(m.id)}
+                          className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg transition cursor-pointer"
+                          title="Delete this milestone"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 5. Quick Coach & Faculty Allocation Matrix Link */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                  <Users className="w-5 h-5" />
                 </div>
-
-                {/* Milestone allocation summary footer */}
-                <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between text-xs gap-2">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-slate-500">Total Payment Tranches Allocated:</span>
-                    <strong
-                      className={`font-black ${
-                        selectedRecordStats?.totalAllocatedPercent === 100
-                          ? "text-emerald-600 dark:text-emerald-400"
-                          : "text-amber-600 dark:text-amber-400"
-                      }`}
-                    >
-                      {selectedRecordStats?.totalAllocatedPercent}%
-                    </strong>
-                    {selectedRecordStats?.totalAllocatedPercent !== 100 && (
-                      <span className="text-[11px] text-amber-500">
-                        (Should total 100% of deal value)
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-slate-500">
-                    Allocated: <strong>{formatINR(selectedRecordStats?.totalAllocatedAmount || 0)}</strong> / Total: <strong>{formatINR(selectedRecord.dealValue)}</strong>
-                  </div>
+                <div>
+                  <h4 className="text-xs font-black uppercase text-slate-900 dark:text-white tracking-wider">
+                    Faculty & Coach Roster ({selectedRecord.coaches?.length || 0} Assigned)
+                  </h4>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Manage ICF Master Certified Coaches, Facilitators, and Executive Faculty for this engagement.
+                  </p>
                 </div>
               </div>
-            )}
+              <button
+                type="button"
+                onClick={() => setProjectSubTab("coaches")}
+                className="px-3.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 text-indigo-600 dark:text-indigo-400 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 shadow-2xs cursor-pointer shrink-0"
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>Open Full Coach Matrix</span>
+              </button>
+            </div>
+          </div>
+        )}
 
-            {/* ========================================================= */}
-            {/* SUB-SECTION B: When "Payment Terms" or "Contract" is Active */}
-            {/* ========================================================= */}
-            {(selectedRecord.tenureType === "payment_terms" ||
-              (selectedRecord.tenureType === "contract" &&
-                (contractSubView === "all" || contractSubView === "terms"))) && (
-              <div className="mt-6 bg-slate-50/70 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-200 dark:border-slate-800">
-                  <div>
-                    <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center space-x-2">
-                      <Calendar className="w-4 h-4 text-indigo-600" />
-                      <span>Advance & Scheduled Payment Terms</span>
-                    </h4>
-                    <p className="text-xs text-slate-500">
-                      Configure advance payment upfront (e.g. 30%) followed by time-based installments (e.g. 20% after 3 months).
-                    </p>
+        {/* ========================================================= */}
+        {/* TAB B: BILLING & INVOICES (For Accounts & Client Partners) */}
+        {/* ========================================================= */}
+        {projectSubTab === "billing_invoices" && (() => {
+          const invoicedMilestones = (selectedRecord.deliveryMilestones || [])
+            .filter((m) => m.paymentStatus === "invoiced" || m.paymentStatus === "received" || !!m.invoiceNumber)
+            .map((m) => ({
+              id: m.id,
+              title: m.milestoneTitle,
+              type: "milestone" as const,
+              typeBadge: "Milestone",
+              amount: m.amount || 0,
+              percent: m.paymentPercent || 0,
+              invoiceDate: m.invoiceDate || m.completionDate || m.targetDate || "",
+              invoiceNumber: m.invoiceNumber,
+              rawItem: m,
+            }));
+
+          const invoicedTerms = (selectedRecord.paymentTerms || [])
+            .filter((t) => t.paymentStatus === "invoiced" || t.paymentStatus === "received" || !!t.invoiceNumber)
+            .map((t) => ({
+              id: t.id,
+              title: t.termLabel,
+              type: "payment_term" as const,
+              typeBadge: t.isAdvance ? "Advance Term" : "Scheduled Term",
+              amount: t.amount || 0,
+              percent: t.paymentPercent || 0,
+              invoiceDate: t.invoiceDate || t.dueDate || "",
+              invoiceNumber: t.invoiceNumber,
+              rawItem: t,
+            }));
+
+          const invoicedPayments =
+            selectedRecord.tenureType === "delivery"
+              ? invoicedMilestones
+              : selectedRecord.tenureType === "payment_terms"
+              ? invoicedTerms
+              : [...invoicedMilestones, ...invoicedTerms];
+
+          const totalInvoiced = invoicedPayments.reduce((sum, p) => sum + p.amount, 0);
+          const totalPercent = invoicedPayments.reduce((sum, p) => sum + p.percent, 0);
+          const unbilledAmount = Math.max(0, (selectedRecord.dealValue || 0) - totalInvoiced);
+          const invoicingRate =
+            selectedRecord.dealValue > 0
+              ? Math.round((totalInvoiced / selectedRecord.dealValue) * 100)
+              : 0;
+
+          const handleExportInvoicesCSV = () => {
+            if (invoicedPayments.length === 0) return;
+            const headers = [
+              "Company Name",
+              "Program",
+              "Tranche Scope / Title",
+              "Type",
+              "Share (%)",
+              "Invoiced Amount (INR)",
+              "Invoice Date",
+              "Invoice Number",
+              "Payment Status",
+              "UTR / Ref",
+            ];
+            const rows = invoicedPayments.map((p) => {
+              const isPaid = p.rawItem.paymentStatus === "received";
+              return [
+                `"${selectedRecord.companyName.replace(/"/g, '""')}"`,
+                `"${selectedRecord.program || ""}"`,
+                `"${p.title.replace(/"/g, '""')}"`,
+                `"${p.typeBadge}"`,
+                p.percent,
+                p.amount,
+                `"${p.invoiceDate}"`,
+                `"${p.invoiceNumber || ""}"`,
+                isPaid ? "Paid in Full" : "Invoiced (Pending Payment)",
+                `"${p.rawItem.utrNumber || ""}"`,
+              ].join(",");
+            });
+            const csvContent = [headers.join(","), ...rows].join("\n");
+            downloadCSV(
+              csvContent,
+              `Invoices_${selectedRecord.companyName.replace(/\s+/g, "_")}.csv`
+            );
+          };
+
+          return (
+            <div className="space-y-6 pt-1 animate-fadeIn">
+              {/* 1. Financial Realization Metrics Strip */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 bg-gradient-to-r from-indigo-50/60 via-emerald-50/40 to-blue-50/40 dark:from-indigo-950/40 dark:via-emerald-950/30 dark:to-blue-950/30 rounded-2xl border border-indigo-200 dark:border-indigo-800">
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block tracking-wider">
+                    Contract Value
+                  </span>
+                  <div className="text-lg font-black text-slate-900 dark:text-white mt-0.5">
+                    {formatINR(selectedRecord.dealValue)}
                   </div>
-                  <SpringButton
-                    size="sm"
-                    variant="primary"
-                    onClick={handleAddPaymentTerm}
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Installment Term</span>
-                  </SpringButton>
+                  <span className="text-[10px] text-slate-500 font-medium">100% Contracted</span>
                 </div>
 
-                {/* Terms Table */}
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-indigo-600 dark:text-indigo-400 block tracking-wider">
+                    Total Invoiced
+                  </span>
+                  <div className="text-lg font-black text-indigo-700 dark:text-indigo-300 mt-0.5">
+                    {formatINR(totalInvoiced)}
+                  </div>
+                  <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                    {invoicingRate}% of Deal Size
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-emerald-600 dark:text-emerald-400 block tracking-wider">
+                    Collected (Paid)
+                  </span>
+                  <div className="text-lg font-black text-emerald-700 dark:text-emerald-300 mt-0.5">
+                    {formatINR(
+                      invoicedPayments
+                        .filter((p) => p.rawItem.paymentStatus === "received")
+                        .reduce((sum, p) => sum + p.amount, 0)
+                    )}
+                  </div>
+                  <span className="text-[10px] text-emerald-600 font-medium">Cleared into Bank</span>
+                </div>
+
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-amber-600 dark:text-amber-400 block tracking-wider">
+                    Unbilled Balance
+                  </span>
+                  <div className="text-lg font-black text-amber-700 dark:text-amber-300 mt-0.5">
+                    {formatINR(unbilledAmount)}
+                  </div>
+                  <span className="text-[10px] text-amber-600 font-medium">Scheduled / Future</span>
+                </div>
+              </div>
+
+              {/* 2. Tranches & Billing Table (Milestones + Payment Terms) */}
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 space-y-4 shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center space-x-2">
+                      <Receipt className="w-4 h-4 text-indigo-600" />
+                      <span>Tranches, Invoices & Payment Status</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Track invoice generation, payment receipts, UTR reference codes, and billing status.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    {invoicedPayments.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleExportInvoicesCSV}
+                        className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition flex items-center space-x-1.5 cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5 text-indigo-500" />
+                        <span>Export Invoices CSV</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Tranches List */}
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
                     <thead>
                       <tr className="border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                        <th className="py-2.5 px-3">Term / Installment Label</th>
-                        <th className="py-2.5 px-3">Timeframe / Schedule</th>
-                        <th className="py-2.5 px-3">Invoicing Share (%)</th>
+                        <th className="py-2.5 px-3">Tranche / Phase</th>
+                        <th className="py-2.5 px-3">Type</th>
+                        <th className="py-2.5 px-3">Share (%)</th>
                         <th className="py-2.5 px-3">Amount (INR)</th>
-                        <th className="py-2.5 px-3">Schedule / Due Date</th>
-                        <th className="py-2.5 px-3">Invoicing Status</th>
-                        <th className="py-2.5 px-3">Invoice Date & Ref</th>
+                        <th className="py-2.5 px-3">Delivery Status</th>
+                        <th className="py-2.5 px-3">Billing Status</th>
+                        <th className="py-2.5 px-3">Invoice & Payment Ref</th>
                         <th className="py-2.5 px-3 text-right">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                      {selectedRecord.paymentTerms.map((t, idx) => (
-                        <tr key={t.id} className="hover:bg-slate-100/50 dark:hover:bg-slate-800/40 transition">
-                          <td className="py-3 px-3 min-w-[180px]">
-                            <div className="flex items-center space-x-2">
-                              <input
-                                type="text"
-                                value={t.termLabel}
-                                onChange={(e) =>
-                                  handleUpdatePaymentTerm(t.id, { termLabel: e.target.value })
-                                }
-                                className="w-full px-2 py-1 text-xs font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
-                                placeholder="e.g. Advance Payment"
-                              />
-                            </div>
-                          </td>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {(selectedRecord.deliveryMilestones || []).map((m) => {
+                        const isDelivered = m.milestoneStatus === "completed";
+                        const isPaid = m.paymentStatus === "received";
+                        const isInvoiced = m.paymentStatus === "invoiced" || !!m.invoiceNumber;
+                        const simpleBilling = isPaid ? "paid" : isInvoiced ? "invoiced" : "unbilled";
 
-                          <td className="py-3 px-3 min-w-[180px]">
-                            <select
-                              value={t.timeframe}
-                              onChange={(e) =>
-                                handleUpdatePaymentTerm(t.id, { timeframe: e.target.value })
-                              }
-                              className="w-full px-2 py-1 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 font-medium"
-                            >
-                              <option value="Advance (Immediate on Contract)">Advance (Immediate on Contract)</option>
-                              <option value="After 1 Month">After 1 Month</option>
-                              <option value="After 2 Months">After 2 Months</option>
-                              <option value="After 3 Months">After 3 Months</option>
-                              <option value="After 4 Months">After 4 Months</option>
-                              <option value="After 6 Months">After 6 Months</option>
-                              <option value="After 9 Months">After 9 Months</option>
-                              <option value="After 12 Months">After 12 Months</option>
-                              <option value="On Completion / Sign-off">On Completion / Sign-off</option>
-                              <option value="Custom Schedule">Custom Schedule</option>
-                            </select>
-                          </td>
-
-                          <td className="py-3 px-3">
-                            <div className="flex items-center space-x-1.5">
-                              <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                value={t.paymentPercent}
-                                onChange={(e) =>
-                                  handleUpdatePaymentTerm(t.id, {
-                                    paymentPercent: Number(e.target.value),
-                                  })
-                                }
-                                className="w-16 px-2 py-1 text-xs font-bold text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-emerald-600 dark:text-emerald-400"
-                              />
-                              <span className="font-bold text-slate-400">%</span>
-                            </div>
-                          </td>
-
-                          <td className="py-3 px-3 font-black text-slate-900 dark:text-white whitespace-nowrap">
-                            {formatINR(t.amount)}
-                          </td>
-
-                          {/* Due / Schedule Date */}
-                          <td className="py-3 px-3">
-                            <input
-                              type="date"
-                              value={t.dueDate || ""}
-                              onChange={(e) => {
-                                handleUpdatePaymentTerm(t.id, {
-                                  dueDate: e.target.value,
-                                });
-                              }}
-                              className="px-2 py-1 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300"
-                              title="Installment Due / Scheduled Invoice Date"
-                            />
-                          </td>
-
-                          {/* Invoicing Status Dropdown */}
-                          <td className="py-3 px-3">
-                            <div className="flex items-center space-x-1.5">
-                              <select
-                                value={t.paymentStatus === "received" ? "invoiced" : t.paymentStatus}
-                                onChange={(e) => {
-                                  const newStatus = e.target.value as TranchePaymentStatus;
-                                  handleUpdatePaymentTerm(t.id, { paymentStatus: newStatus });
-                                }}
-                                className={`px-2 py-1 text-xs font-bold rounded-lg border ${
-                                  t.paymentStatus === "invoiced" || t.paymentStatus === "received"
-                                    ? "bg-indigo-50 text-indigo-700 border-indigo-300 dark:bg-indigo-950 dark:text-indigo-300 dark:border-indigo-800"
-                                    : t.paymentStatus === "overdue"
-                                    ? "bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800"
-                                    : "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800"
+                        return (
+                          <tr key={m.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition">
+                            <td className="py-3 px-3 font-black text-slate-900 dark:text-white">
+                              {m.milestoneTitle}
+                            </td>
+                            <td className="py-3 px-3">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                                Milestone
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 font-bold text-slate-600 dark:text-slate-300">
+                              {m.paymentPercent}%
+                            </td>
+                            <td className="py-3 px-3 font-black text-slate-900 dark:text-white whitespace-nowrap">
+                              {formatINR(m.amount)}
+                            </td>
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              <span
+                                className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  isDelivered
+                                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                                    : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
                                 }`}
                               >
-                                <option value="pending">⏳ Pending</option>
-                                <option value="invoiced">📄 Invoiced</option>
-                                <option value="overdue">⚠️ Overdue</option>
-                              </select>
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setInvoiceModalState({
-                                    isOpen: true,
-                                    record: selectedRecord,
-                                    item: t,
-                                    itemType: "payment_term",
-                                  })
-                                }
-                                className="p-1.5 text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900 border border-indigo-200 dark:border-indigo-800 rounded-lg transition shrink-0 cursor-pointer"
-                                title="One-Click Tax Invoice Generator & Record"
+                                <span>{isDelivered ? "🟢 Delivered" : "🟡 In Delivery"}</span>
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              <span
+                                className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                                  simpleBilling === "paid"
+                                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                                    : simpleBilling === "invoiced"
+                                    ? "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300"
+                                    : "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300"
+                                }`}
                               >
-                                <Receipt className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-
-                          {/* Invoice Date & Reference Column */}
-                          <td className="py-3 px-3 min-w-[150px]">
-                            {t.paymentStatus === "invoiced" || t.paymentStatus === "received" || t.invoiceNumber ? (
-                              <div className="flex items-center space-x-1.5">
-                                <input
-                                  type="date"
-                                  value={t.invoiceDate || t.dueDate || ""}
-                                  onChange={(e) => {
-                                    handleUpdatePaymentTerm(t.id, {
-                                      invoiceDate: e.target.value,
-                                      paymentStatus: "invoiced",
-                                    });
-                                  }}
-                                  className="px-2 py-1 text-xs font-bold bg-indigo-50 dark:bg-indigo-950/80 border border-indigo-300 dark:border-indigo-700 rounded-lg text-indigo-800 dark:text-indigo-300 focus:ring-2 focus:ring-indigo-500"
-                                  title="Invoice Issue Date"
-                                />
-                                {t.invoiceNumber ? (
-                                  <span
-                                    className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 border border-indigo-300 dark:border-indigo-700 shrink-0"
-                                    title={`Invoice Ref: ${t.invoiceNumber}`}
+                                <span>
+                                  {simpleBilling === "paid"
+                                    ? "🟢 Paid in Full"
+                                    : simpleBilling === "invoiced"
+                                    ? "🔵 Invoiced"
+                                    : "⚪ Unbilled"}
+                                </span>
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-[11px] text-slate-500">
+                              {m.invoiceNumber ? (
+                                <div>
+                                  <div className="font-bold text-slate-800 dark:text-slate-200">
+                                    Inv #{m.invoiceNumber}
+                                  </div>
+                                  {m.utrNumber && (
+                                    <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                                      UTR: {m.utrNumber}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 italic">No invoice raised yet</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-right whitespace-nowrap">
+                              <div className="flex items-center justify-end space-x-1.5">
+                                {!isInvoiced && !isPaid ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setInvoiceModalState({
+                                        isOpen: true,
+                                        record: selectedRecord,
+                                        item: m,
+                                        itemType: "milestone",
+                                      })
+                                    }
+                                    className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold shadow transition cursor-pointer"
                                   >
-                                    {t.invoiceNumber}
-                                  </span>
+                                    📄 Generate Invoice
+                                  </button>
+                                ) : !isPaid ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setInvoiceModalState({
+                                        isOpen: true,
+                                        record: selectedRecord,
+                                        item: m,
+                                        itemType: "milestone",
+                                      })
+                                    }
+                                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold shadow transition cursor-pointer"
+                                  >
+                                    💵 Record Payment
+                                  </button>
                                 ) : (
-                                  <span
-                                    className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700 shrink-0"
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setInvoiceModalState({
+                                        isOpen: true,
+                                        record: selectedRecord,
+                                        item: m,
+                                        itemType: "milestone",
+                                      })
+                                    }
+                                    className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 rounded-lg text-[11px] font-bold transition cursor-pointer"
                                   >
-                                    Invoiced
-                                  </span>
+                                    View Details
+                                  </button>
                                 )}
                               </div>
-                            ) : t.paymentStatus === "overdue" ? (
-                              <div className="flex items-center space-x-1.5">
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
-                                  Overdue
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleUpdatePaymentTerm(t.id, {
-                                      paymentStatus: "invoiced",
-                                      invoiceDate: t.dueDate || new Date().toISOString().split("T")[0],
-                                    })
-                                  }
-                                  className="px-2 py-0.5 text-[10px] font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-md shadow-2xs transition cursor-pointer"
-                                  title="Mark term as invoiced"
-                                >
-                                  📄 Invoice
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="flex items-center space-x-1.5">
-                                <span className="text-[11px] text-slate-400 italic">
-                                  Unbilled
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleUpdatePaymentTerm(t.id, {
-                                      paymentStatus: "invoiced",
-                                      invoiceDate: t.dueDate || new Date().toISOString().split("T")[0],
-                                    })
-                                  }
-                                  className="px-2 py-0.5 text-[10px] font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-md transition cursor-pointer"
-                                  title="Mark term as invoiced"
-                                >
-                                  📄 Invoice
-                                </button>
-                              </div>
-                            )}
-                          </td>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {(selectedRecord.paymentTerms || []).map((t) => {
+                        const isPaid = t.paymentStatus === "received";
+                        const isInvoiced = t.paymentStatus === "invoiced" || !!t.invoiceNumber;
+                        const simpleBilling = isPaid ? "paid" : isInvoiced ? "invoiced" : "unbilled";
 
-                          <td className="py-3 px-3 text-right">
-                            <button
-                              onClick={() => handleDeletePaymentTerm(t.id)}
-                              className="p-1 text-slate-400 hover:text-rose-600 rounded-md transition"
-                              title="Delete term"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                        return (
+                          <tr key={t.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition">
+                            <td className="py-3 px-3 font-black text-slate-900 dark:text-white">
+                              {t.termLabel}
+                            </td>
+                            <td className="py-3 px-3">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                                {t.isAdvance ? "Advance Term" : "Scheduled Term"}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 font-bold text-slate-600 dark:text-slate-300">
+                              {t.paymentPercent}%
+                            </td>
+                            <td className="py-3 px-3 font-black text-slate-900 dark:text-white whitespace-nowrap">
+                              {formatINR(t.amount)}
+                            </td>
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              <span className="text-[10px] font-bold text-slate-500">
+                                {t.timeframe}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              <span
+                                className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                                  simpleBilling === "paid"
+                                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                                    : simpleBilling === "invoiced"
+                                    ? "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300"
+                                    : "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300"
+                                }`}
+                              >
+                                <span>
+                                  {simpleBilling === "paid"
+                                    ? "🟢 Paid in Full"
+                                    : simpleBilling === "invoiced"
+                                    ? "🔵 Invoiced"
+                                    : "⚪ Unbilled"}
+                                </span>
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-[11px] text-slate-500">
+                              {t.invoiceNumber ? (
+                                <div>
+                                  <div className="font-bold text-slate-800 dark:text-slate-200">
+                                    Inv #{t.invoiceNumber}
+                                  </div>
+                                  {t.utrNumber && (
+                                    <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                                      UTR: {t.utrNumber}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 italic">No invoice raised yet</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-right whitespace-nowrap">
+                              <div className="flex items-center justify-end space-x-1.5">
+                                {!isInvoiced && !isPaid ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setInvoiceModalState({
+                                        isOpen: true,
+                                        record: selectedRecord,
+                                        item: t,
+                                        itemType: "payment_term",
+                                      })
+                                    }
+                                    className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold shadow transition cursor-pointer"
+                                  >
+                                    📄 Generate Invoice
+                                  </button>
+                                ) : !isPaid ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setInvoiceModalState({
+                                        isOpen: true,
+                                        record: selectedRecord,
+                                        item: t,
+                                        itemType: "payment_term",
+                                      })
+                                    }
+                                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold shadow transition cursor-pointer"
+                                  >
+                                    💵 Record Payment
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setInvoiceModalState({
+                                        isOpen: true,
+                                        record: selectedRecord,
+                                        item: t,
+                                        itemType: "payment_term",
+                                      })
+                                    }
+                                    className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 rounded-lg text-[11px] font-bold transition cursor-pointer"
+                                  >
+                                    View Details
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
-
-                {/* Terms allocation summary footer */}
-                <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between text-xs gap-2">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-slate-500">Total Terms Allocated:</span>
-                    <strong
-                      className={`font-black ${
-                        selectedRecordStats?.totalAllocatedPercent === 100
-                          ? "text-emerald-600 dark:text-emerald-400"
-                          : "text-amber-600 dark:text-amber-400"
-                      }`}
-                    >
-                      {selectedRecordStats?.totalAllocatedPercent}%
-                    </strong>
-                    {selectedRecordStats?.totalAllocatedPercent !== 100 && (
-                      <span className="text-[11px] text-amber-500">
-                        (Should total 100% of deal value)
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-slate-500">
-                    Allocated: <strong>{formatINR(selectedRecordStats?.totalAllocatedAmount || 0)}</strong> / Total: <strong>{formatINR(selectedRecord.dealValue)}</strong>
-                  </div>
-                </div>
               </div>
-            )}
+            </div>
+          );
+        })()}
 
-            {/* ========================================================= */}
-            {/* SUB-SECTION C: TAX INVOICING & BILLING LEDGER (PROJECT-SPECIFIC) */}
-            {/* Tabular table of all invoiced tranches, dates & invoice numbers */}
-            {/* ========================================================= */}
-            {(() => {
-              // Extract all invoiced milestone tranches
-              const invoicedMilestones = (selectedRecord.deliveryMilestones || [])
-                .filter((m) => m.paymentStatus === "invoiced" || m.paymentStatus === "received" || !!m.invoiceNumber)
-                .map((m) => ({
-                  id: m.id,
-                  title: m.milestoneTitle,
-                  type: "milestone" as const,
-                  typeBadge: "Milestone",
-                  amount: m.amount || 0,
-                  percent: m.paymentPercent || 0,
-                  invoiceDate: m.invoiceDate || m.completionDate || m.targetDate || "",
-                  invoiceNumber: m.invoiceNumber,
-                  rawItem: m,
-                }));
-
-              // Extract all invoiced payment terms tranches
-              const invoicedTerms = (selectedRecord.paymentTerms || [])
-                .filter((t) => t.paymentStatus === "invoiced" || t.paymentStatus === "received" || !!t.invoiceNumber)
-                .map((t) => ({
-                  id: t.id,
-                  title: t.termLabel,
-                  type: "payment_term" as const,
-                  typeBadge: t.isAdvance ? "Advance Term" : "Scheduled Term",
-                  amount: t.amount || 0,
-                  percent: t.paymentPercent || 0,
-                  invoiceDate: t.invoiceDate || t.dueDate || "",
-                  invoiceNumber: t.invoiceNumber,
-                  rawItem: t,
-                }));
-
-              // Scoped to the active project tenure model
-              const invoicedPayments =
-                selectedRecord.tenureType === "delivery"
-                  ? invoicedMilestones
-                  : selectedRecord.tenureType === "payment_terms"
-                  ? invoicedTerms
-                  : [...invoicedMilestones, ...invoicedTerms];
-
-              const totalInvoiced = invoicedPayments.reduce((sum, p) => sum + p.amount, 0);
-              const totalPercent = invoicedPayments.reduce((sum, p) => sum + p.percent, 0);
-              const unbilledAmount = Math.max(0, (selectedRecord.dealValue || 0) - totalInvoiced);
-              const invoicingRate =
-                selectedRecord.dealValue > 0
-                  ? Math.round((totalInvoiced / selectedRecord.dealValue) * 100)
-                  : 0;
-
-              // Extract uninvoiced tranches so user can easily 1-click invoice
-              const uninvoicedMilestones = (selectedRecord.deliveryMilestones || []).filter(
-                (m) => m.paymentStatus !== "invoiced" && m.paymentStatus !== "received" && !m.invoiceNumber
-              );
-              const uninvoicedTerms = (selectedRecord.paymentTerms || []).filter(
-                (t) => t.paymentStatus !== "invoiced" && t.paymentStatus !== "received" && !t.invoiceNumber
-              );
-
-              const handleExportInvoicesCSV = () => {
-                const headers = [
-                  "Client / Project",
-                  "Invoice Number",
-                  "Tranche Description",
-                  "Category",
-                  "Invoice Issue Date",
-                  "Amount (INR)",
-                  "Share of Deal (%)",
-                ];
-                const rows = invoicedPayments.map((p) => [
-                  `"${selectedRecord.companyName.replace(/"/g, '""')}"`,
-                  `"${(p.invoiceNumber || "INVOICED").replace(/"/g, '""')}"`,
-                  `"${p.title.replace(/"/g, '""')}"`,
-                  `"${p.typeBadge}"`,
-                  `"${p.invoiceDate || "N/A"}"`,
-                  p.amount,
-                  `${p.percent}%`,
-                ]);
-                const csvContent =
-                  "data:text/csv;charset=utf-8," +
-                  [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-                const encodedUri = encodeURI(csvContent);
-                const link = document.createElement("a");
-                link.setAttribute("href", encodedUri);
-                link.setAttribute(
-                  "download",
-                  `Invoices_${selectedRecord.companyName.replace(/\s+/g, "_")}.csv`
-                );
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-              };
-
-              return (
-                <div className="mt-8 bg-white dark:bg-slate-900 border-2 border-indigo-200 dark:border-indigo-900 rounded-2xl p-5 sm:p-6 space-y-5 shadow-sm">
-                  {/* Ledger Header & Quick Financial Summary */}
-                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="p-2 bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 rounded-xl">
-                          <Receipt className="w-5 h-5" />
-                        </span>
-                        <h4 className="text-base font-black text-slate-900 dark:text-white flex items-center space-x-2">
-                          <span>Tax Invoicing & Billing Ledger</span>
-                        </h4>
-                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-700">
-                          {invoicingRate}% Invoiced
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Record of tax invoices raised and scheduled tranches for <strong className="text-slate-800 dark:text-slate-200">{selectedRecord.companyName}</strong>, detailing invoice dates, invoiced amounts (₹), and invoice references.
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      {invoicedPayments.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={handleExportInvoicesCSV}
-                          className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition cursor-pointer"
-                          title="Download invoices ledger as CSV"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>Export Invoices (CSV)</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Financial Metrics Strip for this Project */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-800">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                        Total Deal Value
-                      </span>
-                      <div className="text-base font-black text-slate-900 dark:text-white mt-0.5">
-                        {formatINR(selectedRecord.dealValue)}
-                      </div>
-                      <span className="text-[10px] text-slate-500">Contracted deal</span>
-                    </div>
-
-                    <div className="p-3 bg-indigo-50/60 dark:bg-indigo-950/20 rounded-xl border border-indigo-200 dark:border-indigo-900">
-                      <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block">
-                        Total Invoiced
-                      </span>
-                      <div className="text-base font-black text-indigo-700 dark:text-indigo-300 mt-0.5">
-                        {formatINR(totalInvoiced)}
-                      </div>
-                      <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">
-                        {totalPercent}% Invoiced of Deal
-                      </span>
-                    </div>
-
-                    <div className="p-3 bg-amber-50/60 dark:bg-amber-950/20 rounded-xl border border-amber-200 dark:border-amber-900">
-                      <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider block">
-                        Unbilled Book
-                      </span>
-                      <div className="text-base font-black text-amber-700 dark:text-amber-300 mt-0.5">
-                        {formatINR(unbilledAmount)}
-                      </div>
-                      <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
-                        Remaining to Invoice
-                      </span>
-                    </div>
-
-                    <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/20 rounded-xl border border-emerald-200 dark:border-emerald-900">
-                      <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block">
-                        Invoices Raised
-                      </span>
-                      <div className="text-base font-black text-emerald-700 dark:text-emerald-300 mt-0.5">
-                        {invoicedPayments.length} Tranche{invoicedPayments.length === 1 ? "" : "s"}
-                      </div>
-                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
-                        Status: {totalPercent >= 100 ? "Fully Invoiced" : "Invoicing Active"}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Tabular Table of Invoiced Items */}
-                  {invoicedPayments.length > 0 ? (
-                    <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
-                      <table className="w-full text-left text-xs border-collapse">
-                        <thead>
-                          <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold">
-                            <th className="py-3 px-3.5 w-12 text-center">#</th>
-                            <th className="py-3 px-3.5">Tranche / Milestone</th>
-                            <th className="py-3 px-3.5">Category</th>
-                            <th className="py-3 px-3.5 min-w-[170px]">Invoice Issue Date</th>
-                            <th className="py-3 px-3.5">Amount (₹ INR)</th>
-                            <th className="py-3 px-3.5 text-center">Share</th>
-                            <th className="py-3 px-3.5">Invoice Ref</th>
-                            <th className="py-3 px-3.5 text-right">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 bg-white dark:bg-slate-900">
-                          {invoicedPayments.map((p, idx) => (
-                            <tr
-                              key={`${p.type}-${p.id}`}
-                              className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition group"
-                            >
-                              {/* Serial # */}
-                              <td className="py-3 px-3.5 text-center">
-                                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-black text-[11px]">
-                                  {idx + 1}
-                                </span>
-                              </td>
-
-                              {/* Tranche / Milestone Title */}
-                              <td className="py-3 px-3.5">
-                                <div className="font-bold text-slate-900 dark:text-white text-xs">
-                                  {p.title}
-                                </div>
-                                <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold flex items-center space-x-1 mt-0.5">
-                                  <CheckCircle2 className="w-3 h-3 shrink-0" />
-                                  <span>Invoice Raised</span>
-                                </div>
-                              </td>
-
-                              {/* Category Badge */}
-                              <td className="py-3 px-3.5">
-                                <span
-                                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                                    p.type === "milestone"
-                                      ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"
-                                      : "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
-                                  }`}
-                                >
-                                  {p.typeBadge}
-                                </span>
-                              </td>
-
-                              {/* Invoice Issue Date (Editable inline) */}
-                              <td className="py-3 px-3.5">
-                                <div className="flex items-center space-x-2">
-                                  <input
-                                    type="date"
-                                    value={p.invoiceDate ? p.invoiceDate.split("T")[0] : ""}
-                                    onChange={(e) => {
-                                      const newDate = e.target.value;
-                                      if (p.type === "milestone") {
-                                        handleUpdateMilestone(p.id, { invoiceDate: newDate, paymentStatus: "invoiced" });
-                                      } else {
-                                        handleUpdatePaymentTerm(p.id, { invoiceDate: newDate, paymentStatus: "invoiced" });
-                                      }
-                                    }}
-                                    className="px-2 py-1 text-xs font-semibold rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 cursor-pointer"
-                                    title="Edit invoice issue date"
-                                  />
-                                </div>
-                              </td>
-
-                              {/* Amount (₹ INR) */}
-                              <td className="py-3 px-3.5">
-                                <span className="font-black text-slate-900 dark:text-white text-sm whitespace-nowrap">
-                                  {formatINR(p.amount)}
-                                </span>
-                              </td>
-
-                              {/* Share % */}
-                              <td className="py-3 px-3.5 text-center">
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                                  {p.percent}%
-                                </span>
-                              </td>
-
-                              {/* Invoice Ref */}
-                              <td className="py-3 px-3.5">
-                                {p.invoiceNumber ? (
-                                  <span className="text-[11px] font-mono font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
-                                    {p.invoiceNumber}
-                                  </span>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setInvoiceModalState({
-                                        isOpen: true,
-                                        record: selectedRecord,
-                                        item: p.rawItem,
-                                        itemType: p.type,
-                                      })
-                                    }
-                                    className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 hover:underline flex items-center space-x-1 font-semibold cursor-pointer"
-                                  >
-                                    <Plus className="w-3 h-3" />
-                                    <span>Set Invoice #</span>
-                                  </button>
-                                )}
-                              </td>
-
-                              {/* Actions */}
-                              <td className="py-3 px-3.5 text-right">
-                                <div className="flex items-center justify-end space-x-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setInvoiceModalState({
-                                        isOpen: true,
-                                        record: selectedRecord,
-                                        item: p.rawItem,
-                                        itemType: p.type,
-                                      })
-                                    }
-                                    className="p-1.5 text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900 border border-indigo-200 dark:border-indigo-800 rounded-lg transition cursor-pointer"
-                                    title="View / Edit Invoice Details"
-                                  >
-                                    <Receipt className="w-3.5 h-3.5" />
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      if (p.type === "milestone") {
-                                        handleUpdateMilestone(p.id, { paymentStatus: "pending" });
-                                      } else {
-                                        handleUpdatePaymentTerm(p.id, { paymentStatus: "pending" });
-                                      }
-                                    }}
-                                    className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition cursor-pointer"
-                                    title="Unmark from Invoiced (Move back to Pending)"
-                                  >
-                                    <RefreshCw className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-
-                        {/* Total Footer Row */}
-                        <tfoot>
-                          <tr className="bg-slate-50/90 dark:bg-slate-800/90 border-t-2 border-slate-200 dark:border-slate-700 font-black text-xs text-slate-900 dark:text-white">
-                            <td colSpan={4} className="py-3 px-3.5 text-right uppercase tracking-wider text-[11px] text-slate-500">
-                              Total Invoiced:
-                            </td>
-                            <td className="py-3 px-3.5 text-indigo-700 dark:text-indigo-300 font-black text-sm whitespace-nowrap">
-                              {formatINR(totalInvoiced)}
-                            </td>
-                            <td className="py-3 px-3.5 text-center text-indigo-600 dark:text-indigo-400 font-black">
-                              {totalPercent}%
-                            </td>
-                            <td colSpan={2} className="py-3 px-3.5 text-slate-500 text-[11px] font-medium">
-                              Unbilled Book: <strong className="text-amber-600 dark:text-amber-400">{formatINR(unbilledAmount)}</strong>
-                            </td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </div>
-                  ) : (
-                    /* Clean Empty State */
-                    <div className="p-6 bg-slate-50/80 dark:bg-slate-800/40 border border-dashed border-slate-300 dark:border-slate-700 rounded-2xl text-center space-y-3">
-                      <div className="w-12 h-12 mx-auto rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center border border-indigo-200 dark:border-indigo-800">
-                        <Receipt className="w-6 h-6" />
-                      </div>
-                      <div className="space-y-1">
-                        <h5 className="text-sm font-black text-slate-800 dark:text-slate-200">
-                          No Invoices Raised Yet
-                        </h5>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-                          When milestones or scheduled terms are invoiced for <strong className="text-slate-700 dark:text-slate-300">{selectedRecord.companyName}</strong>, mark any tranche as &quot;Invoiced&quot; above or click below to invoice immediately.
-                        </p>
-                      </div>
-
-                      {/* Quick invoice buttons for uninvoiced tranches */}
-                      {(uninvoicedMilestones.length > 0 || uninvoicedTerms.length > 0) && (
-                        <div className="pt-2">
-                          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
-                            Quick Raise Invoice:
-                          </span>
-                          <div className="flex flex-wrap items-center justify-center gap-2">
-                            {uninvoicedMilestones.slice(0, 3).map((m) => (
-                              <button
-                                key={m.id}
-                                type="button"
-                                onClick={() =>
-                                  handleUpdateMilestone(m.id, {
-                                    paymentStatus: "invoiced",
-                                    invoiceDate: new Date().toISOString().split("T")[0],
-                                  })
-                                }
-                                className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800 text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-sm"
-                              >
-                                <Receipt className="w-3.5 h-3.5 text-indigo-600" />
-                                <span>Invoice &quot;{m.milestoneTitle}&quot; ({formatINR(m.amount)})</span>
-                              </button>
-                            ))}
-                            {uninvoicedTerms.slice(0, 3).map((t) => (
-                              <button
-                                key={t.id}
-                                type="button"
-                                onClick={() =>
-                                  handleUpdatePaymentTerm(t.id, {
-                                    paymentStatus: "invoiced",
-                                    invoiceDate: new Date().toISOString().split("T")[0],
-                                  })
-                                }
-                                className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800 text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-sm"
-                              >
-                                <Receipt className="w-3.5 h-3.5 text-indigo-600" />
-                                <span>Invoice &quot;{t.termLabel}&quot; ({formatINR(t.amount)})</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
-        )}
-
-        {/* VIEW 2: PREEXISTING PIPELINE DATA & DOSSIER */}
-        {projectSubTab === "pipeline_data" && effectivePipelineData && (
+        {/* ========================================================= */}
+        {/* TAB C: DOSSIER & SECONDARY DETAILS */}
+        {/* ========================================================= */}
+        {(projectSubTab === "dossier" ||
+          projectSubTab === "pipeline_data" ||
+          projectSubTab === "coaches" ||
+          projectSubTab === "signoff") && (
           <div className="space-y-6 pt-1 animate-fadeIn">
             {/* 1. Commercial Dossier & Key Pipeline Attributes */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Deal Value & Program */}
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-1.5 shadow-sm">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                  Deal Value & Program
-                </span>
-                <div className="text-xl font-black text-slate-900 dark:text-white">
-                  {formatINR(effectivePipelineData.dealValue)}
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                  <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                    {effectivePipelineData.program}
+            {effectivePipelineData && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-1.5 shadow-xs">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Deal Value & Program
                   </span>
-                  <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
-                    {effectivePipelineData.leadSource}
-                  </span>
-                </div>
-              </div>
-
-              {/* Stage & Closure Timeline */}
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-1.5 shadow-sm">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                  Pipeline Stage & Status
-                </span>
-                <div className="flex items-center space-x-1.5">
-                  <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                    <span>Closure (Won) • {effectivePipelineData.weightage}%</span>
-                  </span>
-                </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center space-x-1 pt-1">
-                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                  <span>
-                    Closure Month: <strong className="text-slate-700 dark:text-slate-200">{formatClosureMonth(effectivePipelineData.closureMonth || effectivePipelineData.expectedCloseDate)}</strong>
-                  </span>
-                </div>
-              </div>
-
-              {/* Ownership & Location */}
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-1.5 shadow-sm">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                  Deal Owner & Region
-                </span>
-                <div className="text-sm font-black text-slate-800 dark:text-slate-200 flex items-center space-x-1.5">
-                  <Users className="w-4 h-4 text-indigo-500" />
-                  <span>{effectivePipelineData.owner}</span>
-                </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center space-x-1 pt-1">
-                  <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                  <span>
-                    {effectivePipelineData.city || "Pan India"} • {effectivePipelineData.industry || "General Industry"}
-                  </span>
-                </div>
-              </div>
-
-              {/* Preexisting History & Collateral */}
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-1.5 shadow-sm">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                  Pipeline Dossier Assets
-                </span>
-                <div className="text-xs text-slate-600 dark:text-slate-300 space-y-1 pt-0.5">
-                  <div className="flex items-center justify-between">
-                    <span>Approach Notes:</span>
-                    <strong className="text-indigo-600 dark:text-indigo-400">{effectivePipelineData.approachNotes.length} files</strong>
+                  <div className="text-xl font-black text-slate-900 dark:text-white">
+                    {formatINR(effectivePipelineData.dealValue)}
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span>Financial Docs:</span>
-                    <strong className="text-emerald-600 dark:text-emerald-400">{effectivePipelineData.financialDocuments.length} files</strong>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Journey Logs:</span>
-                    <strong className="text-slate-700 dark:text-slate-200">{effectivePipelineData.journeyLogs.length} events</strong>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* 2. Stakeholders & Contacts */}
-            <div className="bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center space-x-2">
-                  <Users className="w-4 h-4 text-indigo-500" />
-                  <span>Stakeholders & Contact Directory</span>
-                </h4>
-                <span className="text-xs text-slate-400">
-                  {(effectivePipelineData.additionalContacts.length || 0) + 1} Stakeholders Recorded
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {/* Primary Contact Card */}
-                <div className="p-3.5 bg-white dark:bg-slate-900 border-2 border-indigo-500/30 rounded-xl space-y-2 relative shadow-sm">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="text-xs font-black text-slate-900 dark:text-white">
-                        {effectivePipelineData.contactName}
-                      </div>
-                      <div className="text-[11px] text-indigo-600 dark:text-indigo-400 font-bold">
-                        {effectivePipelineData.designation || "Primary Decision Maker"}
-                      </div>
-                    </div>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                      Primary Lead
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                      {effectivePipelineData.program}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                      {effectivePipelineData.leadSource}
                     </span>
                   </div>
+                </div>
 
-                  <div className="space-y-1 text-xs text-slate-600 dark:text-slate-400 pt-1">
-                    {effectivePipelineData.contactEmail && (
-                      <a
-                        href={`mailto:${effectivePipelineData.contactEmail}`}
-                        className="flex items-center space-x-1.5 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
-                      >
-                        <Mail className="w-3.5 h-3.5 text-slate-400" />
-                        <span className="truncate">{effectivePipelineData.contactEmail}</span>
-                      </a>
-                    )}
-                    {effectivePipelineData.contactPhone && (
-                      <a
-                        href={`tel:${effectivePipelineData.contactPhone}`}
-                        className="flex items-center space-x-1.5 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
-                      >
-                        <Phone className="w-3.5 h-3.5 text-slate-400" />
-                        <span>{effectivePipelineData.contactPhone}</span>
-                      </a>
-                    )}
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-1.5 shadow-xs">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Pipeline Stage & Status
+                  </span>
+                  <div className="flex items-center space-x-1.5">
+                    <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>Closure (Won) • {effectivePipelineData.weightage}%</span>
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center space-x-1 pt-1">
+                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                    <span>
+                      Closure Month: <strong className="text-slate-700 dark:text-slate-200">{formatClosureMonth(effectivePipelineData.closureMonth || effectivePipelineData.expectedCloseDate)}</strong>
+                    </span>
                   </div>
                 </div>
 
-                {/* Additional Contacts Cards */}
-                {effectivePipelineData.additionalContacts.map((contact, idx) => (
-                  <div
-                    key={contact.id || idx}
-                    className="p-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2 shadow-sm"
-                  >
-                    <div>
-                      <div className="text-xs font-black text-slate-900 dark:text-white">
-                        {contact.name}
-                      </div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                        {contact.designation || "Stakeholder"}
-                      </div>
-                    </div>
-                    <div className="space-y-1 text-xs text-slate-600 dark:text-slate-400 pt-1">
-                      {contact.email && (
-                        <a
-                          href={`mailto:${contact.email}`}
-                          className="flex items-center space-x-1.5 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
-                        >
-                          <Mail className="w-3.5 h-3.5 text-slate-400" />
-                          <span className="truncate">{contact.email}</span>
-                        </a>
-                      )}
-                      {contact.contactNumber && (
-                        <a
-                          href={`tel:${contact.contactNumber}`}
-                          className="flex items-center space-x-1.5 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
-                        >
-                          <Phone className="w-3.5 h-3.5 text-slate-400" />
-                          <span>{contact.contactNumber}</span>
-                        </a>
-                      )}
-                    </div>
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-1.5 shadow-xs">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Deal Owner & Region
+                  </span>
+                  <div className="text-sm font-black text-slate-900 dark:text-white">
+                    {effectivePipelineData.owner}
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* 3. Pipeline Notes / Handover Instructions */}
-            {effectivePipelineData.pipelineNotes && (
-              <div className="p-4 bg-amber-50/60 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-900/60 rounded-2xl space-y-2 shadow-sm">
-                <div className="flex items-center space-x-2 text-xs font-black text-amber-800 dark:text-amber-300">
-                  <MessageSquare className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                  <span>Pipeline Handoff Instructions & Deal Notes</span>
+                  <div className="text-xs text-slate-500 flex items-center space-x-1 pt-0.5">
+                    <MapPin className="w-3 h-3 text-slate-400" />
+                    <span>{effectivePipelineData.city || "Pan-India"}</span>
+                  </div>
                 </div>
-                <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
-                  {effectivePipelineData.pipelineNotes}
-                </p>
+
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-1.5 shadow-xs">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Client Sponsor Contact
+                  </span>
+                  <div className="text-sm font-black text-slate-900 dark:text-white">
+                    {effectivePipelineData.contactName || "Contact Unspecified"}
+                  </div>
+                  <div className="text-xs text-slate-500">{effectivePipelineData.designation || "Executive Sponsor"}</div>
+                </div>
               </div>
             )}
 
-            {/* 4. Approach Notes & Financial Documents Side-by-Side */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Approach Notes */}
-              <div className="bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-3 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center space-x-2">
-                    <FileText className="w-4 h-4 text-indigo-500" />
-                    <span>Pipeline Approach Notes & Collateral</span>
-                  </h4>
-                  <span className="text-xs font-bold text-slate-400">
-                    {effectivePipelineData.approachNotes.length} Files
-                  </span>
-                </div>
-
-                {effectivePipelineData.approachNotes.length === 0 ? (
-                  <div className="py-6 text-center text-xs text-slate-400 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl">
-                    No approach notes attached in the pipeline.
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                    {effectivePipelineData.approachNotes.map((an, idx) => (
-                      <div
-                        key={an.id || idx}
-                        className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center justify-between gap-2 shadow-sm"
-                      >
-                        <div className="flex items-center space-x-2.5 min-w-0">
-                          <div className="p-2 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-lg shrink-0">
-                            <FileText className="w-4 h-4" />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                              {an.fileName}
-                            </div>
-                            <div className="text-[10px] text-slate-400">
-                              {an.fileSize} • Uploaded by {an.uploadedBy}
-                            </div>
-                          </div>
-                        </div>
-
-                        {an.downloadUrl && (
-                          <a
-                            href={an.downloadUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-1.5 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 rounded-lg transition shrink-0"
-                            title="Download / View file"
-                          >
-                            <Download className="w-4 h-4" />
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Financial Documents */}
-              <div className="bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-3 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center space-x-2">
-                    <Receipt className="w-4 h-4 text-emerald-500" />
-                    <span>Financial Documents & Purchase Orders</span>
-                  </h4>
-                  <span className="text-xs font-bold text-slate-400">
-                    {effectivePipelineData.financialDocuments.length} Files
-                  </span>
-                </div>
-
-                {effectivePipelineData.financialDocuments.length === 0 ? (
-                  <div className="py-6 text-center text-xs text-slate-400 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl">
-                    No financial documents attached in the pipeline.
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                    {effectivePipelineData.financialDocuments.map((doc, idx) => (
-                      <div
-                        key={doc.id || idx}
-                        className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center justify-between gap-2 shadow-sm"
-                      >
-                        <div className="flex items-center space-x-2.5 min-w-0">
-                          <div className="p-2 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 rounded-lg shrink-0">
-                            <FileCheck className="w-4 h-4" />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                              {doc.fileName}
-                            </div>
-                            <div className="text-[10px] text-slate-400">
-                              {doc.fileSize} • Uploaded by {doc.uploadedBy}
-                            </div>
-                          </div>
-                        </div>
-
-                        {doc.downloadUrl && (
-                          <a
-                            href={doc.downloadUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-1.5 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 rounded-lg transition shrink-0"
-                            title="Download / View document"
-                          >
-                            <Download className="w-4 h-4" />
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+            {/* 2. Full Coaches & Faculty Allocation Matrix */}
+            <div className="pt-2">
+              <CoachAllocationDrawer
+                record={selectedRecord}
+                onUpdateCoaches={handleUpdateCoaches}
+              />
             </div>
 
-            {/* 5. Full Pipeline Journey History Log */}
-            <div className="bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center space-x-2">
-                  <History className="w-4 h-4 text-indigo-500" />
-                  <span>Preexisting Pipeline Journey Timeline</span>
-                </h4>
-                <span className="text-xs text-slate-400">
-                  {effectivePipelineData.journeyLogs.length} Historical Touchpoints
-                </span>
-              </div>
-
-              {effectivePipelineData.journeyLogs.length === 0 ? (
-                <div className="py-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl">
-                  Transferred directly to delivery upon deal closure. No prior pipeline logs found.
-                </div>
-              ) : (
-                <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-                  {effectivePipelineData.journeyLogs.map((log) => (
-                    <div
-                      key={log.id}
-                      className="p-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl flex items-start space-x-3 shadow-sm"
-                    >
-                      <div className="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 mt-0.5 shrink-0">
-                        <Clock className="w-3.5 h-3.5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <h5 className="text-xs font-black text-slate-900 dark:text-white">
-                            {log.title}
-                          </h5>
-                          <span className="text-[10px] text-slate-400 whitespace-nowrap">
-                            {log.formattedDate || new Date(log.timestamp).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 whitespace-pre-wrap leading-relaxed">
-                          {log.description}
-                        </p>
-                        <div className="text-[10px] text-slate-400 mt-1.5 flex items-center space-x-2">
-                          <span>Author: <strong className="text-slate-700 dark:text-slate-300">{log.author}</strong></span>
-                          <span>•</span>
-                          <span className="capitalize">{log.type.replace(/_/g, " ")}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* VIEW 3: COACH & FACULTY ALLOCATION MATRIX */}
-        {projectSubTab === "coaches" && (
-          <div className="pt-1 animate-fadeIn">
-            <CoachAllocationDrawer
-              record={selectedRecord}
-              onUpdateCoaches={handleUpdateCoaches}
-            />
-          </div>
-        )}
-
-        {/* VIEW 4: CLIENT SIGN-OFF & CSAT PULSE */}
-        {projectSubTab === "signoff" && (
-          <div className="pt-1 space-y-6 animate-fadeIn">
+            {/* 3. Client Sign-off & CSAT Pulse */}
             <div className="p-6 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-2xl">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-700">
                 <div className="flex items-center space-x-3">
@@ -4288,13 +3582,13 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
                   <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Formal Feedback</span>
                     <p className="text-xs text-slate-700 dark:text-slate-300 italic mt-1 line-clamp-3">
-                      "{selectedRecord.clientSignoff.clientFeedback || "Outstanding program impact."}"
+                      &quot;{selectedRecord.clientSignoff.clientFeedback || "Outstanding program impact."}&quot;
                     </p>
                   </div>
                 </div>
               ) : (
                 <div className="py-8 text-center text-xs text-slate-400">
-                  No sign-off recorded yet. Click "Record Formal Sign-off" upon milestone completion or final program wrap-up.
+                  No sign-off recorded yet. Click &quot;Record Formal Sign-off&quot; upon milestone completion or final program wrap-up.
                 </div>
               )}
             </div>
@@ -4640,38 +3934,33 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
                       </td>
 
                       <td className="py-3.5 px-4 whitespace-nowrap">
-                        <div className="flex flex-col space-y-1">
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                              r.deliveryStatus === "delivered"
-                                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                                : r.deliveryStatus === "in_progress"
-                                ? "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300"
-                                : r.deliveryStatus === "on_hold"
-                                ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
-                                : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                            }`}
-                          >
-                            {r.deliveryStatus.replace("_", " ").toUpperCase()}
-                          </span>
-                          <span
-                            className={`text-[10px] font-extrabold flex items-center space-x-1 ${
-                              r.projectHealth === "stalled"
-                                ? "text-rose-600 dark:text-rose-400"
-                                : r.projectHealth === "at_risk"
-                                ? "text-amber-600 dark:text-amber-400"
-                                : "text-emerald-600 dark:text-emerald-400"
-                            }`}
-                          >
-                            <span>
-                              {r.projectHealth === "stalled"
-                                ? "🔴 Stalled"
-                                : r.projectHealth === "at_risk"
-                                ? "🟡 At Risk"
-                                : "🟢 On Track"}
-                            </span>
-                          </span>
-                        </div>
+                        {(() => {
+                          const simpleDelivery = getSimpleDeliveryStatus(r);
+                          const simpleBilling = getSimpleBillingStatus(fin.total, fin.invoiced, fin.received);
+                          return (
+                            <div className="flex flex-col space-y-1.5">
+                              {/* Delivery Status Badge */}
+                              <div className="flex items-center space-x-1.5">
+                                <span
+                                  className={`inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border ${simpleDelivery.badgeBg} ${simpleDelivery.badgeText}`}
+                                >
+                                  <span className={`w-1.5 h-1.5 rounded-full ${simpleDelivery.dotColor}`} />
+                                  <span>{simpleDelivery.label}</span>
+                                </span>
+                              </div>
+
+                              {/* Billing Status Badge */}
+                              <div className="flex items-center space-x-1.5">
+                                <span
+                                  className={`inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border ${simpleBilling.badgeBg} ${simpleBilling.badgeText}`}
+                                >
+                                  <span className={`w-1.5 h-1.5 rounded-full ${simpleBilling.dotColor}`} />
+                                  <span>{simpleBilling.label}</span>
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       <td className="py-3.5 px-4 text-right">
@@ -4681,24 +3970,26 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
                             onClick={(e) => {
                               e.stopPropagation();
                               handleSelectRecord(r.id);
-                              setProjectSubTab("tenure");
+                              setProjectSubTab("delivery_coaching");
                             }}
-                            className="px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900 font-bold text-xs transition cursor-pointer"
+                            className="px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900 font-bold text-xs transition cursor-pointer flex items-center space-x-1"
+                            title="Open Delivery & Coaching execution view"
                           >
-                            Manage Tenure
+                            <Truck className="w-3.5 h-3.5" />
+                            <span>🎯 Delivery</span>
                           </button>
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleSelectRecord(r.id);
-                              setProjectSubTab("pipeline_data");
+                              setProjectSubTab("billing_invoices");
                             }}
                             className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 font-bold text-xs transition cursor-pointer flex items-center space-x-1"
-                            title="View preexisting pipeline data for this project"
+                            title="Open Billing & Invoices ledger"
                           >
-                            <FolderOpen className="w-3.5 h-3.5 text-indigo-500" />
-                            <span>Pipeline Data</span>
+                            <Receipt className="w-3.5 h-3.5 text-indigo-500" />
+                            <span>💳 Billing</span>
                           </button>
                           <button
                             type="button"
@@ -4937,7 +4228,82 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
 
               <div>
                 <label className="font-bold text-slate-600 dark:text-slate-300 block mb-1">
-                  Initial Tenure Model
+                  ⚡ 1-Click Milestone Preset (Eliminates the Math)
+                </label>
+                <div className="grid grid-cols-1 gap-2 mt-1">
+                  {[
+                    {
+                      id: "three_stage",
+                      title: "3-Stage Delivery",
+                      desc: "30% Kickoff & Discovery → 40% Mid-way Execution → 30% Final Sign-off",
+                      badge: "30 / 40 / 30",
+                      calc: `${formatINR(newProjectForm.dealValue * 0.3)} • ${formatINR(newProjectForm.dealValue * 0.4)} • ${formatINR(newProjectForm.dealValue * 0.3)}`,
+                    },
+                    {
+                      id: "fifty_fifty",
+                      title: "50 / 50 Standard",
+                      desc: "50% Advance on Agreement → 50% on Project Completion",
+                      badge: "50% / 50%",
+                      calc: `2 x ${formatINR(newProjectForm.dealValue * 0.5)}`,
+                    },
+                    {
+                      id: "monthly_retainer",
+                      title: "Monthly Retainer",
+                      desc: "Equal monthly tranches over engagement duration",
+                      badge: "4 x 25%",
+                      calc: `4 x ${formatINR(newProjectForm.dealValue * 0.25)}`,
+                    },
+                  ].map((preset) => {
+                    const isSelected = newProjectForm.milestonePreset === preset.id;
+                    return (
+                      <div
+                        key={preset.id}
+                        onClick={() =>
+                          setNewProjectForm({
+                            ...newProjectForm,
+                            milestonePreset: preset.id as MilestonePresetType,
+                          })
+                        }
+                        className={`p-2.5 rounded-xl border text-left cursor-pointer transition flex items-start justify-between ${
+                          isSelected
+                            ? "bg-indigo-50/80 dark:bg-indigo-950/60 border-indigo-500 ring-2 ring-indigo-500/20"
+                            : "bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-slate-300"
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <span className="font-black text-slate-900 dark:text-white text-xs">
+                              {preset.title}
+                            </span>
+                            <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
+                              {preset.badge}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            {preset.desc}
+                          </div>
+                          <div className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 mt-1">
+                            Auto-calculated: {preset.calc}
+                          </div>
+                        </div>
+                        <div
+                          className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
+                            isSelected
+                              ? "border-indigo-600 bg-indigo-600 text-white"
+                              : "border-slate-300 dark:border-slate-600"
+                          }`}
+                        >
+                          {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                  Tenure Model Structure
                 </label>
                 <select
                   value={newProjectForm.tenureType}

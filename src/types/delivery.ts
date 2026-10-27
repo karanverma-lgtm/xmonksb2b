@@ -7,6 +7,93 @@ export type TranchePaymentStatus = "pending" | "invoiced" | "received" | "overdu
 export type DeliveryOverallStatus = "not_started" | "in_progress" | "delivered" | "on_hold";
 export type ProjectHealthStatus = "on_track" | "at_risk" | "stalled";
 
+export type SimpleDeliveryStatus = "not_started" | "in_delivery" | "delivered" | "on_hold";
+export type SimpleBillingStatus = "unbilled" | "invoiced" | "paid_in_full";
+
+export function getSimpleDeliveryStatus(record: {
+  deliveryStatus?: DeliveryOverallStatus;
+  overallCompletionPercent?: number;
+}): {
+  status: SimpleDeliveryStatus;
+  label: string;
+  badgeBg: string;
+  badgeText: string;
+  dotColor: string;
+} {
+  if (record.deliveryStatus === "delivered" || (record.overallCompletionPercent || 0) >= 100) {
+    return {
+      status: "delivered",
+      label: "Delivered",
+      badgeBg: "bg-emerald-50 dark:bg-emerald-950/70 border-emerald-200 dark:border-emerald-800",
+      badgeText: "text-emerald-700 dark:text-emerald-300",
+      dotColor: "bg-emerald-500",
+    };
+  }
+  if (record.deliveryStatus === "in_progress" || (record.overallCompletionPercent || 0) > 0) {
+    return {
+      status: "in_delivery",
+      label: "In Delivery",
+      badgeBg: "bg-amber-50 dark:bg-amber-950/70 border-amber-200 dark:border-amber-800",
+      badgeText: "text-amber-700 dark:text-amber-300",
+      dotColor: "bg-amber-500",
+    };
+  }
+  if (record.deliveryStatus === "on_hold") {
+    return {
+      status: "on_hold",
+      label: "On Hold",
+      badgeBg: "bg-rose-50 dark:bg-rose-950/70 border-rose-200 dark:border-rose-800",
+      badgeText: "text-rose-700 dark:text-rose-300",
+      dotColor: "bg-rose-500",
+    };
+  }
+  return {
+    status: "not_started",
+    label: "Not Started",
+    badgeBg: "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700",
+    badgeText: "text-slate-600 dark:text-slate-400",
+    dotColor: "bg-slate-400",
+  };
+}
+
+export function getSimpleBillingStatus(
+  dealValue: number,
+  invoicedAmount: number,
+  receivedAmount: number
+): {
+  status: SimpleBillingStatus;
+  label: string;
+  badgeBg: string;
+  badgeText: string;
+  dotColor: string;
+} {
+  if (receivedAmount >= dealValue && dealValue > 0) {
+    return {
+      status: "paid_in_full",
+      label: "Paid in Full",
+      badgeBg: "bg-emerald-50 dark:bg-emerald-950/70 border-emerald-200 dark:border-emerald-800",
+      badgeText: "text-emerald-700 dark:text-emerald-300",
+      dotColor: "bg-emerald-500",
+    };
+  }
+  if (invoicedAmount > 0) {
+    return {
+      status: "invoiced",
+      label: "Invoiced",
+      badgeBg: "bg-blue-50 dark:bg-blue-950/70 border-blue-200 dark:border-blue-800",
+      badgeText: "text-blue-700 dark:text-blue-300",
+      dotColor: "bg-blue-500",
+    };
+  }
+  return {
+    status: "unbilled",
+    label: "Unbilled",
+    badgeBg: "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700",
+    badgeText: "text-slate-600 dark:text-slate-400",
+    dotColor: "bg-slate-400",
+  };
+}
+
 /**
  * 1. Delivery Option: Milestone & Project Completion Linked Payment Tranche
  * Example: 20% of project completed -> 30% payment triggered
@@ -21,6 +108,7 @@ export interface DeliveryMilestoneTranche {
   paymentStatus: TranchePaymentStatus;
   targetDate?: string;
   completionDate?: string;
+  assignedCoach?: string;
   paymentReceivedDate?: string;
   invoiceNumber?: string;
   invoiceDate?: string;
