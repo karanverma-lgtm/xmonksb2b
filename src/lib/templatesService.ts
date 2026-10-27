@@ -18,7 +18,7 @@ import {
 import { formatBytes } from "./formatters";
 
 const TEMPLATES_COLLECTION = "b2b_templates";
-const TEMPLATES_STORAGE_KEY = "xmonks_b2b_templates_v5";
+const TEMPLATES_STORAGE_KEY = "xmonks_b2b_templates_v6";
 const CATEGORIES_COLLECTION = "b2b_template_categories";
 const CATEGORIES_STORAGE_KEY = "xmonks_b2b_template_categories_v2";
 const DEPRECATED_TEMPLATE_IDS = new Set(["tpl-icici-fin-prop-02", "tpl-icici-zsm-prop-03"]);
@@ -429,44 +429,44 @@ export const CASE_STUDIES_TEMPLATES: TemplateItem[] = [
   },
   {
     id: "tpl-case-dilemma-performing-leader",
-    title: "Case Study: Perfetti Van Melle & xMonks – Dilemma of a Performing Leader",
-    fileName: "Case Study - Dilemma of a Performing Leader (Perfetti Van Melle).pdf",
+    title: "Case Study: Leading FMCG & Confectionery Brand – Dilemma of a Performing Leader",
+    fileName: "Case Study - Dilemma of a Performing Leader (Leading Confectionery & FMCG Company).pdf",
     fileSize: "603.7 KB",
     fileSizeBytes: 618202,
     fileType: "pdf",
     category: "case_studies",
     categoryLabel: "Case Studies",
     description:
-      "Consumer durables leadership dilemma: Ishaan (Regional Head) and Virat (top performer). Examines power centre dynamics, team disengagement, inter-associate friction, and coaching advisory interventions.",
+      "Consumer goods & FMCG leadership dilemma: Ishaan (Regional Head) and Virat (top performer). Examines power centre dynamics, team disengagement, inter-associate friction, and coaching advisory interventions.",
     downloadUrl:
-      "/templates/Case%20Study%20-%20Dilemma%20of%20a%20Performing%20Leader%20(Perfetti%20Van%20Melle).pdf",
+      "/templates/Case%20Study%20-%20Dilemma%20of%20a%20Performing%20Leader%20(Leading%20Confectionery%20%26%20FMCG%20Company).pdf",
     uploadedBy: "Admin",
     uploadedByEmail: "sales@xmonks.com",
     uploadedAt: "2026-10-14T16:24:00.000Z",
     uploadedAtMs: 1791985440001,
-    tags: ["Case Study", "Perfetti Van Melle", "Erickson", "Performing Leader", "Power Dynamics", "Advisory"],
+    tags: ["Case Study", "Leading FMCG Brand", "Confectionery", "Erickson", "Performing Leader", "Power Dynamics", "Advisory"],
     isPinned: true,
     downloadCount: 22,
     version: "v1.0",
   },
   {
     id: "tpl-case-tata-steel-frontline",
-    title: "Case Study: Tata Steel – Coaching for Strengthening Employee Engagement",
-    fileName: "Case Study - Strengthening Employee Engagement (Tata Steel).pdf",
+    title: "Case Study: Leading Steel Company – Coaching for Strengthening Employee Engagement",
+    fileName: "Case Study - Strengthening Employee Engagement (Leading Steel Company).pdf",
     fileSize: "1.0 MB",
     fileSizeBytes: 1074347,
     fileType: "pdf",
     category: "case_studies",
     categoryLabel: "Case Studies",
     description:
-      "Enterprise coaching transformation at India's steel giant (35M tonnes capacity). Rolling out 'The Art & Science of Coaching' to 51 top leaders and 'Leader as Coach' to 600+ AGM/GM/DGM level executives.",
+      "Enterprise coaching transformation at a leading steel manufacturing giant (35M tonnes capacity). Rolling out 'The Art & Science of Coaching' to 51 top leaders and 'Leader as Coach' to 600+ AGM/GM/DGM level executives.",
     downloadUrl:
-      "/templates/Case%20Study%20-%20Strengthening%20Employee%20Engagement%20(Tata%20Steel).pdf",
+      "/templates/Case%20Study%20-%20Strengthening%20Employee%20Engagement%20(Leading%20Steel%20Company).pdf",
     uploadedBy: "Admin",
     uploadedByEmail: "sales@xmonks.com",
     uploadedAt: "2026-10-14T16:24:00.000Z",
     uploadedAtMs: 1791985440002,
-    tags: ["Case Study", "Tata Steel", "Employee Engagement", "Leader as Coach", "Manufacturing", "Frontline Leaders"],
+    tags: ["Case Study", "Leading Steel Company", "Employee Engagement", "Leader as Coach", "Manufacturing", "Frontline Leaders"],
     isPinned: true,
     downloadCount: 35,
     version: "v1.0",
@@ -701,6 +701,13 @@ export function subscribeToTemplates(callback: (templates: TemplateItem[]) => vo
             if (deletedIds.has(seedTpl.id)) return; // DO NOT RESURRECT
             const idx = list.findIndex((t) => t.id === seedTpl.id);
             if (idx >= 0) {
+              if (
+                list[idx].title !== seedTpl.title ||
+                list[idx].fileName !== seedTpl.fileName ||
+                list[idx].downloadUrl !== seedTpl.downloadUrl
+              ) {
+                setDoc(doc(db, TEMPLATES_COLLECTION, seedTpl.id), seedTpl, { merge: true }).catch(() => {});
+              }
               list[idx] = {
                 ...seedTpl,
                 downloadCount: Math.max(list[idx].downloadCount || 0, seedTpl.downloadCount || 0),
