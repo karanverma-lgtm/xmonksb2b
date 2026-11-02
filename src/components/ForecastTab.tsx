@@ -531,9 +531,6 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
           <div className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
             {metrics.count}
           </div>
-          <div className="text-[11px] text-slate-500 dark:text-slate-400">
-            Avg ticket size: <strong>{formatINR(metrics.avgInvoice)}</strong>
-          </div>
         </div>
 
         {/* Card 3: Top Lead Owner */}
