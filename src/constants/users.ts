@@ -8,6 +8,7 @@ export interface UserAccount {
   phone?: string;
   designation?: string;
   allowedTabs?: string[];
+  readOnly?: boolean;
 }
 
 export const VALID_USERS: UserAccount[] = [
@@ -92,6 +93,18 @@ export const VALID_USERS: UserAccount[] = [
     phone: "",
     avatarColor: "from-blue-600 to-indigo-600",
     allowedTabs: ["delivery"],
+  },
+  {
+    username: "mani",
+    password: "inam",
+    name: "Mani",
+    role: "Viewer",
+    designation: "Operations & Pipeline Viewer (View Only)",
+    email: "mani@xmonks.com",
+    phone: "",
+    avatarColor: "from-purple-600 to-indigo-600",
+    allowedTabs: ["kanban", "delivery"],
+    readOnly: true,
   },
 ];
 
@@ -184,6 +197,7 @@ export function getCanonicalOwnerName(name?: string | null): string {
   if (lower === "admin" || lower === "admin user") return "Admin User";
   if (lower === "accounts" || lower === "accounts department") return "Accounts Department";
   if (lower === "vikram") return "Vikram";
+  if (lower === "mani") return "Mani";
 
   for (const u of VALID_USERS) {
     const uName = u.name.toLowerCase();

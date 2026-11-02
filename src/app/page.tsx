@@ -212,6 +212,27 @@ export default function Home() {
       currentUser.allowedTabs[0] === "delivery")
   );
   const isRestrictedToDelivery = isAccounts || isDeliveryOnly;
+  const isReadOnly = Boolean(
+    currentUser?.readOnly ||
+    currentUser?.role.toLowerCase().includes("viewer") ||
+    currentUser?.username.toLowerCase() === "mani"
+  );
+
+  const isTabPermitted = (tab: NavTab) => {
+    if (currentUser?.allowedTabs && currentUser.allowedTabs.length > 0) {
+      return (
+        currentUser.allowedTabs.includes(tab) ||
+        (tab === "kanban" && currentUser.allowedTabs.includes("pipeline"))
+      );
+    }
+    if (isRestrictedToDelivery) {
+      return tab === "delivery";
+    }
+    if (tab === "developer") {
+      return isAdmin;
+    }
+    return true;
+  };
 
   // 2-Second Money.json initial page loading state
   const [isInitialPageLoading, setIsInitialPageLoading] = useState<boolean>(true);
@@ -259,6 +280,14 @@ export default function Home() {
         ) {
           return "delivery";
         }
+        if (u?.allowedTabs && u.allowedTabs.length > 0) {
+          const allowed = u.allowedTabs.map((t: string) => (t === "pipeline" ? "kanban" : t));
+          const prefs = getLocalPreferences(u.username);
+          if (prefs?.activeTab && allowed.includes(prefs.activeTab)) {
+            return prefs.activeTab as NavTab;
+          }
+          return allowed[0] as NavTab;
+        }
         const userIsAdmin = Boolean(
           u?.username?.toLowerCase() === "admin" || u?.role?.toLowerCase().includes("admin")
         );
@@ -305,6 +334,11 @@ export default function Home() {
       (user.allowedTabs && user.allowedTabs.length === 1 && user.allowedTabs[0] === "delivery")
     ) {
       setActiveTab("delivery");
+    } else if (user.allowedTabs && user.allowedTabs.length > 0) {
+      const allowed = user.allowedTabs.map((t) => (t === "pipeline" ? "kanban" : t));
+      if (!allowed.includes(activeTab)) {
+        setActiveTab(allowed[0] as NavTab);
+      }
     }
   };
 
@@ -376,15 +410,23 @@ export default function Home() {
     };
   }, []);
 
-  // Ensure accounts & delivery-only users always stay on the delivery tab
+  // Ensure users with allowedTabs always stay on permitted tabs
   useEffect(() => {
-    if (isRestrictedToDelivery && activeTab !== "delivery") {
+    if (currentUser?.allowedTabs && currentUser.allowedTabs.length > 0) {
+      const allowed = currentUser.allowedTabs.map((t) => (t === "pipeline" ? "kanban" : t));
+      if (!allowed.includes(activeTab)) {
+        setActiveTab(allowed[0] as NavTab);
+      }
+    } else if (isRestrictedToDelivery && activeTab !== "delivery") {
       setActiveTab("delivery");
     }
-  }, [isRestrictedToDelivery, activeTab]);
+  }, [currentUser, isRestrictedToDelivery, activeTab]);
 
   // Handlers to synchronize UI state to Firestore
   const handleTabChange = (tab: NavTab) => {
+    if (!isTabPermitted(tab)) {
+      return;
+    }
     if (isRestrictedToDelivery && tab !== "delivery") {
       return;
     }
@@ -513,7 +555,9 @@ export default function Home() {
       currentUser.username.toLowerCase() === "accounts" ||
       currentUser.role.toLowerCase().includes("accounts") ||
       currentUser.username.toLowerCase() === "vikram" ||
-      currentUser.role.toLowerCase().includes("delivery");
+      currentUser.role.toLowerCase().includes("delivery") ||
+      currentUser.username.toLowerCase() === "mani" ||
+      isReadOnly;
 
     if (isSuperUser) return leads;
 
@@ -587,12 +631,14 @@ export default function Home() {
     // 5. To Date filter
     if (toDate && leadDateStr > toDate) return false;
 
-    // 6. Client Partner filter (for Admin to view specific individual's pipeline)
-    const isAdmin =
+    // 6. Client Partner filter (for Admin / Viewers to view specific individual's pipeline)
+    const canFilterPartner =
       currentUser?.username.toLowerCase() === "admin" ||
-      currentUser?.role.toLowerCase().includes("admin");
+      currentUser?.role.toLowerCase().includes("admin") ||
+      currentUser?.username.toLowerCase() === "mani" ||
+      isReadOnly;
 
-    if (isAdmin && selectedPartner !== "all") {
+    if (canFilterPartner && selectedPartner !== "all") {
       const match = isSameOwner(lead.owner, selectedPartner);
       if (!match) return false;
     }
@@ -2241,7 +2287,7 @@ export default function Home() {
         </div>
 
         {/* KPI Dashboard Summary Bar & Filter Bar for Lead Management tabs */}
-        {!isRestrictedToDelivery && (activeTab === "kanban" || activeTab === "table" || activeTab === "analytics") && (
+        {!isRestrictedToDelivery && isTabPermitted(activeTab) && (activeTab === "kanban" || activeTab === "table" || activeTab === "analytics") && (
           <>
             <DashboardStats leads={filteredLeads} />
             <FilterBar
@@ -2261,7 +2307,7 @@ export default function Home() {
               setSelectedLeadSource={handleLeadSourceChange}
               selectedProgram={selectedProgram}
               setSelectedProgram={handleProgramChange}
-              isAdmin={isAdmin}
+              isAdmin={isAdmin || isReadOnly}
               onResetFilters={handleResetFilters}
               filteredCount={filteredLeads.length}
               totalCount={userScopedLeads.length}
@@ -2270,34 +2316,35 @@ export default function Home() {
         )}
 
         {/* Tab Views */}
-        {!isRestrictedToDelivery && activeTab === "kanban" && (
+        {!isRestrictedToDelivery && isTabPermitted("kanban") && activeTab === "kanban" && (
           <KanbanBoard
             leads={filteredLeads}
             onSelectLead={(lead) => setSelectedLead(lead)}
-            onUpdateStage={handleUpdateStage}
-            onDeleteLead={handleDeleteLead}
-            onMoveToBilling={handleMoveLeadToBilling}
-            onSendToDelivery={handleSendToDelivery}
-            onUpdateInvoiceDetails={handleUpdateInvoiceDetails}
+            onUpdateStage={isReadOnly ? () => {} : handleUpdateStage}
+            onDeleteLead={isReadOnly ? undefined : handleDeleteLead}
+            onMoveToBilling={isReadOnly ? undefined : handleMoveLeadToBilling}
+            onSendToDelivery={isReadOnly ? undefined : handleSendToDelivery}
+            onUpdateInvoiceDetails={isReadOnly ? undefined : handleUpdateInvoiceDetails}
+            readOnly={isReadOnly}
           />
         )}
 
-        {!isRestrictedToDelivery && activeTab === "table" && (
+        {!isRestrictedToDelivery && isTabPermitted("table") && activeTab === "table" && (
           <LeadTable
             leads={filteredLeads}
             onSelectLead={(lead) => setSelectedLead(lead)}
-            onUpdateStage={handleUpdateStage}
-            onDeleteLead={handleDeleteLead}
-            onUpdateProgram={handleUpdateProgram}
-            onUpdateLeadSource={handleUpdateLeadSource}
+            onUpdateStage={isReadOnly ? () => {} : handleUpdateStage}
+            onDeleteLead={isReadOnly ? undefined : handleDeleteLead}
+            onUpdateProgram={isReadOnly ? undefined : handleUpdateProgram}
+            onUpdateLeadSource={isReadOnly ? undefined : handleUpdateLeadSource}
             isAdmin={isAdmin}
-            onExportLeads={handleExportLeads}
-            onMoveToBilling={handleMoveLeadToBilling}
-            onSendToDelivery={handleSendToDelivery}
+            onExportLeads={isReadOnly ? undefined : handleExportLeads}
+            onMoveToBilling={isReadOnly ? undefined : handleMoveLeadToBilling}
+            onSendToDelivery={isReadOnly ? undefined : handleSendToDelivery}
           />
         )}
 
-        {!isRestrictedToDelivery && activeTab === "outreach" && (
+        {!isRestrictedToDelivery && isTabPermitted("outreach") && activeTab === "outreach" && (
           <OutreachTab
             coldClients={userScopedColdClients}
             onAddColdClient={handleAddColdClient}
@@ -2328,7 +2375,7 @@ export default function Home() {
           />
         )}
 
-        {!isRestrictedToDelivery && activeTab === "touchpoints" && (
+        {!isRestrictedToDelivery && isTabPermitted("touchpoints") && activeTab === "touchpoints" && (
           <TouchpointHistoryTab
             coldClients={userScopedColdClients}
             currentUser={currentUser}
@@ -2348,25 +2395,25 @@ export default function Home() {
           />
         )}
 
-        {!isRestrictedToDelivery && activeTab === "analytics" && (
+        {!isRestrictedToDelivery && isTabPermitted("analytics") && activeTab === "analytics" && (
           <AnalyticsCharts
             leads={filteredLeads}
             onSelectLead={(lead) => setSelectedLead(lead)}
           />
         )}
 
-        {!isRestrictedToDelivery && activeTab === "forecast" && (
+        {!isRestrictedToDelivery && isTabPermitted("forecast") && activeTab === "forecast" && (
           <ForecastTab
             leads={leads}
             currentUser={currentUser}
             isAdmin={isAdmin}
             onSelectLead={(lead) => setSelectedLead(lead)}
             onNavigateToTab={handleTabChange}
-            onUpdateInvoiceDetails={handleUpdateInvoiceDetails}
+            onUpdateInvoiceDetails={isReadOnly ? undefined : handleUpdateInvoiceDetails}
           />
         )}
 
-        {!isRestrictedToDelivery && activeTab === "email" && (
+        {!isRestrictedToDelivery && isTabPermitted("email") && activeTab === "email" && (
           <EmailCampaignTab
             leads={userScopedLeads}
             currentUser={currentUser}
@@ -2378,7 +2425,7 @@ export default function Home() {
           />
         )}
 
-        {!isRestrictedToDelivery && activeTab === "library" && (
+        {!isRestrictedToDelivery && isTabPermitted("library") && activeTab === "library" && (
           <LibraryTab
             currentUser={currentUser}
             isAdmin={isAdmin}
@@ -2391,14 +2438,14 @@ export default function Home() {
           />
         )}
 
-        {!isRestrictedToDelivery && activeTab === "templates" && (
+        {!isRestrictedToDelivery && isTabPermitted("templates") && activeTab === "templates" && (
           <TemplatesTab
             currentUser={currentUser}
             isAdmin={isAdmin}
           />
         )}
 
-        {!isRestrictedToDelivery && activeTab === "prospector" && (
+        {!isRestrictedToDelivery && isTabPermitted("prospector") && activeTab === "prospector" && (
           <ProspectorTab
             currentUser={currentUser}
             isAdmin={isAdmin}
@@ -2408,17 +2455,18 @@ export default function Home() {
           />
         )}
 
-        {activeTab === "delivery" && (
+        {isTabPermitted("delivery") && activeTab === "delivery" && (
           <DeliveryTab
             leads={userScopedLeads}
             allLeads={leads}
             currentUser={currentUser}
             isAdmin={isAdmin}
+            readOnly={isReadOnly}
             onSelectLead={(lead) => setSelectedLead(lead)}
           />
         )}
 
-        {!isRestrictedToDelivery && activeTab === "developer" && isAdmin && (
+        {!isRestrictedToDelivery && isTabPermitted("developer") && activeTab === "developer" && isAdmin && (
           <DeveloperTab onOpenChangePassword={() => setIsChangePasswordModalOpen(true)} />
         )}
       </main>
@@ -2685,35 +2733,36 @@ export default function Home() {
         <LeadDetailModal
           lead={selectedLead}
           currentUser={currentUser}
+          readOnly={isReadOnly}
           onClose={() => setSelectedLead(null)}
-          onUpdateStage={handleUpdateStage}
-          onAddNote={handleAddNote}
-          onDeleteLead={handleDeleteLead}
-          onUpdateDealValue={handleUpdateDealValue}
-          onUpdateProgram={handleUpdateProgram}
-          onUpdateLeadSource={handleUpdateLeadSource}
-          onUpdateOwner={handleUpdateOwner}
-          onUpdateClosureMonth={handleUpdateClosureMonth}
-          onAttachApproachNote={handleAttachApproachNote}
-          onAttachApproachNotes={handleAttachApproachNotes}
-          onRemoveApproachNote={handleRemoveApproachNote}
-          onAttachFinancialDocuments={handleAttachFinancialDocuments}
-          onRemoveFinancialDocument={handleRemoveFinancialDocument}
-          onUpdateCompanyLogo={handleUpdateCompanyLogo}
-          onRemoveCompanyLogo={handleRemoveCompanyLogo}
-          onAddContact={handleAddLeadContact}
-          onRemoveContact={handleRemoveLeadContact}
-          onUpdatePrimaryContact={handleUpdatePrimaryContact}
-          onEditContact={handleEditLeadContact}
-          onSetPrimaryContact={handleSetLeadPrimaryContact}
-          onMoveToBilling={handleMoveLeadToBilling}
-          onSendToDelivery={handleSendToDelivery}
-          onUpdateInvoiceDetails={handleUpdateInvoiceDetails}
+          onUpdateStage={isReadOnly ? () => {} : handleUpdateStage}
+          onAddNote={isReadOnly ? () => {} : handleAddNote}
+          onDeleteLead={isReadOnly ? undefined : handleDeleteLead}
+          onUpdateDealValue={isReadOnly ? undefined : handleUpdateDealValue}
+          onUpdateProgram={isReadOnly ? undefined : handleUpdateProgram}
+          onUpdateLeadSource={isReadOnly ? undefined : handleUpdateLeadSource}
+          onUpdateOwner={isReadOnly ? undefined : handleUpdateOwner}
+          onUpdateClosureMonth={isReadOnly ? undefined : handleUpdateClosureMonth}
+          onAttachApproachNote={isReadOnly ? undefined : handleAttachApproachNote}
+          onAttachApproachNotes={isReadOnly ? undefined : handleAttachApproachNotes}
+          onRemoveApproachNote={isReadOnly ? undefined : handleRemoveApproachNote}
+          onAttachFinancialDocuments={isReadOnly ? undefined : handleAttachFinancialDocuments}
+          onRemoveFinancialDocument={isReadOnly ? undefined : handleRemoveFinancialDocument}
+          onUpdateCompanyLogo={isReadOnly ? undefined : handleUpdateCompanyLogo}
+          onRemoveCompanyLogo={isReadOnly ? undefined : handleRemoveCompanyLogo}
+          onAddContact={isReadOnly ? undefined : handleAddLeadContact}
+          onRemoveContact={isReadOnly ? undefined : handleRemoveLeadContact}
+          onUpdatePrimaryContact={isReadOnly ? undefined : handleUpdatePrimaryContact}
+          onEditContact={isReadOnly ? undefined : handleEditLeadContact}
+          onSetPrimaryContact={isReadOnly ? undefined : handleSetLeadPrimaryContact}
+          onMoveToBilling={isReadOnly ? undefined : handleMoveLeadToBilling}
+          onSendToDelivery={isReadOnly ? undefined : handleSendToDelivery}
+          onUpdateInvoiceDetails={isReadOnly ? undefined : handleUpdateInvoiceDetails}
         />
       )}
 
-      {/* Add New Lead Modal (Disabled for Accounts and Delivery Operations) */}
-      {!isRestrictedToDelivery && (
+      {/* Add New Lead Modal (Disabled for Accounts, Delivery Operations & View Only) */}
+      {!isRestrictedToDelivery && !isReadOnly && (
         <AddLeadModal
           isOpen={isAddModalOpen}
           onClose={() => setIsAddModalOpen(false)}
@@ -2722,8 +2771,8 @@ export default function Home() {
         />
       )}
 
-      {/* Bulk Upload CSV Modal (Disabled for Accounts and Delivery Operations) */}
-      {!isRestrictedToDelivery && (
+      {/* Bulk Upload CSV Modal (Disabled for Accounts, Delivery Operations & View Only) */}
+      {!isRestrictedToDelivery && !isReadOnly && (
         <BulkUploadModal
           isOpen={isBulkModalOpen}
           onClose={() => setIsBulkModalOpen(false)}

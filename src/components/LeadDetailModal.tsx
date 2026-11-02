@@ -128,6 +128,7 @@ interface LeadDetailModalProps {
       invoiceAmount?: number;
     }
   ) => void;
+  readOnly?: boolean;
 }
 
 export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
@@ -157,7 +158,9 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   onMoveToBilling,
   onSendToDelivery,
   onUpdateInvoiceDetails,
+  readOnly = false,
 }) => {
+  const isReadOnly = Boolean(readOnly || currentUser?.readOnly);
   const [newNoteText, setNewNoteText] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isEditingValue, setIsEditingValue] = useState(false);
@@ -782,7 +785,8 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                 <h2 className="text-2xl font-black text-slate-900 dark:text-white flex items-center space-x-2">
                   <span>{lead.companyName}</span>
                   {/* Logo Options Trigger (Upload or URL) */}
-                  <div className="relative">
+                  {!isReadOnly && (
+                    <div className="relative">
                     <button
                       type="button"
                       onClick={() => {
@@ -872,6 +876,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                       </div>
                     )}
                   </div>
+                )}
                 </h2>
                 {logoUploadError && (
                   <span className="text-xs text-rose-500 font-semibold">{logoUploadError}</span>
@@ -924,7 +929,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                       {lead.designation}
                     </span>
                   )}
-                  {onUpdatePrimaryContact && (
+                  {onUpdatePrimaryContact && !isReadOnly && (
                     <button
                       type="button"
                       onClick={handleOpenEditPrimaryContact}
@@ -963,7 +968,14 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
           </div>
 
           <div className="flex items-center space-x-2">
-            {lead.stage === "closure" && (onSendToDelivery || onMoveToBilling) && (
+            {isReadOnly && (
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 flex items-center space-x-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                <span>View Only</span>
+              </span>
+            )}
+
+            {lead.stage === "closure" && (onSendToDelivery || onMoveToBilling) && !isReadOnly && (
               <SpringButton
                 variant="gradient"
                 size="sm"
@@ -976,7 +988,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
               </SpringButton>
             )}
 
-            {onDeleteLead && (
+            {onDeleteLead && !isReadOnly && (
               <SpringButton
                 variant="ghost"
                 size="sm"
@@ -1348,8 +1360,10 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                 return (
                   <button
                     key={stageKey}
-                    onClick={() => handleStageClick(stageKey)}
+                    onClick={isReadOnly ? undefined : () => handleStageClick(stageKey)}
                     className={`p-3 rounded-xl text-left border transition-all ${
+                      isReadOnly ? "cursor-default" : "cursor-pointer"
+                    } ${
                       isActive
                         ? "bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-500/30 font-bold scale-[1.02]"
                         : isPassed
@@ -1373,7 +1387,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
           </div>
 
           {/* Prompt Box for Stage Change Notes */}
-          {stageNotePrompt.show && (
+          {!isReadOnly && stageNotePrompt.show && (
             <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 space-y-3">
               <div className="flex items-center space-x-2 text-amber-800 dark:text-amber-300 font-bold text-sm">
                 <AlertCircle className="w-4 h-4 text-amber-600" />
@@ -1413,32 +1427,34 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
           )}
 
           {/* Add Manual Touchpoint Log Box */}
-          <form
-            onSubmit={handlePostNote}
-            className="p-4 bg-slate-50 dark:bg-slate-950/60 rounded-2xl border border-slate-200/80 dark:border-slate-800 space-y-3"
-          >
-            <label className="font-bold text-xs text-slate-700 dark:text-slate-300 flex items-center space-x-2">
-              <MessageSquare className="w-4 h-4 text-indigo-500" />
-              <span>Log Customer Touchpoint / Note</span>
-            </label>
+          {!isReadOnly && (
+            <form
+              onSubmit={handlePostNote}
+              className="p-4 bg-slate-50 dark:bg-slate-950/60 rounded-2xl border border-slate-200/80 dark:border-slate-800 space-y-3"
+            >
+              <label className="font-bold text-xs text-slate-700 dark:text-slate-300 flex items-center space-x-2">
+                <MessageSquare className="w-4 h-4 text-indigo-500" />
+                <span>Log Customer Touchpoint / Note</span>
+              </label>
 
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Logged phone call, meeting feedback, or client note..."
-                value={newNoteText}
-                onChange={(e) => setNewNoteText(e.target.value)}
-                className="flex-1 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <button
-                type="submit"
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl flex items-center space-x-1.5 shadow"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>Post Log</span>
-              </button>
-            </div>
-          </form>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Logged phone call, meeting feedback, or client note..."
+                  value={newNoteText}
+                  onChange={(e) => setNewNoteText(e.target.value)}
+                  className="flex-1 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl flex items-center space-x-1.5 shadow"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Post Log</span>
+                </button>
+              </div>
+            </form>
+          )}
 
           {/* Client Contacts & Key Stakeholders Section (Option to add more people with name, contact number, email, designation) */}
           <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
@@ -1460,14 +1476,16 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleOpenAddPerson}
-                className="flex items-center space-x-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-500/20 transition cursor-pointer"
-              >
-                <UserPlus className="w-3.5 h-3.5" />
-                <span>Add Person</span>
-              </button>
+              {!isReadOnly && (
+                <button
+                  type="button"
+                  onClick={handleOpenAddPerson}
+                  className="flex items-center space-x-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-500/20 transition cursor-pointer"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>Add Person</span>
+                </button>
+              )}
             </div>
 
             {/* Contacts Grid */}
@@ -1496,7 +1514,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                     </div>
                   </div>
 
-                  {onUpdatePrimaryContact && (
+                  {onUpdatePrimaryContact && !isReadOnly && (
                     <button
                       type="button"
                       onClick={handleOpenEditPrimaryContact}
@@ -1566,37 +1584,39 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                       </div>
                     </div>
 
-                    <div className="flex items-center space-x-1.5 flex-shrink-0">
-                      {onSetPrimaryContact && (
+                    {!isReadOnly && (
+                      <div className="flex items-center space-x-1.5 flex-shrink-0">
+                        {onSetPrimaryContact && (
+                          <button
+                            type="button"
+                            onClick={() => handleSetPrimaryContact(person)}
+                            className="flex items-center space-x-1 px-2 py-0.5 rounded-lg text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 bg-slate-100 hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-indigo-950/60 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-700 transition cursor-pointer shadow-2xs"
+                            title="Set as Primary Contact"
+                          >
+                            <Star className="w-3 h-3 text-amber-500 fill-amber-500/20" />
+                            <span>Make Primary</span>
+                          </button>
+                        )}
+                        {onEditContact && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditAdditionalContact(person)}
+                            className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition opacity-0 group-hover:opacity-100 cursor-pointer"
+                            title="Edit contact"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => handleSetPrimaryContact(person)}
-                          className="flex items-center space-x-1 px-2 py-0.5 rounded-lg text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 bg-slate-100 hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-indigo-950/60 border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-700 transition cursor-pointer shadow-2xs"
-                          title="Set as Primary Contact"
+                          onClick={() => setPersonToDelete(person)}
+                          className="p-1 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition opacity-0 group-hover:opacity-100 cursor-pointer"
+                          title="Remove contact"
                         >
-                          <Star className="w-3 h-3 text-amber-500 fill-amber-500/20" />
-                          <span>Make Primary</span>
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
-                      )}
-                      {onEditContact && (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEditAdditionalContact(person)}
-                          className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition opacity-0 group-hover:opacity-100 cursor-pointer"
-                          title="Edit contact"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setPersonToDelete(person)}
-                        className="p-1 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition opacity-0 group-hover:opacity-100 cursor-pointer"
-                        title="Remove contact"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-1 pt-1 border-t border-slate-100 dark:border-slate-800 text-[11px]">
@@ -1962,104 +1982,127 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
               )}
             </div>
 
-            <form onSubmit={handleSaveInvoiceDetails} className="space-y-3 pt-1">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {/* 1. Invoice Number */}
+            {isReadOnly ? (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-slate-50 dark:bg-slate-950/60 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
                 <div>
-                  <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
-                    Invoice Number
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={invoiceNumberInput}
-                      onChange={(e) => setInvoiceNumberInput(e.target.value)}
-                      placeholder="e.g. INV-XM-2026-001"
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                    />
-                    {!invoiceNumberInput && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const year = new Date().getFullYear();
-                          const rand = Math.floor(1000 + Math.random() * 9000);
-                          setInvoiceNumberInput(`INV-XM-${year}-${rand}`);
-                        }}
-                        className="absolute right-1.5 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50"
-                        title="Generate suggested invoice number"
-                      >
-                        Auto
-                      </button>
-                    )}
-                  </div>
+                  <span className="text-[10px] text-slate-400 block font-bold">Invoice Number</span>
+                  <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                    {lead.invoiceNumber || "None"}
+                  </span>
                 </div>
-
-                {/* 2. Invoice Date */}
                 <div>
-                  <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
-                    Invoice Date
-                  </label>
-                  <input
-                    type="date"
-                    value={invoiceDateInput}
-                    onChange={(e) => setInvoiceDateInput(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                  />
+                  <span className="text-[10px] text-slate-400 block font-bold">Invoice Date</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                    {lead.invoiceDate || "None"}
+                  </span>
                 </div>
-
-                {/* 3. Invoice Amount */}
                 <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
-                      Invoice Amount (₹)
+                  <span className="text-[10px] text-slate-400 block font-bold">Invoice Amount</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                    {lead.invoiceAmount ? formatINR(lead.invoiceAmount) : "None"}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleSaveInvoiceDetails} className="space-y-3 pt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* 1. Invoice Number */}
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                      Invoice Number
                     </label>
-                    {lead.dealValue > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setInvoiceAmountInput(String(lead.dealValue))}
-                        className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-                        title="Set to deal value"
-                      >
-                        Use Deal Value ({formatINR(lead.dealValue)})
-                      </button>
-                    )}
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={invoiceNumberInput}
+                        onChange={(e) => setInvoiceNumberInput(e.target.value)}
+                        placeholder="e.g. INV-XM-2026-001"
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      />
+                      {!invoiceNumberInput && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const year = new Date().getFullYear();
+                            const rand = Math.floor(1000 + Math.random() * 9000);
+                            setInvoiceNumberInput(`INV-XM-${year}-${rand}`);
+                          }}
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50"
+                          title="Generate suggested invoice number"
+                        >
+                          Auto
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={invoiceAmountInput}
-                    onChange={(e) => setInvoiceAmountInput(e.target.value)}
-                    placeholder={`e.g. ${lead.dealValue || 100000}`}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                  />
+
+                  {/* 2. Invoice Date */}
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                      Invoice Date
+                    </label>
+                    <input
+                      type="date"
+                      value={invoiceDateInput}
+                      onChange={(e) => setInvoiceDateInput(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                  </div>
+
+                  {/* 3. Invoice Amount */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                        Invoice Amount (₹)
+                      </label>
+                      {lead.dealValue > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setInvoiceAmountInput(String(lead.dealValue))}
+                          className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                          title="Set to deal value"
+                        >
+                          Use Deal Value ({formatINR(lead.dealValue)})
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={invoiceAmountInput}
+                      onChange={(e) => setInvoiceAmountInput(e.target.value)}
+                      placeholder={`e.g. ${lead.dealValue || 100000}`}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="flex items-center justify-between pt-2">
-                <span className="text-[11px] text-slate-400">
-                  {invoiceDateInput && invoiceAmountInput ? (
-                    <span>
-                      Scheduled for Forecast: <strong>{invoiceDateInput}</strong> •{" "}
-                      <strong>{formatINR(parseFloat(invoiceAmountInput) || 0)}</strong>
-                    </span>
-                  ) : (
-                    <span>Fill date, number, and amount to show in the Forecast tab</span>
-                  )}
-                </span>
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-[11px] text-slate-400">
+                    {invoiceDateInput && invoiceAmountInput ? (
+                      <span>
+                        Scheduled for Forecast: <strong>{invoiceDateInput}</strong> •{" "}
+                        <strong>{formatINR(parseFloat(invoiceAmountInput) || 0)}</strong>
+                      </span>
+                    ) : (
+                      <span>Fill date, number, and amount to show in the Forecast tab</span>
+                    )}
+                  </span>
 
-                <SpringButton
-                  type="submit"
-                  variant="gradient"
-                  size="sm"
-                  disabled={isSavingInvoice}
-                  className="flex items-center space-x-1.5 shadow-sm font-bold"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>{isSavingInvoice ? "Saving..." : "Save Invoice"}</span>
-                </SpringButton>
-              </div>
-            </form>
+                  <SpringButton
+                    type="submit"
+                    variant="gradient"
+                    size="sm"
+                    disabled={isSavingInvoice}
+                    className="flex items-center space-x-1.5 shadow-sm font-bold"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>{isSavingInvoice ? "Saving..." : "Save Invoice"}</span>
+                  </SpringButton>
+                </div>
+              </form>
+            )}
           </div>
 
           {/* Dedicated Financial Documents (Multi-Upload & All Formats) Section */}

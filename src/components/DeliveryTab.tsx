@@ -123,6 +123,7 @@ interface DeliveryTabProps {
   currentUser?: UserAccount | null;
   isAdmin: boolean;
   onSelectLead?: (lead: Lead) => void;
+  readOnly?: boolean;
 }
 
 export const DeliveryTab: React.FC<DeliveryTabProps> = ({
@@ -131,7 +132,9 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
   currentUser,
   isAdmin,
   onSelectLead,
+  readOnly = false,
 }) => {
+  const isReadOnly = Boolean(readOnly || currentUser?.readOnly);
   const [deliveryRecords, setDeliveryRecords] = useState<DeliveryRecord[]>([]);
   const [isSyncing, setIsSyncing] = useState<boolean>(true);
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
@@ -1531,26 +1534,35 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
           </div>
 
           <div className="flex items-center flex-wrap gap-2.5">
-            <SpringButton
-              variant="gradient"
-              onClick={() => setIsImportModalOpen(true)}
-              className="flex items-center space-x-2 shadow-md shadow-indigo-500/20"
-            >
-              <PackageCheck className="w-4 h-4" />
-              <span>Import Won Deal from Closure</span>
-              <span className="ml-1 px-1.5 py-0.5 bg-white/20 rounded-md text-[10px]">
-                {closureLeads.length} Available
+            {isReadOnly ? (
+              <span className="px-3 py-1.5 rounded-full text-xs font-black uppercase tracking-wider bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 flex items-center space-x-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                <span>View Only Access</span>
               </span>
-            </SpringButton>
+            ) : (
+              <>
+                <SpringButton
+                  variant="gradient"
+                  onClick={() => setIsImportModalOpen(true)}
+                  className="flex items-center space-x-2 shadow-md shadow-indigo-500/20"
+                >
+                  <PackageCheck className="w-4 h-4" />
+                  <span>Import Won Deal from Closure</span>
+                  <span className="ml-1 px-1.5 py-0.5 bg-white/20 rounded-md text-[10px]">
+                    {closureLeads.length} Available
+                  </span>
+                </SpringButton>
 
-            <SpringButton
-              variant="secondary"
-              onClick={() => setIsNewProjectModalOpen(true)}
-              className="flex items-center space-x-1.5"
-            >
-              <Plus className="w-4 h-4" />
-              <span>New Project</span>
-            </SpringButton>
+                <SpringButton
+                  variant="secondary"
+                  onClick={() => setIsNewProjectModalOpen(true)}
+                  className="flex items-center space-x-1.5"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>New Project</span>
+                </SpringButton>
+              </>
+            )}
           </div>
         </div>
 

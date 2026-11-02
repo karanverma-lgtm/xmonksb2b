@@ -46,6 +46,7 @@ interface KanbanBoardProps {
     leadId: string,
     invoiceData: { invoiceNumber?: string; invoiceDate?: string; invoiceAmount?: number }
   ) => void;
+  readOnly?: boolean;
 }
 
 export const KanbanBoard: React.FC<KanbanBoardProps> = ({
@@ -56,6 +57,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   onMoveToBilling,
   onSendToDelivery,
   onUpdateInvoiceDetails,
+  readOnly = false,
 }) => {
   const [quickInvoiceLead, setQuickInvoiceLead] = useState<Lead | null>(null);
   const [quickInvoiceNumber, setQuickInvoiceNumber] = useState("");
@@ -363,22 +365,24 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                         {/* Invoice Date, Number & Amount (Synced to Forecast) */}
                         {Boolean(lead.invoiceNumber || lead.invoiceDate || lead.invoiceAmount) ? (
                           <div
-                            onClick={(e) => {
+                            onClick={readOnly ? undefined : (e) => {
                               e.stopPropagation();
                               setQuickInvoiceLead(lead);
                             }}
-                            className="mt-2 p-2 rounded-xl bg-amber-500/10 dark:bg-amber-950/30 border border-amber-300/80 dark:border-amber-700/60 hover:border-amber-400 transition cursor-pointer group/inv space-y-1 shadow-2xs"
-                            title="Click to edit Invoice Date, Number & Amount"
+                            className={`mt-2 p-2 rounded-xl bg-amber-500/10 dark:bg-amber-950/30 border border-amber-300/80 dark:border-amber-700/60 ${readOnly ? "" : "hover:border-amber-400 cursor-pointer group/inv"} space-y-1 shadow-2xs`}
+                            title={readOnly ? "Invoice Details" : "Click to edit Invoice Date, Number & Amount"}
                           >
                             <div className="flex items-center justify-between text-[10px]">
                               <div className="flex items-center space-x-1 font-mono font-black text-amber-900 dark:text-amber-200">
                                 <Receipt className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
                                 <span>#{lead.invoiceNumber || "INVOICE"}</span>
                               </div>
-                              <div className="flex items-center space-x-1 text-amber-700 dark:text-amber-300 text-[10px] font-bold opacity-80 group-hover/inv:opacity-100">
-                                <Pencil className="w-2.5 h-2.5" />
-                                <span>Edit</span>
-                              </div>
+                              {!readOnly && (
+                                <div className="flex items-center space-x-1 text-amber-700 dark:text-amber-300 text-[10px] font-bold opacity-80 group-hover/inv:opacity-100">
+                                  <Pencil className="w-2.5 h-2.5" />
+                                  <span>Edit</span>
+                                </div>
+                              )}
                             </div>
                             <div className="flex items-center justify-between text-[11px] pt-0.5">
                               <span className="font-black text-emerald-700 dark:text-emerald-400">
@@ -390,7 +394,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                               </span>
                             </div>
                           </div>
-                        ) : (
+                        ) : !readOnly ? (
                           <button
                             type="button"
                             onClick={(e) => {
@@ -403,7 +407,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                             <Receipt className="w-3 h-3 text-slate-400" />
                             <span>+ Put Invoice (Date, No, Amount)</span>
                           </button>
-                        )}
+                        ) : null}
 
                         {/* Latest Activity Stamp */}
                         {latestLog && (
@@ -420,45 +424,47 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                             <span>Close: {lead.expectedCloseDate}</span>
                           </div>
 
-                          {/* Quick Stage Controls */}
-                          <div className="flex items-center space-x-1 opacity-80 group-hover:opacity-100 transition-opacity">
-                            {STAGE_ORDER.indexOf(lead.stage) > 0 && (
-                              <button
-                                onClick={(e) => handleQuickAdvance(e, lead, "prev")}
-                                className="p-1 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition"
-                                title="Move to previous stage"
-                              >
-                                <ChevronLeft className="w-3.5 h-3.5" />
-                              </button>
-                            )}
+                          {/* Quick Stage Controls (Disabled in View Only Mode) */}
+                          {!readOnly && (
+                            <div className="flex items-center space-x-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                              {STAGE_ORDER.indexOf(lead.stage) > 0 && (
+                                <button
+                                  onClick={(e) => handleQuickAdvance(e, lead, "prev")}
+                                  className="p-1 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition"
+                                  title="Move to previous stage"
+                                >
+                                  <ChevronLeft className="w-3.5 h-3.5" />
+                                </button>
+                              )}
 
-                            {STAGE_ORDER.indexOf(lead.stage) < STAGE_ORDER.length - 2 && (
-                              <button
-                                onClick={(e) => handleQuickAdvance(e, lead, "next")}
-                                className="p-1 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900 transition font-bold"
-                                title="Advance stage & update journey log"
-                              >
-                                <ChevronRight className="w-3.5 h-3.5" />
-                              </button>
-                            )}
+                              {STAGE_ORDER.indexOf(lead.stage) < STAGE_ORDER.length - 2 && (
+                                <button
+                                  onClick={(e) => handleQuickAdvance(e, lead, "next")}
+                                  className="p-1 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900 transition font-bold"
+                                  title="Advance stage & update journey log"
+                                >
+                                  <ChevronRight className="w-3.5 h-3.5" />
+                                </button>
+                              )}
 
-                            {onDeleteLead && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onDeleteLead(lead.id);
-                                }}
-                                className="p-1 rounded text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-500/10 transition"
-                                title="Delete Lead"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
+                              {onDeleteLead && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onDeleteLead(lead.id);
+                                  }}
+                                  className="p-1 rounded text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-500/10 transition"
+                                  title="Delete Lead"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         {/* Send to Delivery Option for Closure Stage */}
-                        {lead.stage === "closure" && (
+                        {lead.stage === "closure" && !readOnly && (
                           <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800/80">
                             <SpringButton
                               variant="gradient"
@@ -487,7 +493,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
       </div>
 
       {/* Quick Invoice Modal in Pipeline */}
-      {quickInvoiceLead && (
+      {quickInvoiceLead && !readOnly && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-fadeIn"
           onClick={() => setQuickInvoiceLead(null)}

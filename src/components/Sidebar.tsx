@@ -117,6 +117,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
         currentUser.allowedTabs.length === 1 &&
         currentUser.allowedTabs[0] === "delivery")
   );
+  const isReadOnly = Boolean(currentUser?.readOnly);
+
+  const isTabAllowed = (tabId: NavTab) => {
+    if (currentUser?.allowedTabs && currentUser.allowedTabs.length > 0) {
+      return (
+        currentUser.allowedTabs.includes(tabId) ||
+        (tabId === "kanban" && currentUser.allowedTabs.includes("pipeline"))
+      );
+    }
+    if (isAccounts || isDeliveryOnly) {
+      return tabId === "delivery";
+    }
+    if (tabId === "developer") {
+      return isAdmin;
+    }
+    return true;
+  };
 
   const handleTabClick = (tab: NavTab) => {
     setActiveTab(tab);
@@ -251,7 +268,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // Helper to render navigation items
   const renderNavGroup = (title: string, items: NavItem[]) => {
-    const visibleItems = items.filter((item) => !item.hidden);
+    const visibleItems = items.filter((item) => !item.hidden && isTabAllowed(item.id));
     if (visibleItems.length === 0) return null;
 
     return (
@@ -342,7 +359,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         <div className="flex items-center space-x-2">
-          {!isAccounts && !isDeliveryOnly && (
+          {!isAccounts && !isDeliveryOnly && !isReadOnly && (
             <button
               onClick={onOpenAddModal}
               className="p-2 rounded-xl bg-indigo-600 text-white font-bold text-xs shadow-md shadow-indigo-500/20 flex items-center space-x-1"
@@ -436,7 +453,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           {/* Quick Actions Strip */}
-          {!isAccounts && !isDeliveryOnly && (
+          {!isAccounts && !isDeliveryOnly && !isReadOnly && (
             <div className="space-y-1.5">
               <SpringButton
                 variant="primary"
@@ -486,6 +503,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   )}
                 </div>
               )}
+            </div>
+          )}
+
+          {isReadOnly && (!isCollapsed || isMobileOpen) && (
+            <div className="px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-bold flex items-center justify-center space-x-2">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              <span>View Only Mode</span>
             </div>
           )}
         </div>
@@ -566,6 +590,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         ? "Accounts"
                         : isDeliveryOnly
                         ? "Delivery Operations"
+                        : isReadOnly
+                        ? "Viewer (View Only)"
                         : currentUser.username.toLowerCase() === "admin"
                         ? "Administrator"
                         : "Client Partner"}

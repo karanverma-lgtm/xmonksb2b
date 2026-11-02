@@ -40,8 +40,18 @@ export async function seedInitialUsers(): Promise<void> {
       const snap = await getDoc(docRef);
       if (!snap.exists()) {
         await setDoc(docRef, u);
-      } else if (u.allowedTabs && !(snap.data() as UserAccount).allowedTabs) {
-        await setDoc(docRef, { allowedTabs: u.allowedTabs }, { merge: true });
+      } else {
+        const data = snap.data() as UserAccount;
+        const updates: Partial<UserAccount> = {};
+        if (u.allowedTabs && !data.allowedTabs) {
+          updates.allowedTabs = u.allowedTabs;
+        }
+        if (u.readOnly !== undefined && data.readOnly !== u.readOnly) {
+          updates.readOnly = u.readOnly;
+        }
+        if (Object.keys(updates).length > 0) {
+          await setDoc(docRef, updates, { merge: true });
+        }
       }
     }
   } catch (e) {
@@ -73,9 +83,10 @@ export async function authenticateUserFromFirestore(
       if (user.password === cleanPass || user.password.toLowerCase() === cleanPass.toLowerCase()) {
         if (staticMatch) {
           const merged: UserAccount = {
-            ...staticMatch,
             ...user,
-            allowedTabs: user.allowedTabs || staticMatch.allowedTabs,
+            ...staticMatch,
+            allowedTabs: staticMatch.allowedTabs || user.allowedTabs,
+            readOnly: staticMatch.readOnly !== undefined ? staticMatch.readOnly : user.readOnly,
           };
           return merged;
         }
@@ -138,6 +149,13 @@ export function subscribeToUsers(
           const users: UserAccount[] = snapshot.docs.map(
             (d) => d.data() as UserAccount
           );
+          for (const vu of VALID_USERS) {
+            if (!users.some((u) => u.username.toLowerCase() === vu.username.toLowerCase())) {
+              users.push(vu);
+              const docRef = doc(db, USERS_COLLECTION, vu.username.toLowerCase());
+              setDoc(docRef, vu).catch(() => {});
+            }
+          }
           cacheUsersLocally(users);
           onData(users);
         }
