@@ -99,11 +99,11 @@ export const VALID_USERS: UserAccount[] = [
     password: "inam",
     name: "Mani",
     role: "Viewer",
-    designation: "Operations & Pipeline Viewer (View Only)",
+    designation: "Operations & Forecast Viewer (View Only)",
     email: "mani@xmonks.com",
     phone: "",
     avatarColor: "from-purple-600 to-indigo-600",
-    allowedTabs: ["kanban", "delivery"],
+    allowedTabs: ["kanban", "forecast"],
     readOnly: true,
   },
 ];

@@ -2407,6 +2407,7 @@ export default function Home() {
             leads={leads}
             currentUser={currentUser}
             isAdmin={isAdmin}
+            readOnly={isReadOnly}
             onSelectLead={(lead) => setSelectedLead(lead)}
             onNavigateToTab={handleTabChange}
             onUpdateInvoiceDetails={isReadOnly ? undefined : handleUpdateInvoiceDetails}

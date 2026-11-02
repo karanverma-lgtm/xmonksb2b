@@ -56,6 +56,7 @@ interface ForecastTabProps {
     leadId: string,
     invoiceData: { invoiceNumber?: string; invoiceDate?: string; invoiceAmount?: number }
   ) => void;
+  readOnly?: boolean;
 }
 
 export const ForecastTab: React.FC<ForecastTabProps> = ({
@@ -65,7 +66,9 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
   onSelectLead,
   onNavigateToTab,
   onUpdateInvoiceDetails,
+  readOnly = false,
 }) => {
+  const isReadOnly = Boolean(readOnly || currentUser?.readOnly);
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [selectedOwner, setSelectedOwner] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -359,6 +362,12 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/80">
                   {metrics.count} {metrics.count === 1 ? "Invoice" : "Invoices"}
                 </span>
+                {isReadOnly && (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 flex items-center space-x-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    <span>View Only</span>
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 Live forecast synchronized directly with Pipeline lead invoices (date, number & amount).
@@ -650,17 +659,19 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
                   </div>
 
                   <div className="flex items-center space-x-1.5">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingInvoice(inv);
-                      }}
-                      className="p-1 rounded-lg text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 transition"
-                      title="Edit this invoice"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
+                    {!isReadOnly && onUpdateInvoiceDetails && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingInvoice(inv);
+                        }}
+                        className="p-1 rounded-lg text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 transition"
+                        title="Edit this invoice"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    )}
 
                     <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
                       Pipeline Invoiced
@@ -734,17 +745,19 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
                   </div>
 
                   <div className="flex items-center space-x-2">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingInvoice(inv);
-                      }}
-                      className="px-2 py-0.5 rounded-lg text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 font-bold text-[11px] flex items-center space-x-1 border border-emerald-200 dark:border-emerald-800 transition cursor-pointer"
-                    >
-                      <Pencil className="w-3 h-3" />
-                      <span>Edit</span>
-                    </button>
+                    {!isReadOnly && onUpdateInvoiceDetails && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingInvoice(inv);
+                        }}
+                        className="px-2 py-0.5 rounded-lg text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 font-bold text-[11px] flex items-center space-x-1 border border-emerald-200 dark:border-emerald-800 transition cursor-pointer"
+                      >
+                        <Pencil className="w-3 h-3" />
+                        <span>Edit</span>
+                      </button>
+                    )}
 
                     <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center space-x-0.5 group-hover:translate-x-0.5 transition-transform">
                       <span>Card</span>
@@ -811,18 +824,20 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
                     </td>
                     <td className="py-3.5 px-4 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end space-x-1.5">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingInvoice(inv);
-                          }}
-                          className="px-2 py-1 rounded-lg text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 font-bold text-xs flex items-center space-x-1 border border-emerald-200 dark:border-emerald-800 transition"
-                          title="Edit invoice details"
-                        >
-                          <Pencil className="w-3 h-3" />
-                          <span>Edit</span>
-                        </button>
+                        {!isReadOnly && onUpdateInvoiceDetails && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingInvoice(inv);
+                            }}
+                            className="px-2 py-1 rounded-lg text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 font-bold text-xs flex items-center space-x-1 border border-emerald-200 dark:border-emerald-800 transition"
+                            title="Edit invoice details"
+                          >
+                            <Pencil className="w-3 h-3" />
+                            <span>Edit</span>
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={(e) => {

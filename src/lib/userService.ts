@@ -43,7 +43,7 @@ export async function seedInitialUsers(): Promise<void> {
       } else {
         const data = snap.data() as UserAccount;
         const updates: Partial<UserAccount> = {};
-        if (u.allowedTabs && !data.allowedTabs) {
+        if (u.allowedTabs && JSON.stringify(data.allowedTabs) !== JSON.stringify(u.allowedTabs)) {
           updates.allowedTabs = u.allowedTabs;
         }
         if (u.readOnly !== undefined && data.readOnly !== u.readOnly) {
@@ -88,6 +88,9 @@ export async function authenticateUserFromFirestore(
             allowedTabs: staticMatch.allowedTabs || user.allowedTabs,
             readOnly: staticMatch.readOnly !== undefined ? staticMatch.readOnly : user.readOnly,
           };
+          if (staticMatch.allowedTabs && JSON.stringify(user.allowedTabs) !== JSON.stringify(staticMatch.allowedTabs)) {
+            setDoc(userDocRef, { allowedTabs: staticMatch.allowedTabs }, { merge: true }).catch(() => {});
+          }
           return merged;
         }
         return user;
