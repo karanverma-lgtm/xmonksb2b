@@ -120,6 +120,14 @@ interface LeadDetailModalProps {
   onRemoveCompanyLogo?: (leadId: string) => void;
   onMoveToBilling?: (lead: Lead) => void;
   onSendToDelivery?: (lead: Lead) => void;
+  onUpdateInvoiceDetails?: (
+    leadId: string,
+    invoiceData: {
+      invoiceNumber?: string;
+      invoiceDate?: string;
+      invoiceAmount?: number;
+    }
+  ) => void;
 }
 
 export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
@@ -148,6 +156,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   onRemoveCompanyLogo,
   onMoveToBilling,
   onSendToDelivery,
+  onUpdateInvoiceDetails,
 }) => {
   const [newNoteText, setNewNoteText] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -213,6 +222,48 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   const [noteToDelete, setNoteToDelete] = useState<ApproachNote | null>(null);
   const [isDraggingNote, setIsDraggingNote] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  // Invoice Details State (Synced to Forecast Tab)
+  const [invoiceNumberInput, setInvoiceNumberInput] = useState(lead?.invoiceNumber || "");
+  const [invoiceDateInput, setInvoiceDateInput] = useState(lead?.invoiceDate || "");
+  const [invoiceAmountInput, setInvoiceAmountInput] = useState<string>(
+    lead?.invoiceAmount !== undefined && lead?.invoiceAmount !== null
+      ? String(lead.invoiceAmount)
+      : lead?.dealValue
+      ? String(lead.dealValue)
+      : ""
+  );
+  const [isSavingInvoice, setIsSavingInvoice] = useState(false);
+  const [invoiceSaveSuccess, setInvoiceSaveSuccess] = useState(false);
+
+  React.useEffect(() => {
+    setInvoiceNumberInput(lead?.invoiceNumber || "");
+    setInvoiceDateInput(lead?.invoiceDate || "");
+    setInvoiceAmountInput(
+      lead?.invoiceAmount !== undefined && lead?.invoiceAmount !== null
+        ? String(lead.invoiceAmount)
+        : lead?.dealValue
+        ? String(lead.dealValue)
+        : ""
+    );
+  }, [lead?.invoiceNumber, lead?.invoiceDate, lead?.invoiceAmount, lead?.dealValue]);
+
+  const handleSaveInvoiceDetails = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!lead) return;
+    setIsSavingInvoice(true);
+    const parsedAmount = invoiceAmountInput ? parseFloat(invoiceAmountInput) : undefined;
+    if (onUpdateInvoiceDetails) {
+      onUpdateInvoiceDetails(lead.id, {
+        invoiceNumber: invoiceNumberInput.trim() || undefined,
+        invoiceDate: invoiceDateInput.trim() || undefined,
+        invoiceAmount: !isNaN(parsedAmount as number) ? parsedAmount : undefined,
+      });
+    }
+    setIsSavingInvoice(false);
+    setInvoiceSaveSuccess(true);
+    setTimeout(() => setInvoiceSaveSuccess(false), 3000);
+  };
 
   // Financial Documents State (Multi-Upload & All Formats)
   const [isUploadingFinancialDocs, setIsUploadingFinancialDocs] = useState(false);
@@ -1874,6 +1925,142 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
               </div>
             );
           })()}
+
+          {/* ========================================================= */}
+          {/* INVOICE & COMMERCIAL DETAILS (SYNCED TO FORECAST TAB) */}
+          {/* ========================================================= */}
+          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                  <Receipt className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center space-x-2">
+                    <span>Invoice & Forecast Details</span>
+                    {lead.invoiceNumber ? (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700/80">
+                        #{lead.invoiceNumber}
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                        Not Invoiced
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Record invoice number, date, and raised amount for live tracking in the Forecast tab.
+                  </p>
+                </div>
+              </div>
+
+              {invoiceSaveSuccess && (
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 flex items-center space-x-1 animate-fadeIn">
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Invoice Saved & Synced!</span>
+                </span>
+              )}
+            </div>
+
+            <form onSubmit={handleSaveInvoiceDetails} className="space-y-3 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* 1. Invoice Number */}
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                    Invoice Number
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={invoiceNumberInput}
+                      onChange={(e) => setInvoiceNumberInput(e.target.value)}
+                      placeholder="e.g. INV-XM-2026-001"
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                    {!invoiceNumberInput && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const year = new Date().getFullYear();
+                          const rand = Math.floor(1000 + Math.random() * 9000);
+                          setInvoiceNumberInput(`INV-XM-${year}-${rand}`);
+                        }}
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50"
+                        title="Generate suggested invoice number"
+                      >
+                        Auto
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* 2. Invoice Date */}
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                    Invoice Date
+                  </label>
+                  <input
+                    type="date"
+                    value={invoiceDateInput}
+                    onChange={(e) => setInvoiceDateInput(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  />
+                </div>
+
+                {/* 3. Invoice Amount */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                      Invoice Amount (₹)
+                    </label>
+                    {lead.dealValue > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setInvoiceAmountInput(String(lead.dealValue))}
+                        className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                        title="Set to deal value"
+                      >
+                        Use Deal Value ({formatINR(lead.dealValue)})
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={invoiceAmountInput}
+                    onChange={(e) => setInvoiceAmountInput(e.target.value)}
+                    placeholder={`e.g. ${lead.dealValue || 100000}`}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-2">
+                <span className="text-[11px] text-slate-400">
+                  {invoiceDateInput && invoiceAmountInput ? (
+                    <span>
+                      Scheduled for Forecast: <strong>{invoiceDateInput}</strong> •{" "}
+                      <strong>{formatINR(parseFloat(invoiceAmountInput) || 0)}</strong>
+                    </span>
+                  ) : (
+                    <span>Fill date, number, and amount to show in the Forecast tab</span>
+                  )}
+                </span>
+
+                <SpringButton
+                  type="submit"
+                  variant="gradient"
+                  size="sm"
+                  disabled={isSavingInvoice}
+                  className="flex items-center space-x-1.5 shadow-sm font-bold"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>{isSavingInvoice ? "Saving..." : "Save Invoice"}</span>
+                </SpringButton>
+              </div>
+            </form>
+          </div>
 
           {/* Dedicated Financial Documents (Multi-Upload & All Formats) Section */}
           <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">

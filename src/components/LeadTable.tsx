@@ -480,6 +480,18 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                               ({stageWeight}%)
                             </span>
                           </div>
+                          {Boolean(lead.invoiceNumber || lead.invoiceDate || lead.invoiceAmount) && (
+                            <div className="pt-1">
+                              <span
+                                onClick={() => onSelectLead(lead)}
+                                className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-black text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/70 border border-amber-300 dark:border-amber-700/80 cursor-pointer hover:bg-amber-100"
+                                title={`Invoice: #${lead.invoiceNumber || "N/A"} • ${lead.invoiceDate || "No Date"} • ${formatCurrency(lead.invoiceAmount || lead.dealValue)}`}
+                              >
+                                <Receipt className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                                <span>{lead.invoiceNumber ? `#${lead.invoiceNumber}` : "Invoiced"}</span>
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </td>
 

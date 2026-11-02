@@ -54,6 +54,7 @@ export interface JourneyLog {
     | "approach_note"
     | "financial_document"
     | "closure_month_update"
+    | "invoice_update"
     | "logo_update";
   title: string;
   description: string;
@@ -79,6 +80,9 @@ export interface Lead {
   weightage: number; // Percentage e.g. 10, 25, 50, 75, 100
   expectedCloseDate: string;
   closureMonth?: string; // Target conversion deadline e.g. "2026-10"
+  invoiceNumber?: string; // e.g. "INV-XM-2026-1042"
+  invoiceDate?: string; // YYYY-MM-DD
+  invoiceAmount?: number; // Invoiced amount in INR
   approachNote?: ApproachNote; // Legacy single approach note
   approachNotes?: ApproachNote[]; // Uploaded approach notes (multi-upload, all formats allowed)
   financialDocuments?: FinancialDocument[]; // Attached financial documents (multi-upload, all formats allowed)

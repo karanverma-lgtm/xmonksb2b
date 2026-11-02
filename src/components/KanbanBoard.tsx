@@ -24,7 +24,11 @@ import {
   Receipt,
   Truck,
   ArrowRight,
+  Pencil,
+  X,
+  Check,
 } from "lucide-react";
+import { useState, useEffect } from "react";
 import confetti from "canvas-confetti";
 
 import { formatINR, formatClosureMonth } from "@/lib/formatters";
@@ -38,6 +42,10 @@ interface KanbanBoardProps {
   onDeleteLead?: (leadId: string) => void;
   onMoveToBilling?: (lead: Lead) => void;
   onSendToDelivery?: (lead: Lead) => void;
+  onUpdateInvoiceDetails?: (
+    leadId: string,
+    invoiceData: { invoiceNumber?: string; invoiceDate?: string; invoiceAmount?: number }
+  ) => void;
 }
 
 export const KanbanBoard: React.FC<KanbanBoardProps> = ({
@@ -47,7 +55,45 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   onDeleteLead,
   onMoveToBilling,
   onSendToDelivery,
+  onUpdateInvoiceDetails,
 }) => {
+  const [quickInvoiceLead, setQuickInvoiceLead] = useState<Lead | null>(null);
+  const [quickInvoiceNumber, setQuickInvoiceNumber] = useState("");
+  const [quickInvoiceDate, setQuickInvoiceDate] = useState("");
+  const [quickInvoiceAmount, setQuickInvoiceAmount] = useState("");
+  const [isSavingQuickInvoice, setIsSavingQuickInvoice] = useState(false);
+
+  useEffect(() => {
+    if (quickInvoiceLead) {
+      setQuickInvoiceNumber(quickInvoiceLead.invoiceNumber || "");
+      setQuickInvoiceDate(
+        quickInvoiceLead.invoiceDate ||
+        quickInvoiceLead.expectedCloseDate ||
+        new Date().toISOString().split("T")[0]
+      );
+      setQuickInvoiceAmount(
+        quickInvoiceLead.invoiceAmount !== undefined && quickInvoiceLead.invoiceAmount !== null
+          ? String(quickInvoiceLead.invoiceAmount)
+          : String(quickInvoiceLead.dealValue || 100000)
+      );
+    }
+  }, [quickInvoiceLead]);
+
+  const handleSaveQuickInvoice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickInvoiceLead) return;
+    setIsSavingQuickInvoice(true);
+    const parsedAmount = parseFloat(quickInvoiceAmount);
+    if (onUpdateInvoiceDetails) {
+      await onUpdateInvoiceDetails(quickInvoiceLead.id, {
+        invoiceNumber: quickInvoiceNumber.trim() || undefined,
+        invoiceDate: quickInvoiceDate.trim() || undefined,
+        invoiceAmount: !isNaN(parsedAmount) ? parsedAmount : undefined,
+      });
+    }
+    setIsSavingQuickInvoice(false);
+    setQuickInvoiceLead(null);
+  };
   const getIcon = (iconName: string) => {
     switch (iconName) {
       case "Sparkles":
@@ -273,6 +319,25 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                               </span>
                             </span>
                           )}
+
+                          {/* Badge if set */}
+                          {Boolean(lead.invoiceNumber || lead.invoiceAmount || lead.invoiceDate) && (
+                            <span
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setQuickInvoiceLead(lead);
+                              }}
+                              className="inline-flex items-center space-x-1 text-[10px] font-black text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/70 px-2 py-0.5 rounded-md border border-amber-300 dark:border-amber-700 shadow-2xs cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/40"
+                              title="Click to edit Invoice Details (Synced to Forecast)"
+                            >
+                              <Receipt className="w-3 h-3 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                              <span className="truncate max-w-[130px]">
+                                {lead.invoiceNumber ? `#${lead.invoiceNumber}` : "Invoiced"}
+                                {lead.invoiceAmount ? ` • ${formatCurrency(lead.invoiceAmount)}` : ""}
+                              </span>
+                              <Pencil className="w-2.5 h-2.5 ml-0.5 text-amber-600 dark:text-amber-400" />
+                            </span>
+                          )}
                         </div>
 
                         {/* Deal Value & Weightage breakdown */}
@@ -294,6 +359,51 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                             </div>
                           </div>
                         </div>
+
+                        {/* Invoice Date, Number & Amount (Synced to Forecast) */}
+                        {Boolean(lead.invoiceNumber || lead.invoiceDate || lead.invoiceAmount) ? (
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setQuickInvoiceLead(lead);
+                            }}
+                            className="mt-2 p-2 rounded-xl bg-amber-500/10 dark:bg-amber-950/30 border border-amber-300/80 dark:border-amber-700/60 hover:border-amber-400 transition cursor-pointer group/inv space-y-1 shadow-2xs"
+                            title="Click to edit Invoice Date, Number & Amount"
+                          >
+                            <div className="flex items-center justify-between text-[10px]">
+                              <div className="flex items-center space-x-1 font-mono font-black text-amber-900 dark:text-amber-200">
+                                <Receipt className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                                <span>#{lead.invoiceNumber || "INVOICE"}</span>
+                              </div>
+                              <div className="flex items-center space-x-1 text-amber-700 dark:text-amber-300 text-[10px] font-bold opacity-80 group-hover/inv:opacity-100">
+                                <Pencil className="w-2.5 h-2.5" />
+                                <span>Edit</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between text-[11px] pt-0.5">
+                              <span className="font-black text-emerald-700 dark:text-emerald-400">
+                                {formatCurrency(lead.invoiceAmount ?? lead.dealValue)}
+                              </span>
+                              <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-300 flex items-center space-x-1">
+                                <Calendar className="w-2.5 h-2.5 text-slate-400" />
+                                <span>{lead.invoiceDate || "No Date"}</span>
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setQuickInvoiceLead(lead);
+                            }}
+                            className="mt-2 w-full py-1.5 px-2 rounded-xl text-[10px] font-bold text-slate-500 dark:text-slate-400 hover:text-amber-700 dark:hover:text-amber-300 bg-slate-100/80 dark:bg-slate-800/60 hover:bg-amber-50 dark:hover:bg-amber-950/40 border border-dashed border-slate-200 dark:border-slate-700 hover:border-amber-300 transition flex items-center justify-center space-x-1.5 cursor-pointer"
+                            title="Set invoice date, invoice number, and invoice amount for the Forecast tab"
+                          >
+                            <Receipt className="w-3 h-3 text-slate-400" />
+                            <span>+ Put Invoice (Date, No, Amount)</span>
+                          </button>
+                        )}
 
                         {/* Latest Activity Stamp */}
                         {latestLog && (
@@ -375,6 +485,144 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
           );
         })}
       </div>
+
+      {/* Quick Invoice Modal in Pipeline */}
+      {quickInvoiceLead && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-fadeIn"
+          onClick={() => setQuickInvoiceLead(null)}
+        >
+          <div
+            className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800 bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-transparent">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                  <Receipt className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm text-slate-900 dark:text-white">
+                    Set Pipeline Invoice Details
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {quickInvoiceLead.companyName} • Synced directly to Forecast tab
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuickInvoiceLead(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleSaveQuickInvoice} className="p-5 space-y-4">
+              {/* 1. Invoice Number */}
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                  Invoice Number *
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    value={quickInvoiceNumber}
+                    onChange={(e) => setQuickInvoiceNumber(e.target.value)}
+                    placeholder="e.g. INV-XM-2026-001"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 text-xs"
+                  />
+                  {!quickInvoiceNumber && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const year = new Date().getFullYear();
+                        const rand = Math.floor(1000 + Math.random() * 9000);
+                        setQuickInvoiceNumber(`INV-XM-${year}-${rand}`);
+                      }}
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2 py-0.5 rounded text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50"
+                    >
+                      Auto
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 2. Invoice Date */}
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                  Invoice Date *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={quickInvoiceDate}
+                  onChange={(e) => setQuickInvoiceDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 text-xs"
+                />
+              </div>
+
+              {/* 3. Invoice Amount */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                    Invoice Amount (₹) *
+                  </label>
+                  {quickInvoiceLead.dealValue > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setQuickInvoiceAmount(String(quickInvoiceLead.dealValue))}
+                      className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                    >
+                      Use Deal Value ({formatCurrency(quickInvoiceLead.dealValue)})
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  required
+                  value={quickInvoiceAmount}
+                  onChange={(e) => setQuickInvoiceAmount(e.target.value)}
+                  placeholder={`e.g. ${quickInvoiceLead.dealValue || 100000}`}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-black text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 text-xs"
+                />
+                {quickInvoiceAmount && !isNaN(parseFloat(quickInvoiceAmount)) && (
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold block mt-1">
+                    Formatted: {formatCurrency(parseFloat(quickInvoiceAmount))}
+                  </span>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setQuickInvoiceLead(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <SpringButton
+                  type="submit"
+                  variant="gradient"
+                  size="sm"
+                  disabled={isSavingQuickInvoice}
+                  className="flex items-center space-x-1.5 font-bold shadow-md cursor-pointer"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>{isSavingQuickInvoice ? "Saving..." : "Save & Sync to Forecast"}</span>
+                </SpringButton>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

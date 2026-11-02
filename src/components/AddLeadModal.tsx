@@ -22,6 +22,7 @@ import {
   Loader2,
   Link2,
   UploadCloud,
+  Receipt,
 } from "lucide-react";
 import { UserAccount, VALID_USERS } from "@/constants/users";
 import { PRESET_PROGRAMS, getProgramBadgeStyle } from "@/constants/programs";
@@ -51,6 +52,9 @@ interface AddLeadModalProps {
     closureMonth?: string;
     owner: string;
     journeyNotes?: string;
+    invoiceNumber?: string;
+    invoiceDate?: string;
+    invoiceAmount?: number;
   }) => void;
 }
 
@@ -83,6 +87,9 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
   const [closureMonth, setClosureMonth] = useState("2026-10-31");
   const [owner, setOwner] = useState(currentUser?.name || "Amit");
   const [journeyNotes, setJourneyNotes] = useState("");
+  const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [invoiceDate, setInvoiceDate] = useState("");
+  const [invoiceAmount, setInvoiceAmount] = useState("");
 
   const handleLogoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -161,6 +168,9 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
       closureMonth: closureMonth.trim() || undefined,
       owner,
       journeyNotes: journeyNotes || `Initial B2B Prospecting Lead Created for ${companyName}. Pitched Program: ${finalProgram}. Lead Source: ${leadSource}.`,
+      invoiceNumber: invoiceNumber.trim() || undefined,
+      invoiceDate: invoiceDate.trim() || undefined,
+      invoiceAmount: invoiceAmount ? parseFloat(invoiceAmount) : undefined,
     });
 
     // Reset form
@@ -178,6 +188,9 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
     setIsCustomProgram(false);
     setCustomProgram("");
     setExpectedCloseDate("2026-10-31");
+    setInvoiceNumber("");
+    setInvoiceDate("");
+    setInvoiceAmount("");
     setClosureMonth("2026-10-31");
     setJourneyNotes("");
     setModalTab("general");
@@ -649,6 +662,76 @@ export const AddLeadModal: React.FC<AddLeadModalProps> = ({
                       </span>
                     </div>
                   )}
+                </div>
+              </div>
+
+              {/* Optional Invoice Details (Synced to Forecast) */}
+              <div className="p-3.5 rounded-2xl bg-amber-500/10 dark:bg-amber-950/30 border border-amber-300/80 dark:border-amber-700/60 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Receipt className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                    <span className="text-xs font-bold text-amber-900 dark:text-amber-200">
+                      Invoice Details (Optional — Synced to Forecast)
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+                    Forecast Sync
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
+                      Invoice Number
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="e.g. INV-2026-001"
+                        value={invoiceNumber}
+                        onChange={(e) => setInvoiceNumber(e.target.value)}
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono font-bold"
+                      />
+                      {!invoiceNumber && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const year = new Date().getFullYear();
+                            const rand = Math.floor(1000 + Math.random() * 9000);
+                            setInvoiceNumber(`INV-XM-${year}-${rand}`);
+                          }}
+                          className="absolute right-1 top-1/2 -translate-y-1/2 text-[9px] font-bold text-indigo-600 dark:text-indigo-400 px-1 py-0.5 rounded hover:bg-slate-100"
+                        >
+                          Auto
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
+                      Invoice Date
+                    </label>
+                    <input
+                      type="date"
+                      value={invoiceDate}
+                      onChange={(e) => setInvoiceDate(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
+                      Invoice Amount (₹)
+                    </label>
+                    <input
+                      type="number"
+                      placeholder={dealValue || "500000"}
+                      value={invoiceAmount}
+                      onChange={(e) => setInvoiceAmount(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold"
+                    />
+                  </div>
                 </div>
               </div>
 

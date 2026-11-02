@@ -27,6 +27,7 @@ import {
   editLeadContact,
   setLeadPrimaryContact,
   completeLeadFollowup,
+  updateLeadInvoiceDetails,
 } from "@/lib/leadsService";
 import { exportLeadsToCSV } from "@/lib/exportService";
 import { Sidebar, NavTab } from "@/components/Sidebar";
@@ -38,6 +39,7 @@ import { LeadDetailModal } from "@/components/LeadDetailModal";
 import { AddLeadModal } from "@/components/AddLeadModal";
 import { BulkUploadModal } from "@/components/BulkUploadModal";
 import { AnalyticsCharts } from "@/components/AnalyticsCharts";
+import { ForecastTab } from "@/components/ForecastTab";
 import { EmailCampaignTab, ParsedCSVEmailRecipient } from "@/components/EmailCampaignTab";
 import { DeveloperTab } from "@/components/DeveloperTab";
 import { OutreachTab } from "@/components/OutreachTab";
@@ -136,6 +138,10 @@ const TAB_METADATA: Record<NavTab, { title: string; subtitle: string }> = {
   analytics: {
     title: "Executive Revenue Analytics",
     subtitle: "Comprehensive pipeline velocity and financial forecasts",
+  },
+  forecast: {
+    title: "Financial Invoice Forecast",
+    subtitle: "Realized and scheduled invoices raised by date, amount and lead owner",
   },
   email: {
     title: "Campaigns & Email Sequences",
@@ -775,7 +781,25 @@ export default function Home() {
     }
   };
 
-  const handleAttachFinancialDocuments = async (
+  const handleUpdateInvoiceDetails = async (
+    leadId: string,
+    invoiceData: { invoiceNumber?: string; invoiceDate?: string; invoiceAmount?: number }
+  ) => {
+    try {
+      const updated = await updateLeadInvoiceDetails(
+        leadId,
+        invoiceData,
+        currentUser?.name || "Client Partner"
+      );
+      if (updated && selectedLead && selectedLead.id === leadId) {
+        setSelectedLead(updated);
+      }
+    } catch (err) {
+      console.error("Failed to update lead invoice details:", err);
+    }
+  };
+
+    const handleAttachFinancialDocuments = async (
     leadId: string,
     documents: FinancialDocument[]
   ) => {
@@ -2254,6 +2278,7 @@ export default function Home() {
             onDeleteLead={handleDeleteLead}
             onMoveToBilling={handleMoveLeadToBilling}
             onSendToDelivery={handleSendToDelivery}
+            onUpdateInvoiceDetails={handleUpdateInvoiceDetails}
           />
         )}
 
@@ -2327,6 +2352,17 @@ export default function Home() {
           <AnalyticsCharts
             leads={filteredLeads}
             onSelectLead={(lead) => setSelectedLead(lead)}
+          />
+        )}
+
+        {!isRestrictedToDelivery && activeTab === "forecast" && (
+          <ForecastTab
+            leads={leads}
+            currentUser={currentUser}
+            isAdmin={isAdmin}
+            onSelectLead={(lead) => setSelectedLead(lead)}
+            onNavigateToTab={handleTabChange}
+            onUpdateInvoiceDetails={handleUpdateInvoiceDetails}
           />
         )}
 
@@ -2672,6 +2708,7 @@ export default function Home() {
           onSetPrimaryContact={handleSetLeadPrimaryContact}
           onMoveToBilling={handleMoveLeadToBilling}
           onSendToDelivery={handleSendToDelivery}
+          onUpdateInvoiceDetails={handleUpdateInvoiceDetails}
         />
       )}
 

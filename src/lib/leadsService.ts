@@ -1708,3 +1708,73 @@ export async function completeLeadFollowup(
 }
 
 
+
+
+// Update Lead Invoice Details (invoiceNumber, invoiceDate, invoiceAmount)
+export async function updateLeadInvoiceDetails(
+  leadId: string,
+  invoiceData: {
+    invoiceNumber?: string;
+    invoiceDate?: string;
+    invoiceAmount?: number;
+  },
+  author: string = "Client Partner"
+): Promise<Lead | null> {
+  const localLeads = getStoredLocalLeads();
+  const target = localLeads.find((l) => l.id === leadId);
+  if (!target) return null;
+
+  const now = new Date();
+  const timestampIso = now.toISOString();
+  const formattedDate = formatTimestamp(now);
+
+  const cleanInvoiceNo = invoiceData.invoiceNumber?.trim() || undefined;
+  const cleanInvoiceDate = invoiceData.invoiceDate?.trim() || undefined;
+  const cleanInvoiceAmount =
+    typeof invoiceData.invoiceAmount === "number" && !isNaN(invoiceData.invoiceAmount)
+      ? invoiceData.invoiceAmount
+      : undefined;
+
+  const invoiceLog: JourneyLog = {
+    id: "log-" + Date.now() + "-" + Math.floor(Math.random() * 1000),
+    timestamp: timestampIso,
+    formattedDate: formattedDate,
+    type: "invoice_update",
+    title: cleanInvoiceNo ? `Invoice Details Updated: ${cleanInvoiceNo}` : "Invoice Details Updated",
+    description: `Invoice ${cleanInvoiceNo ? "#" + cleanInvoiceNo : ""} for ${
+      cleanInvoiceAmount !== undefined ? formatINR(cleanInvoiceAmount) : "N/A"
+    } dated ${cleanInvoiceDate || "N/A"}.`,
+    author: author,
+  };
+
+  const updatedLead: Lead = {
+    ...target,
+    invoiceNumber: cleanInvoiceNo,
+    invoiceDate: cleanInvoiceDate,
+    invoiceAmount: cleanInvoiceAmount,
+    updatedAt: timestampIso,
+    journeyLogs: [invoiceLog, ...target.journeyLogs],
+  };
+
+  // Firestore Update
+  try {
+    const docRef = doc(db, COLLECTION_NAME, leadId);
+    await updateDoc(
+      docRef,
+      sanitizeForFirestore({
+        invoiceNumber: cleanInvoiceNo || null,
+        invoiceDate: cleanInvoiceDate || null,
+        invoiceAmount: cleanInvoiceAmount !== undefined ? cleanInvoiceAmount : null,
+        updatedAt: timestampIso,
+        journeyLogs: updatedLead.journeyLogs,
+      })
+    );
+  } catch (err) {
+    console.warn("Firestore invoice details update skipped, updating local state", err);
+  }
+
+  const updatedLeads = localLeads.map((l) => (l.id === leadId ? updatedLead : l));
+  saveStoredLocalLeads(updatedLeads);
+
+  return updatedLead;
+}

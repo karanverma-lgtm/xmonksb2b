@@ -42,6 +42,7 @@ export type NavTab =
   | "outreach"
   | "touchpoints"
   | "analytics"
+  | "forecast"
   | "email"
   | "library"
   | "templates"
@@ -213,6 +214,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   const operationsNavItems: NavItem[] = [
+    {
+      id: "forecast",
+      label: "Forecast",
+      icon: TrendingUp,
+      color: "text-emerald-600 dark:text-emerald-400",
+      activeBg: "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800",
+      badge: "Invoices",
+      hidden: isDeliveryOnly,
+    },
     {
       id: "delivery",
       label: "Delivery",
