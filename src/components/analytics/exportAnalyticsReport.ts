@@ -1,6 +1,7 @@
 import { Lead } from "@/types/lead";
 import { STAGES } from "@/constants/stages";
 import { formatINR } from "@/lib/formatters";
+import { UserAccount, canUserExport } from "@/constants/users";
 
 export interface AnalyticsReportData {
   leads: Lead[];
@@ -10,9 +11,14 @@ export interface AnalyticsReportData {
   avgDealSize: number;
   closingThisMonthValue: number;
   closingThisMonthCount: number;
+  currentUser?: Partial<UserAccount> | string | null;
 }
 
 export function exportAnalyticsToCSV(data: AnalyticsReportData) {
+  if (data.currentUser !== undefined && !canUserExport(data.currentUser)) {
+    alert("Access Restricted: Only Administrator and Preeti are authorized to export data.");
+    return;
+  }
   const {
     leads,
     totalPipelineValue,

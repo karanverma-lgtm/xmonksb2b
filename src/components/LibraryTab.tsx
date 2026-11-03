@@ -64,7 +64,7 @@ import {
   toggleStarDocument,
   exportLibraryMetadataToCSV,
 } from "@/lib/libraryService";
-import { UserAccount } from "@/constants/users";
+import { UserAccount, canUserExport } from "@/constants/users";
 import { EmailAttachment } from "@/constants/emailTemplates";
 import { formatBytes } from "@/lib/formatters";
 
@@ -442,14 +442,16 @@ export const LibraryTab: React.FC<LibraryTabProps> = ({
               <span>Upload Document</span>
             </button>
 
-            <button
-              onClick={() => exportLibraryMetadataToCSV(scopedDocuments)}
-              title="Export visible document metadata to CSV"
-              className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl border border-white/10 text-xs font-bold transition flex items-center space-x-1.5"
-            >
-              <FileDown className="w-4 h-4" />
-              <span className="hidden sm:inline">Export Catalog</span>
-            </button>
+            {canUserExport(currentUser) && (
+              <button
+                onClick={() => exportLibraryMetadataToCSV(scopedDocuments, currentUser)}
+                title="Export visible document metadata to CSV"
+                className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl border border-white/10 text-xs font-bold transition flex items-center space-x-1.5"
+              >
+                <FileDown className="w-4 h-4" />
+                <span className="hidden sm:inline">Export Catalog</span>
+              </button>
+            )}
           </div>
         </div>
 

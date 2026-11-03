@@ -17,7 +17,7 @@ interface AnalyticsFilterBarProps {
   filters: AnalyticsFilterState;
   onFilterChange: (newFilters: AnalyticsFilterState) => void;
   onResetFilters: () => void;
-  onExportCSV: () => void;
+  onExportCSV?: () => void;
   onPrintReport: () => void;
   availableOwners: string[];
   availableIndustries: string[];
@@ -136,14 +136,16 @@ export const AnalyticsFilterBar: React.FC<AnalyticsFilterBarProps> = ({
           <span>Executive Briefing</span>
         </button>
 
-        <button
-          type="button"
-          onClick={onExportCSV}
-          className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors"
-        >
-          <Download className="w-3.5 h-3.5" />
-          <span>Export CSV Report</span>
-        </button>
+        {Boolean(onExportCSV) && (
+          <button
+            type="button"
+            onClick={onExportCSV}
+            className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Export CSV Report</span>
+          </button>
+        )}
       </div>
     </div>
   );

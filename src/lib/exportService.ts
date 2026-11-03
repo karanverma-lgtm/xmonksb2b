@@ -1,5 +1,6 @@
 import { Lead } from "@/types/lead";
 import { STAGES } from "@/constants/stages";
+import { canUserExport, UserAccount } from "@/constants/users";
 
 /**
  * Escapes a field for safe CSV output (quotes if containing commas, quotes, or newlines)
@@ -14,7 +15,16 @@ function escapeCSVField(val: unknown): string {
  * Exports all provided leads as a clean, structured CSV file and triggers a browser download.
  * File name includes current date: `xMonks_B2B_Clients_Export_YYYY-MM-DD.csv`
  */
-export function exportLeadsToCSV(leads: Lead[], filenamePrefix: string = "xMonks_B2B_Clients_Export"): void {
+export function exportLeadsToCSV(
+  leads: Lead[],
+  filenamePrefix: string = "xMonks_B2B_Clients_Export",
+  user?: Partial<UserAccount> | string | null
+): void {
+  if (user !== undefined && !canUserExport(user)) {
+    alert("Access Restricted: Only Administrator and Preeti are authorized to export data.");
+    return;
+  }
+
   if (!leads || leads.length === 0) {
     alert("No client records to export.");
     return;

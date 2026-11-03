@@ -163,8 +163,8 @@ export const LeadTable: React.FC<LeadTableProps> = ({
             </button>
           </div>
 
-          {/* Admin Export Trigger */}
-          {isAdmin && onExportLeads && (
+          {/* Export Trigger (Admin & Preeti only) */}
+          {Boolean(onExportLeads) && (
             <button
               type="button"
               onClick={onExportLeads}

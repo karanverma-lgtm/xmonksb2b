@@ -6,6 +6,7 @@ import { STAGES } from "@/constants/stages";
 import { formatINR } from "@/lib/formatters";
 import { X, Printer, Download, Sparkles, Building2, Trophy, Target, ShieldCheck } from "lucide-react";
 import { exportAnalyticsToCSV } from "./exportAnalyticsReport";
+import { UserAccount, canUserExport } from "@/constants/users";
 
 interface ExecutiveReportModalProps {
   isOpen: boolean;
@@ -17,6 +18,7 @@ interface ExecutiveReportModalProps {
   avgDealSize: number;
   closingThisMonthValue: number;
   closingThisMonthCount: number;
+  currentUser?: UserAccount | null;
 }
 
 export const ExecutiveReportModal: React.FC<ExecutiveReportModalProps> = ({
@@ -29,6 +31,7 @@ export const ExecutiveReportModal: React.FC<ExecutiveReportModalProps> = ({
   avgDealSize,
   closingThisMonthValue,
   closingThisMonthCount,
+  currentUser,
 }) => {
   if (!isOpen) return null;
 
@@ -47,6 +50,10 @@ export const ExecutiveReportModal: React.FC<ExecutiveReportModalProps> = ({
   };
 
   const handleExportCSV = () => {
+    if (!canUserExport(currentUser)) {
+      alert("Access Restricted: Only Administrator and Preeti are authorized to export data.");
+      return;
+    }
     exportAnalyticsToCSV({
       leads,
       totalPipelineValue,
@@ -55,6 +62,7 @@ export const ExecutiveReportModal: React.FC<ExecutiveReportModalProps> = ({
       avgDealSize,
       closingThisMonthValue,
       closingThisMonthCount,
+      currentUser,
     });
   };
 
@@ -81,14 +89,16 @@ export const ExecutiveReportModal: React.FC<ExecutiveReportModalProps> = ({
               <Printer className="w-3.5 h-3.5 text-indigo-500" />
               <span>Print / PDF</span>
             </button>
-            <button
-              type="button"
-              onClick={handleExportCSV}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Export CSV</span>
-            </button>
+            {canUserExport(currentUser) && (
+              <button
+                type="button"
+                onClick={handleExportCSV}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export CSV</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={onClose}

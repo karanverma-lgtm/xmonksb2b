@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 import { ColdClient, ColdClientStatus, ColdStatusConfig, OutreachChannel, AdminComment, OutreachTouchpoint } from "@/types/outreach";
 import { COLD_STATUS_CONFIG, OUTREACH_CHANNELS, OUTREACH_INDUSTRIES } from "@/constants/outreach";
-import { UserAccount, VALID_USERS, getCanonicalOwnerName, isSameOwner } from "@/constants/users";
+import { UserAccount, VALID_USERS, getCanonicalOwnerName, isSameOwner, canUserExport } from "@/constants/users";
 import { formatINR } from "@/lib/formatters";
 import { bulkUpdateColdClients, bulkDeleteColdClients } from "@/lib/outreachService";
 import { AddColdClientModal } from "./AddColdClientModal";
@@ -642,6 +642,10 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
 
   // Export to CSV
   const handleExportCSV = () => {
+    if (!canUserExport(currentUser)) {
+      alert("Access Restricted: Only Administrator and Preeti are authorized to export data.");
+      return;
+    }
     if (filteredClients.length === 0) return;
     const headers = [
       "ID",
@@ -1117,14 +1121,16 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
           </div>
 
           {/* Export CSV */}
-          <button
-            onClick={handleExportCSV}
-            className="p-2 sm:px-3 sm:py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center space-x-1"
-            title="Export CSV"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Export</span>
-          </button>
+          {canUserExport(currentUser) && (
+            <button
+              onClick={handleExportCSV}
+              className="p-2 sm:px-3 sm:py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center space-x-1"
+              title="Export CSV"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Export</span>
+            </button>
+          )}
 
           {/* Quick Clean Up Duplicates button if duplicates detected */}
           {duplicateLeadsCount > 0 && (

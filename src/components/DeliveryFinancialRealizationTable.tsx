@@ -6,6 +6,7 @@ import { DeliveryRecord, TranchePaymentStatus } from "@/types/delivery";
 import { Lead } from "@/types/lead";
 import { formatINR, getDateComponents } from "@/lib/formatters";
 import { downloadCSV } from "@/lib/deliveryAnalytics";
+import { UserAccount, canUserExport } from "@/constants/users";
 
 interface DeliveryFinancialRealizationTableProps {
   records: DeliveryRecord[];
@@ -15,6 +16,7 @@ interface DeliveryFinancialRealizationTableProps {
   showExportButton?: boolean;
   activeRecordId?: string | null;
   selectedMonthFilter?: string;
+  currentUser?: UserAccount | null;
 }
 
 interface TargetMonthInfo {
@@ -37,6 +39,7 @@ export const DeliveryFinancialRealizationTable: React.FC<
   showExportButton = true,
   activeRecordId,
   selectedMonthFilter,
+  currentUser,
 }) => {
   // Determine the 3 target months: Month 0 (Current / Chosen month), Month 1 (+1 month), Month 2 (+2 months)
   const targetMonths: TargetMonthInfo[] = useMemo(() => {
@@ -264,6 +267,10 @@ export const DeliveryFinancialRealizationTable: React.FC<
 
   // CSV Exporter
   const handleExportCSV = () => {
+    if (!canUserExport(currentUser)) {
+      alert("Access Restricted: Only Administrator and Preeti are authorized to export data.");
+      return;
+    }
     const headers = [
       "Company Name",
       "Program",
@@ -336,7 +343,7 @@ export const DeliveryFinancialRealizationTable: React.FC<
           </span>
         </div>
 
-        {showExportButton && (
+        {showExportButton && canUserExport(currentUser) && (
           <button
             type="button"
             onClick={handleExportCSV}

@@ -62,7 +62,7 @@ import {
   CalendarRange,
 } from "lucide-react";
 import { formatINR, formatClosureMonth, getDateComponents } from "@/lib/formatters";
-import { UserAccount, getUserProfile, VALID_USERS, isSameOwner, getCanonicalOwnerName } from "@/constants/users";
+import { UserAccount, getUserProfile, VALID_USERS, isSameOwner, getCanonicalOwnerName, canUserExport } from "@/constants/users";
 import { Lead, ApproachNote, FinancialDocument, ContactPerson, JourneyLog } from "@/types/lead";
 import { getProgramBadgeStyle } from "@/constants/programs";
 import { getLeadSourceBadgeStyle } from "@/constants/leadSources";
@@ -134,6 +134,7 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
   onSelectLead,
   readOnly = false,
 }) => {
+  const canExport = canUserExport(currentUser);
   const isReadOnly = Boolean(readOnly || currentUser?.readOnly);
   const [deliveryRecords, setDeliveryRecords] = useState<DeliveryRecord[]>([]);
   const [isSyncing, setIsSyncing] = useState<boolean>(true);
@@ -966,12 +967,20 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
 
   // CSV Exporters
   const handleExportPortfolioCSV = () => {
+    if (!canExport) {
+      alert("Access Restricted: Only Administrator and Preeti are authorized to export data.");
+      return;
+    }
     const csv = generateDeliveryPortfolioCSV(accessibleDeliveryRecords);
     const dateStr = new Date().toISOString().split("T")[0];
     downloadCSV(`xmonks-delivery-portfolio-${dateStr}.csv`, csv);
   };
 
   const handleExportMatrixCSV = () => {
+    if (!canExport) {
+      alert("Access Restricted: Only Administrator and Preeti are authorized to export data.");
+      return;
+    }
     const csv = generateExecutiveMatrixCSV(accessibleDeliveryRecords, ownerPerformanceList);
     const dateStr = new Date().toISOString().split("T")[0];
     downloadCSV(`xmonks-executive-revenue-matrix-${dateStr}.csv`, csv);
@@ -1901,27 +1910,29 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
               </div>
 
               {/* CSV Export Actions */}
-              <div className="flex items-center space-x-1.5">
-                <button
-                  type="button"
-                  onClick={handleExportPortfolioCSV}
-                  className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center space-x-1.5 shadow-2xs cursor-pointer"
-                  title="Export complete delivery portfolio dataset to CSV"
-                >
-                  <Download className="w-3.5 h-3.5 text-indigo-500" />
-                  <span className="hidden sm:inline">Export Portfolio</span>
-                </button>
+              {canExport && (
+                <div className="flex items-center space-x-1.5">
+                  <button
+                    type="button"
+                    onClick={handleExportPortfolioCSV}
+                    className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center space-x-1.5 shadow-2xs cursor-pointer"
+                    title="Export complete delivery portfolio dataset to CSV"
+                  >
+                    <Download className="w-3.5 h-3.5 text-indigo-500" />
+                    <span className="hidden sm:inline">Export Portfolio</span>
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={handleExportMatrixCSV}
-                  className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center space-x-1.5 shadow-2xs cursor-pointer"
-                  title="Export executive revenue matrix to CSV"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" />
-                  <span className="hidden sm:inline">Export Matrix</span>
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    onClick={handleExportMatrixCSV}
+                    className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center space-x-1.5 shadow-2xs cursor-pointer"
+                    title="Export executive revenue matrix to CSV"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" />
+                    <span className="hidden sm:inline">Export Matrix</span>
+                  </button>
+                </div>
+              )}
 
               {/* Collapse / Expand Toggle */}
               <button
@@ -1948,6 +1959,7 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
                   <DeliveryFinancialRealizationTable
                     records={realizationRecords}
                     allLeads={allLeads}
+                    currentUser={currentUser}
                     onSelectRecord={handleSelectRecord}
                     title={
                       selectedMonthFilter !== "all" && selectedOwnerFilter !== "all"
@@ -3087,6 +3099,10 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
               : 0;
 
           const handleExportInvoicesCSV = () => {
+            if (!canExport) {
+              alert("Access Restricted: Only Administrator and Preeti are authorized to export data.");
+              return;
+            }
             if (invoicedPayments.length === 0) return;
             const headers = [
               "Company Name",
@@ -3187,7 +3203,7 @@ export const DeliveryTab: React.FC<DeliveryTabProps> = ({
                   </div>
 
                   <div className="flex items-center space-x-2">
-                    {invoicedPayments.length > 0 && (
+                    {canExport && invoicedPayments.length > 0 && (
                       <button
                         type="button"
                         onClick={handleExportInvoicesCSV}

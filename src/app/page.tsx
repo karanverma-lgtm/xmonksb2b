@@ -72,7 +72,7 @@ import {
 import { STAGES } from "@/constants/stages";
 import { LoginForm } from "@/components/LoginForm";
 import { ChangePasswordModal } from "@/components/ChangePasswordModal";
-import { UserAccount, isSameOwner } from "@/constants/users";
+import { UserAccount, isSameOwner, canUserExport } from "@/constants/users";
 import {
   subscribeToUserPreferences,
   saveUserPreferencesToFirestore,
@@ -217,6 +217,7 @@ export default function Home() {
     currentUser?.role.toLowerCase().includes("viewer") ||
     currentUser?.username.toLowerCase() === "mani"
   );
+  const canExport = canUserExport(currentUser);
 
   const isTabPermitted = (tab: NavTab) => {
     if (currentUser?.allowedTabs && currentUser.allowedTabs.length > 0) {
@@ -1004,8 +1005,12 @@ export default function Home() {
   };
 
   const handleExportLeads = () => {
-    // Export all active leads in the system for admin
-    exportLeadsToCSV(leads, "xMonks_B2B_All_Clients_Export");
+    if (!canExport) {
+      alert("Access Restricted: Only Administrator and Preeti are authorized to export data.");
+      return;
+    }
+    // Export all active leads in the system for admin / preeti
+    exportLeadsToCSV(leads, "xMonks_B2B_All_Clients_Export", currentUser);
   };
 
   // Cold Client / Outreach Handlers
@@ -1565,7 +1570,7 @@ export default function Home() {
         onOpenAddModal={() => setIsAddModalOpen(true)}
         onOpenBulkModal={() => setIsBulkModalOpen(true)}
         onOpenChangePassword={() => setIsChangePasswordModalOpen(true)}
-        onExportLeads={handleExportLeads}
+        onExportLeads={canExport ? handleExportLeads : undefined}
         onLogout={handleLogout}
         currentUser={currentUser}
         isFirebaseSyncing={isFirebaseSyncing}
@@ -2338,7 +2343,7 @@ export default function Home() {
             onUpdateProgram={isReadOnly ? undefined : handleUpdateProgram}
             onUpdateLeadSource={isReadOnly ? undefined : handleUpdateLeadSource}
             isAdmin={isAdmin}
-            onExportLeads={isReadOnly ? undefined : handleExportLeads}
+            onExportLeads={canExport ? handleExportLeads : undefined}
             onMoveToBilling={isReadOnly ? undefined : handleMoveLeadToBilling}
             onSendToDelivery={isReadOnly ? undefined : handleSendToDelivery}
           />
@@ -2398,6 +2403,7 @@ export default function Home() {
         {!isRestrictedToDelivery && isTabPermitted("analytics") && activeTab === "analytics" && (
           <AnalyticsCharts
             leads={filteredLeads}
+            currentUser={currentUser}
             onSelectLead={(lead) => setSelectedLead(lead)}
           />
         )}

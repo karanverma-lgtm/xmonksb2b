@@ -19,12 +19,14 @@ import {
 } from "lucide-react";
 import { BillingRecord, BillingPayment } from "@/types/billing";
 import { formatINR } from "@/lib/formatters";
+import { UserAccount, canUserExport } from "@/constants/users";
 
 interface MonthlyCollectionsLedgerModalProps {
   isOpen: boolean;
   onClose: () => void;
   records: BillingRecord[];
   onSelectMonthFilter?: (monthKey: string) => void;
+  currentUser?: Partial<UserAccount> | string | null;
 }
 
 export const MonthlyCollectionsLedgerModal: React.FC<MonthlyCollectionsLedgerModalProps> = ({
@@ -32,6 +34,7 @@ export const MonthlyCollectionsLedgerModal: React.FC<MonthlyCollectionsLedgerMod
   onClose,
   records,
   onSelectMonthFilter,
+  currentUser,
 }) => {
   const [activeTab, setActiveTab] = useState<"monthly_summary" | "all_transactions">("monthly_summary");
   const [txSearchTerm, setTxSearchTerm] = useState<string>("");
@@ -165,6 +168,10 @@ export const MonthlyCollectionsLedgerModal: React.FC<MonthlyCollectionsLedgerMod
 
   // Export ledger to CSV
   const handleExportCSV = () => {
+    if (!canUserExport(currentUser)) {
+      alert("Access Restricted: Only Administrator and Preeti are authorized to export data.");
+      return;
+    }
     if (allTransactions.length === 0) {
       alert("No transaction entries to export.");
       return;
@@ -241,14 +248,16 @@ export const MonthlyCollectionsLedgerModal: React.FC<MonthlyCollectionsLedgerMod
           </div>
 
           <div className="flex items-center space-x-2">
-            <button
-              onClick={handleExportCSV}
-              className="flex items-center space-x-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition shadow-sm"
-              title="Download full collections statement as CSV"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Export CSV</span>
-            </button>
+            {canUserExport(currentUser) && (
+              <button
+                onClick={handleExportCSV}
+                className="flex items-center space-x-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition shadow-sm"
+                title="Download full collections statement as CSV"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export CSV</span>
+              </button>
+            )}
             <button
               onClick={onClose}
               className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-white/10 transition"

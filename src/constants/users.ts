@@ -238,3 +238,35 @@ export function isSameOwner(ownerA?: string | null, ownerB?: string | null): boo
   return false;
 }
 
+/**
+ * Strict data export permission check.
+ * Only Administrator ("admin") and Preeti ("preeti") are allowed to export any data.
+ * All other users are strictly blocked from exporting.
+ */
+export function canUserExport(userOrName?: Partial<UserAccount> | string | null): boolean {
+  if (!userOrName) return false;
+  if (typeof userOrName === "string") {
+    const q = userOrName.toLowerCase().trim();
+    return (
+      q === "admin" ||
+      q === "preeti" ||
+      q === "pooja" ||
+      q.startsWith("admin") ||
+      q.startsWith("preeti")
+    );
+  }
+  const username = (userOrName.username || "").toLowerCase().trim();
+  const name = (userOrName.name || "").toLowerCase().trim();
+  const role = (userOrName.role || "").toLowerCase().trim();
+
+  return (
+    username === "admin" ||
+    role.includes("admin") ||
+    username === "preeti" ||
+    name === "preeti" ||
+    name.startsWith("preeti") ||
+    name === "pooja"
+  );
+}
+
+

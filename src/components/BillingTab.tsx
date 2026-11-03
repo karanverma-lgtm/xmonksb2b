@@ -75,6 +75,7 @@ import {
 } from "@/lib/billingService";
 import { formatINR, formatClosureMonth } from "@/lib/formatters";
 import { getLeadSourceBadgeStyle } from "@/constants/leadSources";
+import { canUserExport } from "@/constants/users";
 import { AddBillingRecordModal } from "./AddBillingRecordModal";
 import { RecordPaymentModal } from "./RecordPaymentModal";
 import { LogDefaultModal } from "./LogDefaultModal";
@@ -95,6 +96,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({
   currentUser,
   isAdmin = false,
 }) => {
+  const canExport = canUserExport(currentUser);
   const [records, setRecords] = useState<BillingRecord[]>([]);
   const [isFirebaseSyncing, setIsFirebaseSyncing] = useState<boolean>(true);
 
@@ -708,21 +710,24 @@ export const BillingTab: React.FC<BillingTabProps> = ({
             </button>
           )}
 
-          <button
-            onClick={() =>
-              exportBillingRecordsToCSV(
-                filteredRecords,
-                canViewAllBilling
-                  ? "xMonks_B2B_All_Billing_Export"
-                  : `xMonks_B2B_Billing_${currentUser?.name || "ClientPartner"}`
-              )
-            }
-            className="flex items-center space-x-1.5 px-3.5 py-2.5 bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition shadow-sm"
-            title="Export filtered billing projects to CSV"
-          >
-            <Download className="w-4 h-4 text-emerald-400" />
-            <span className="hidden sm:inline">Export CSV</span>
-          </button>
+          {canExport && (
+            <button
+              onClick={() =>
+                exportBillingRecordsToCSV(
+                  filteredRecords,
+                  canViewAllBilling
+                    ? "xMonks_B2B_All_Billing_Export"
+                    : `xMonks_B2B_Billing_${currentUser?.name || "ClientPartner"}`,
+                  currentUser
+                )
+              }
+              className="flex items-center space-x-1.5 px-3.5 py-2.5 bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition shadow-sm"
+              title="Export filtered billing projects to CSV"
+            >
+              <Download className="w-4 h-4 text-emerald-400" />
+              <span className="hidden sm:inline">Export CSV</span>
+            </button>
+          )}
 
           <button
             onClick={() => {
@@ -2149,6 +2154,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({
         isOpen={isLedgerModalOpen}
         onClose={() => setIsLedgerModalOpen(false)}
         records={userScopedRecords}
+        currentUser={currentUser}
         onSelectMonthFilter={(mKey) => {
           setPaymentMonthFilter(mKey);
         }}

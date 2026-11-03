@@ -49,11 +49,12 @@ import {
 } from "./analytics/AnalyticsFilterBar";
 import { ExecutiveReportModal } from "./analytics/ExecutiveReportModal";
 import { exportAnalyticsToCSV } from "./analytics/exportAnalyticsReport";
-import { getCanonicalOwnerName, isSameOwner } from "@/constants/users";
+import { getCanonicalOwnerName, isSameOwner, canUserExport, UserAccount } from "@/constants/users";
 
 interface AnalyticsChartsProps {
   leads: Lead[];
   onSelectLead: (lead: Lead) => void;
+  currentUser?: UserAccount | null;
 }
 
 const STAGE_COLORS: Record<string, string> = {
@@ -68,7 +69,9 @@ const STAGE_COLORS: Record<string, string> = {
 export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
   leads,
   onSelectLead,
+  currentUser,
 }) => {
+  const canExport = canUserExport(currentUser);
   // Global Analytics Filter State
   const [filters, setFilters] = useState<AnalyticsFilterState>({
     dateRange: "all",
@@ -322,6 +325,10 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
   );
 
   const handleExportCSV = () => {
+    if (!canExport) {
+      alert("Access Restricted: Only Administrator and Preeti are authorized to export data.");
+      return;
+    }
     exportAnalyticsToCSV({
       leads: activeFilteredLeads,
       totalPipelineValue,
@@ -330,6 +337,7 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
       avgDealSize,
       closingThisMonthValue,
       closingThisMonthCount: closingThisMonthLeads.length,
+      currentUser,
     });
   };
 
@@ -410,7 +418,7 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
         filters={filters}
         onFilterChange={setFilters}
         onResetFilters={handleResetFilters}
-        onExportCSV={handleExportCSV}
+        onExportCSV={canExport ? handleExportCSV : undefined}
         onPrintReport={() => setShowBriefingModal(true)}
         availableOwners={availableOwners}
         availableIndustries={availableIndustries}
@@ -1088,6 +1096,7 @@ export const AnalyticsCharts: React.FC<AnalyticsChartsProps> = ({
         avgDealSize={avgDealSize}
         closingThisMonthValue={closingThisMonthValue}
         closingThisMonthCount={closingThisMonthLeads.length}
+        currentUser={currentUser}
       />
     </div>
   );

@@ -35,7 +35,7 @@ import {
   AdminComment,
 } from "@/types/outreach";
 import { COLD_STATUS_CONFIG } from "@/constants/outreach";
-import { UserAccount, getCanonicalOwnerName, isSameOwner } from "@/constants/users";
+import { UserAccount, getCanonicalOwnerName, isSameOwner, canUserExport } from "@/constants/users";
 import { formatINR } from "@/lib/formatters";
 import { ColdClientDetailModal } from "./ColdClientDetailModal";
 import {
@@ -664,6 +664,10 @@ export const TouchpointHistoryTab: React.FC<TouchpointHistoryTabProps> = ({
 
   // Export CSV
   const handleExportCSV = () => {
+    if (!canUserExport(currentUser)) {
+      alert("Access Restricted: Only Administrator and Preeti are authorized to export data.");
+      return;
+    }
     if (viewMode === "team_report") {
       if (ownerSummary.length === 0) {
         alert("No team data found to export.");
@@ -836,15 +840,17 @@ export const TouchpointHistoryTab: React.FC<TouchpointHistoryTabProps> = ({
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={handleExportCSV}
-            className="px-3.5 py-2 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Export filtered records to CSV"
-          >
-            <Download className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-            <span>Export CSV</span>
-          </button>
+          {canUserExport(currentUser) && (
+            <button
+              type="button"
+              onClick={handleExportCSV}
+              className="px-3.5 py-2 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Export filtered records to CSV"
+            >
+              <Download className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span>Export CSV</span>
+            </button>
+          )}
         </div>
       </div>
 

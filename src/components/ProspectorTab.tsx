@@ -57,7 +57,7 @@ import {
   clearAllProspectHistory,
   exportProspectsToCSV,
 } from "@/lib/salesqlService";
-import { UserAccount } from "@/constants/users";
+import { UserAccount, canUserExport } from "@/constants/users";
 import { Lead } from "@/types/lead";
 import { ColdClient } from "@/types/outreach";
 import {
@@ -1199,15 +1199,17 @@ Sundar Pichai, Alphabet`}
                     <span>Add to Outreach ({selectedBulkIndices.size})</span>
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => exportBulkEnrichResultsToCSV(bulkResults)}
-                    className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl transition"
-                    title="Export full bulk dataset to CSV spreadsheet"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Export CSV</span>
-                  </button>
+                  {canUserExport(currentUser) && (
+                    <button
+                      type="button"
+                      onClick={() => exportBulkEnrichResultsToCSV(bulkResults, "salesql_bulk_enriched", currentUser)}
+                      className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl transition"
+                      title="Export full bulk dataset to CSV spreadsheet"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Export CSV</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1867,13 +1869,15 @@ Sundar Pichai, Alphabet`}
                     </div>
 
                     <div className="flex items-center space-x-1">
-                      <button
-                        onClick={() => exportProspectsToCSV(filteredHistory)}
-                        className="p-1 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800"
-                        title="Export History to CSV"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                      </button>
+                      {canUserExport(currentUser) && (
+                        <button
+                          onClick={() => exportProspectsToCSV(filteredHistory, "xMonks_B2B_Prospects_Export", currentUser)}
+                          className="p-1 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          title="Export History to CSV"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       {filteredHistory.length > 0 && (
                         <button
                           onClick={async () => {

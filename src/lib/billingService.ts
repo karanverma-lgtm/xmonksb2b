@@ -17,6 +17,7 @@ import {
   VendorCredential,
 } from "@/types/billing";
 import { Lead } from "@/types/lead";
+import { UserAccount, canUserExport } from "@/constants/users";
 
 const BILLING_COLLECTION = "b2b_billing_records";
 const BILLING_STORAGE_KEY = "xmonks_b2b_billing_records";
@@ -939,8 +940,13 @@ export async function uploadBillingFile(
 // Export Billing Records to CSV
 export function exportBillingRecordsToCSV(
   records: BillingRecord[],
-  filenamePrefix = "xMonks_B2B_Billing_Report"
+  filenamePrefix = "xMonks_B2B_Billing_Report",
+  user?: Partial<UserAccount> | string | null
 ): void {
+  if (user !== undefined && !canUserExport(user)) {
+    alert("Access Restricted: Only Administrator and Preeti are authorized to export data.");
+    return;
+  }
   if (records.length === 0) {
     alert("No billing records to export.");
     return;

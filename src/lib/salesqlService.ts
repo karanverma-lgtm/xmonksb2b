@@ -15,6 +15,7 @@ import {
   BulkEnrichPersonQuery,
   BulkEnrichPersonItemResult,
 } from "@/types/salesql";
+import { UserAccount, canUserExport } from "@/constants/users";
 
 const SALESQL_STORAGE_KEY = "xmonks_b2b_salesql_api_key";
 const PROSPECTS_COLLECTION = "b2b_prospects";
@@ -333,8 +334,13 @@ export async function clearAllProspectHistory(records?: ProspectHistoryRecord[])
 // Export Enriched Prospects to CSV
 export function exportProspectsToCSV(
   records: ProspectHistoryRecord[],
-  filename = "xMonks_B2B_Prospects_Export"
+  filename = "xMonks_B2B_Prospects_Export",
+  user?: Partial<UserAccount> | string | null
 ): void {
+  if (user !== undefined && !canUserExport(user)) {
+    alert("Access Restricted: Only Administrator and Preeti are authorized to export data.");
+    return;
+  }
   if (records.length === 0) {
     alert("No prospect records to export.");
     return;
@@ -536,8 +542,13 @@ export function parseTextToBulkQueries(rawText: string): BulkEnrichPersonQuery[]
 // Export Bulk Enriched Results to CSV
 export function exportBulkEnrichResultsToCSV(
   items: { query: BulkEnrichPersonQuery; person?: SalesQLPerson; error?: string }[],
-  filename = "salesql_bulk_enriched"
+  filename = "salesql_bulk_enriched",
+  user?: Partial<UserAccount> | string | null
 ): void {
+  if (user !== undefined && !canUserExport(user)) {
+    alert("Access Restricted: Only Administrator and Preeti are authorized to export data.");
+    return;
+  }
   if (typeof window === "undefined" || !items || items.length === 0) return;
 
   const headers = [

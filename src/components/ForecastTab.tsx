@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { Lead } from "@/types/lead";
 import { updateLeadInvoiceDetails, updateLeadOwner } from "@/lib/leadsService";
 import { formatINR, getDateComponents } from "@/lib/formatters";
-import { UserAccount, isSameOwner } from "@/constants/users";
+import { UserAccount, isSameOwner, canUserExport } from "@/constants/users";
 import { NavTab } from "@/components/Sidebar";
 import { SpringCard, SpringButton } from "@/components/spring";
 import {
@@ -258,6 +258,10 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
 
   // Export to CSV
   const handleExportCSV = () => {
+    if (!canUserExport(currentUser)) {
+      alert("Access Restricted: Only Administrator and Preeti are authorized to export data.");
+      return;
+    }
     if (filteredInvoices.length === 0) return;
     const headers = [
       "Invoice Number",
@@ -419,16 +423,18 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
             </div>
 
             {/* Export CSV Button */}
-            <SpringButton
-              variant="secondary"
-              size="sm"
-              onClick={handleExportCSV}
-              disabled={filteredInvoices.length === 0}
-              className="flex items-center space-x-1.5 font-bold"
-            >
-              <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>Export CSV</span>
-            </SpringButton>
+            {canUserExport(currentUser) && (
+              <SpringButton
+                variant="secondary"
+                size="sm"
+                onClick={handleExportCSV}
+                disabled={filteredInvoices.length === 0}
+                className="flex items-center space-x-1.5 font-bold"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>Export CSV</span>
+              </SpringButton>
+            )}
           </div>
         </div>
 

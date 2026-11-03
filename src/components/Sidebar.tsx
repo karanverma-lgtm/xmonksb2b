@@ -32,7 +32,7 @@ import {
 } from "lucide-react";
 
 import { formatINR } from "@/lib/formatters";
-import { UserAccount } from "@/constants/users";
+import { UserAccount, canUserExport } from "@/constants/users";
 import { ThemeToggle } from "./ThemeToggle";
 import { SpringButton } from "@/components/spring";
 
@@ -118,6 +118,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         currentUser.allowedTabs[0] === "delivery")
   );
   const isReadOnly = Boolean(currentUser?.readOnly);
+  const canExport = canUserExport(currentUser);
 
   const isTabAllowed = (tabId: NavTab) => {
     if (currentUser?.allowedTabs && currentUser.allowedTabs.length > 0) {
@@ -486,7 +487,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <span>Import</span>
                   </SpringButton>
 
-                  {isAdmin && onExportLeads && (
+                  {canExport && onExportLeads && (
                     <SpringButton
                       variant="secondary"
                       size="sm"

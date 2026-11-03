@@ -10,6 +10,7 @@ import {
   orderBy,
 } from "firebase/firestore";
 import { LibraryDocument, DocumentCategory, libraryDocToEmailAttachment } from "@/types/library";
+import { UserAccount, canUserExport } from "@/constants/users";
 import { sanitizeForFirestore } from "./leadsService";
 import { formatBytes } from "./formatters";
 import { getMimeType } from "./mimeUtils";
@@ -489,7 +490,14 @@ export async function deleteLibraryDocument(
 /**
  * Export Library metadata list to CSV
  */
-export function exportLibraryMetadataToCSV(docs: LibraryDocument[]): void {
+export function exportLibraryMetadataToCSV(
+  docs: LibraryDocument[],
+  user?: Partial<UserAccount> | string | null
+): void {
+  if (user !== undefined && !canUserExport(user)) {
+    alert("Access Restricted: Only Administrator and Preeti are authorized to export data.");
+    return;
+  }
   if (!docs || docs.length === 0) return;
 
   const headers = [
