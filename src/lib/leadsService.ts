@@ -10,7 +10,7 @@ import {
   orderBy,
   writeBatch,
 } from "firebase/firestore";
-import { Lead, LeadStage, JourneyLog, ApproachNote, FinancialDocument, ContactPerson } from "@/types/lead";
+import { Lead, LeadStage, JourneyLog, ApproachNote, FinancialDocument, ContactPerson, LeadInvoice, getLeadInvoices } from "@/types/lead";
 import { STAGES } from "@/constants/stages";
 import { formatINR, formatClosureMonth } from "./formatters";
 import { deleteApproachNoteFromFirebase } from "./approachNoteService";
@@ -160,10 +160,25 @@ export async function createLead(
     newStage: leadData.stage,
   };
 
+  const initialInvoices = leadData.invoices && leadData.invoices.length > 0
+    ? leadData.invoices
+    : (leadData.invoiceNumber || leadData.invoiceDate || (typeof leadData.invoiceAmount === "number" && leadData.invoiceAmount > 0))
+    ? [
+        {
+          id: "inv-" + Date.now(),
+          invoiceNumber: leadData.invoiceNumber?.trim() || `INV-${newId.slice(-6).toUpperCase()}`,
+          invoiceDate: leadData.invoiceDate?.trim() || timestampIso.split("T")[0],
+          invoiceAmount: typeof leadData.invoiceAmount === "number" ? leadData.invoiceAmount : leadData.dealValue || 0,
+          createdAt: timestampIso,
+        },
+      ]
+    : undefined;
+
   const newLead: Lead = {
     ...leadData,
     id: newId,
     weightage,
+    invoices: initialInvoices,
     createdAt: timestampIso,
     updatedAt: timestampIso,
     journeyLogs: [initialLog],
@@ -1710,14 +1725,10 @@ export async function completeLeadFollowup(
 
 
 
-// Update Lead Invoice Details (invoiceNumber, invoiceDate, invoiceAmount)
-export async function updateLeadInvoiceDetails(
+// Save all invoices for a lead (re-calculates summary and syncs)
+export async function saveLeadInvoices(
   leadId: string,
-  invoiceData: {
-    invoiceNumber?: string;
-    invoiceDate?: string;
-    invoiceAmount?: number;
-  },
+  invoices: LeadInvoice[],
   author: string = "Client Partner"
 ): Promise<Lead | null> {
   const localLeads = getStoredLocalLeads();
@@ -1728,30 +1739,42 @@ export async function updateLeadInvoiceDetails(
   const timestampIso = now.toISOString();
   const formattedDate = formatTimestamp(now);
 
-  const cleanInvoiceNo = invoiceData.invoiceNumber?.trim() || undefined;
-  const cleanInvoiceDate = invoiceData.invoiceDate?.trim() || undefined;
-  const cleanInvoiceAmount =
-    typeof invoiceData.invoiceAmount === "number" && !isNaN(invoiceData.invoiceAmount)
-      ? invoiceData.invoiceAmount
-      : undefined;
+  // Clean and filter valid invoices
+  const cleanInvoices = invoices.map((inv) => ({
+    id: inv.id || "inv-" + Date.now() + "-" + Math.floor(100 + Math.random() * 900),
+    invoiceNumber: inv.invoiceNumber?.trim() || `INV-${target.id.slice(-6).toUpperCase()}`,
+    invoiceDate: inv.invoiceDate?.trim() || now.toISOString().split("T")[0],
+    invoiceAmount: typeof inv.invoiceAmount === "number" && !isNaN(inv.invoiceAmount) ? inv.invoiceAmount : 0,
+    notes: inv.notes?.trim() || undefined,
+    createdAt: inv.createdAt || timestampIso,
+    updatedAt: timestampIso,
+  }));
+
+  const totalInvoiced = cleanInvoices.reduce((sum, inv) => sum + (inv.invoiceAmount || 0), 0);
+  const latestInvoice = cleanInvoices.length > 0 ? cleanInvoices[cleanInvoices.length - 1] : null;
 
   const invoiceLog: JourneyLog = {
     id: "log-" + Date.now() + "-" + Math.floor(Math.random() * 1000),
     timestamp: timestampIso,
     formattedDate: formattedDate,
     type: "invoice_update",
-    title: cleanInvoiceNo ? `Invoice Details Updated: ${cleanInvoiceNo}` : "Invoice Details Updated",
-    description: `Invoice ${cleanInvoiceNo ? "#" + cleanInvoiceNo : ""} for ${
-      cleanInvoiceAmount !== undefined ? formatINR(cleanInvoiceAmount) : "N/A"
-    } dated ${cleanInvoiceDate || "N/A"}.`,
+    title: cleanInvoices.length > 0
+      ? `Invoices Updated: ${cleanInvoices.length} Invoices (${formatINR(totalInvoiced)})`
+      : "Invoices Cleared",
+    description: cleanInvoices.length > 0
+      ? `Current invoices: ${cleanInvoices
+          .map((i) => `#${i.invoiceNumber} (${formatINR(i.invoiceAmount)})`)
+          .join(", ")}.`
+      : "All invoice entries removed.",
     author: author,
   };
 
   const updatedLead: Lead = {
     ...target,
-    invoiceNumber: cleanInvoiceNo,
-    invoiceDate: cleanInvoiceDate,
-    invoiceAmount: cleanInvoiceAmount,
+    invoices: cleanInvoices,
+    invoiceNumber: latestInvoice ? latestInvoice.invoiceNumber : undefined,
+    invoiceDate: latestInvoice ? latestInvoice.invoiceDate : undefined,
+    invoiceAmount: totalInvoiced > 0 ? totalInvoiced : undefined,
     updatedAt: timestampIso,
     journeyLogs: [invoiceLog, ...target.journeyLogs],
   };
@@ -1762,19 +1785,173 @@ export async function updateLeadInvoiceDetails(
     await updateDoc(
       docRef,
       sanitizeForFirestore({
-        invoiceNumber: cleanInvoiceNo || null,
-        invoiceDate: cleanInvoiceDate || null,
-        invoiceAmount: cleanInvoiceAmount !== undefined ? cleanInvoiceAmount : null,
+        invoices: cleanInvoices,
+        invoiceNumber: latestInvoice?.invoiceNumber || null,
+        invoiceDate: latestInvoice?.invoiceDate || null,
+        invoiceAmount: totalInvoiced > 0 ? totalInvoiced : null,
         updatedAt: timestampIso,
         journeyLogs: updatedLead.journeyLogs,
       })
     );
   } catch (err) {
-    console.warn("Firestore invoice details update skipped, updating local state", err);
+    console.warn("Firestore saveLeadInvoices update skipped, updating local state", err);
   }
 
   const updatedLeads = localLeads.map((l) => (l.id === leadId ? updatedLead : l));
   saveStoredLocalLeads(updatedLeads);
 
   return updatedLead;
+}
+
+// Add a single new invoice to a lead
+export async function addLeadInvoice(
+  leadId: string,
+  invoiceData: {
+    invoiceNumber: string;
+    invoiceDate: string;
+    invoiceAmount: number;
+    notes?: string;
+  },
+  author: string = "Client Partner"
+): Promise<Lead | null> {
+  const localLeads = getStoredLocalLeads();
+  const target = localLeads.find((l) => l.id === leadId);
+  if (!target) return null;
+
+  const currentInvoices = getLeadInvoices(target);
+  const newInvoice: LeadInvoice = {
+    id: "inv-" + Date.now() + "-" + Math.floor(100 + Math.random() * 900),
+    invoiceNumber: invoiceData.invoiceNumber.trim(),
+    invoiceDate: invoiceData.invoiceDate.trim(),
+    invoiceAmount: invoiceData.invoiceAmount,
+    notes: invoiceData.notes?.trim() || undefined,
+    createdAt: new Date().toISOString(),
+  };
+
+  return saveLeadInvoices(leadId, [...currentInvoices, newInvoice], author);
+}
+
+// Update a specific invoice by its ID
+export async function updateLeadSingleInvoice(
+  leadId: string,
+  invoiceId: string,
+  updates: Partial<LeadInvoice>,
+  author: string = "Client Partner"
+): Promise<Lead | null> {
+  const localLeads = getStoredLocalLeads();
+  const target = localLeads.find((l) => l.id === leadId);
+  if (!target) return null;
+
+  const currentInvoices = getLeadInvoices(target);
+  let matched = false;
+  const updatedInvoices = currentInvoices.map((inv) => {
+    if (inv.id === invoiceId) {
+      matched = true;
+      return {
+        ...inv,
+        ...updates,
+        invoiceNumber: updates.invoiceNumber !== undefined ? updates.invoiceNumber.trim() : inv.invoiceNumber,
+        invoiceDate: updates.invoiceDate !== undefined ? updates.invoiceDate.trim() : inv.invoiceDate,
+        invoiceAmount:
+          typeof updates.invoiceAmount === "number" && !isNaN(updates.invoiceAmount)
+            ? updates.invoiceAmount
+            : inv.invoiceAmount,
+        notes: updates.notes !== undefined ? updates.notes?.trim() || undefined : inv.notes,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    return inv;
+  });
+
+  // If not matched (e.g. legacy invoice or new ID), push or update first
+  if (!matched) {
+    if (updatedInvoices.length > 0) {
+      updatedInvoices[0] = {
+        ...updatedInvoices[0],
+        ...updates,
+      };
+    } else {
+      updatedInvoices.push({
+        id: invoiceId || "inv-" + Date.now(),
+        invoiceNumber: updates.invoiceNumber || "INV-001",
+        invoiceDate: updates.invoiceDate || new Date().toISOString().split("T")[0],
+        invoiceAmount: updates.invoiceAmount || 0,
+        notes: updates.notes,
+        createdAt: new Date().toISOString(),
+      });
+    }
+  }
+
+  return saveLeadInvoices(leadId, updatedInvoices, author);
+}
+
+// Delete a single invoice from a lead
+export async function deleteLeadInvoice(
+  leadId: string,
+  invoiceId: string,
+  author: string = "Client Partner"
+): Promise<Lead | null> {
+  const localLeads = getStoredLocalLeads();
+  const target = localLeads.find((l) => l.id === leadId);
+  if (!target) return null;
+
+  const currentInvoices = getLeadInvoices(target);
+  const filtered = currentInvoices.filter((inv) => inv.id !== invoiceId);
+  return saveLeadInvoices(leadId, filtered, author);
+}
+
+// Update Lead Invoice Details (invoiceNumber, invoiceDate, invoiceAmount) - maintains full backward compatibility
+export async function updateLeadInvoiceDetails(
+  leadId: string,
+  invoiceData: {
+    invoiceNumber?: string;
+    invoiceDate?: string;
+    invoiceAmount?: number;
+    invoices?: LeadInvoice[];
+  },
+  author: string = "Client Partner"
+): Promise<Lead | null> {
+  // If multiple invoices array is passed directly, use saveLeadInvoices
+  if (Array.isArray(invoiceData.invoices)) {
+    return saveLeadInvoices(leadId, invoiceData.invoices, author);
+  }
+
+  const localLeads = getStoredLocalLeads();
+  const target = localLeads.find((l) => l.id === leadId);
+  if (!target) return null;
+
+  const cleanInvoiceNo = invoiceData.invoiceNumber?.trim() || undefined;
+  const cleanInvoiceDate = invoiceData.invoiceDate?.trim() || undefined;
+  const cleanInvoiceAmount =
+    typeof invoiceData.invoiceAmount === "number" && !isNaN(invoiceData.invoiceAmount)
+      ? invoiceData.invoiceAmount
+      : undefined;
+
+  const existingInvoices = getLeadInvoices(target);
+
+  if (cleanInvoiceNo || cleanInvoiceDate || cleanInvoiceAmount !== undefined) {
+    if (existingInvoices.length <= 1) {
+      const singleInvoice: LeadInvoice = {
+        id: existingInvoices[0]?.id || "inv-" + Date.now(),
+        invoiceNumber: cleanInvoiceNo || existingInvoices[0]?.invoiceNumber || `INV-${target.id.slice(-6).toUpperCase()}`,
+        invoiceDate: cleanInvoiceDate || existingInvoices[0]?.invoiceDate || new Date().toISOString().split("T")[0],
+        invoiceAmount: cleanInvoiceAmount !== undefined ? cleanInvoiceAmount : existingInvoices[0]?.invoiceAmount || 0,
+        createdAt: existingInvoices[0]?.createdAt || new Date().toISOString(),
+      };
+      return saveLeadInvoices(leadId, [singleInvoice], author);
+    } else {
+      // If target already has multiple invoices, update the most recent one or match by number
+      const updatedList = [...existingInvoices];
+      const lastIdx = updatedList.length - 1;
+      updatedList[lastIdx] = {
+        ...updatedList[lastIdx],
+        invoiceNumber: cleanInvoiceNo || updatedList[lastIdx].invoiceNumber,
+        invoiceDate: cleanInvoiceDate || updatedList[lastIdx].invoiceDate,
+        invoiceAmount: cleanInvoiceAmount !== undefined ? cleanInvoiceAmount : updatedList[lastIdx].invoiceAmount,
+      };
+      return saveLeadInvoices(leadId, updatedList, author);
+    }
+  }
+
+  return target;
 }

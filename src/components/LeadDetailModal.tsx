@@ -43,6 +43,7 @@ import {
   UserPlus,
   Briefcase,
   Star,
+  Copy,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
@@ -50,7 +51,7 @@ import { formatINR, formatClosureMonth } from "@/lib/formatters";
 import { PRESET_PROGRAMS, getProgramBadgeStyle } from "@/constants/programs";
 import { LEAD_SOURCES, getLeadSourceBadgeStyle } from "@/constants/leadSources";
 import { SpringButton } from "@/components/spring";
-import { ApproachNote, FinancialDocument, ContactPerson } from "@/types/lead";
+import { ApproachNote, FinancialDocument, ContactPerson, LeadInvoice, getLeadInvoices } from "@/types/lead";
 import {
   uploadApproachNoteToFirebase,
   uploadMultipleApproachNotesToR2,
@@ -126,8 +127,27 @@ interface LeadDetailModalProps {
       invoiceNumber?: string;
       invoiceDate?: string;
       invoiceAmount?: number;
+      invoices?: LeadInvoice[];
     }
   ) => void;
+  onAddInvoice?: (
+    leadId: string,
+    invoiceData: {
+      invoiceNumber: string;
+      invoiceDate: string;
+      invoiceAmount: number;
+      notes?: string;
+    }
+  ) => Promise<void> | void;
+  onUpdateSingleInvoice?: (
+    leadId: string,
+    invoiceId: string,
+    updates: Partial<LeadInvoice>
+  ) => Promise<void> | void;
+  onDeleteInvoice?: (
+    leadId: string,
+    invoiceId: string
+  ) => Promise<void> | void;
   readOnly?: boolean;
 }
 
@@ -158,6 +178,9 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   onMoveToBilling,
   onSendToDelivery,
   onUpdateInvoiceDetails,
+  onAddInvoice,
+  onUpdateSingleInvoice,
+  onDeleteInvoice,
   readOnly = false,
 }) => {
   const isReadOnly = Boolean(readOnly || currentUser?.readOnly);
@@ -226,46 +249,169 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   const [isDraggingNote, setIsDraggingNote] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
-  // Invoice Details State (Synced to Forecast Tab)
-  const [invoiceNumberInput, setInvoiceNumberInput] = useState(lead?.invoiceNumber || "");
-  const [invoiceDateInput, setInvoiceDateInput] = useState(lead?.invoiceDate || "");
-  const [invoiceAmountInput, setInvoiceAmountInput] = useState<string>(
-    lead?.invoiceAmount !== undefined && lead?.invoiceAmount !== null
-      ? String(lead.invoiceAmount)
-      : lead?.dealValue
-      ? String(lead.dealValue)
-      : ""
-  );
+  // Multiple Invoices State (Synced to Forecast Tab)
+  const existingInvoices: LeadInvoice[] = React.useMemo(() => getLeadInvoices(lead), [lead]);
+  const [isInvoiceFormOpen, setIsInvoiceFormOpen] = useState(false);
+  const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
+  const [invoiceNumberInput, setInvoiceNumberInput] = useState("");
+  const [invoiceDateInput, setInvoiceDateInput] = useState("");
+  const [invoiceAmountInput, setInvoiceAmountInput] = useState("");
+  const [invoiceNotesInput, setInvoiceNotesInput] = useState("");
+  const [copiedInvoiceId, setCopiedInvoiceId] = useState<string | null>(null);
   const [isSavingInvoice, setIsSavingInvoice] = useState(false);
   const [invoiceSaveSuccess, setInvoiceSaveSuccess] = useState(false);
 
-  React.useEffect(() => {
-    setInvoiceNumberInput(lead?.invoiceNumber || "");
-    setInvoiceDateInput(lead?.invoiceDate || "");
-    setInvoiceAmountInput(
-      lead?.invoiceAmount !== undefined && lead?.invoiceAmount !== null
-        ? String(lead.invoiceAmount)
-        : lead?.dealValue
-        ? String(lead.dealValue)
-        : ""
-    );
-  }, [lead?.invoiceNumber, lead?.invoiceDate, lead?.invoiceAmount, lead?.dealValue]);
+  const totalInvoiced = React.useMemo(
+    () => existingInvoices.reduce((sum, inv) => sum + (inv.invoiceAmount || 0), 0),
+    [existingInvoices]
+  );
+  const unbilledBalance = Math.max(0, (lead?.dealValue || 0) - totalInvoiced);
+  const invoicedPercent =
+    lead?.dealValue && lead.dealValue > 0
+      ? Math.min(100, Math.round((totalInvoiced / lead.dealValue) * 100))
+      : 100;
 
-  const handleSaveInvoiceDetails = (e: React.FormEvent) => {
+  // Open form to add a new invoice
+  const handleOpenAddInvoice = () => {
+    setEditingInvoiceId(null);
+    const year = new Date().getFullYear();
+    const rand = Math.floor(1000 + Math.random() * 9000);
+    setInvoiceNumberInput(`INV-XM-${year}-${rand}`);
+    setInvoiceDateInput(new Date().toISOString().split("T")[0]);
+    setInvoiceAmountInput(
+      unbilledBalance > 0 ? String(unbilledBalance) : lead?.dealValue ? String(lead.dealValue) : ""
+    );
+    setInvoiceNotesInput("");
+    setIsInvoiceFormOpen(true);
+  };
+
+  // Open form to edit an existing invoice
+  const handleStartEditInvoice = (inv: LeadInvoice) => {
+    setEditingInvoiceId(inv.id);
+    setInvoiceNumberInput(inv.invoiceNumber);
+    setInvoiceDateInput(inv.invoiceDate);
+    setInvoiceAmountInput(String(inv.invoiceAmount));
+    setInvoiceNotesInput(inv.notes || "");
+    setIsInvoiceFormOpen(true);
+  };
+
+  const handleCancelInvoiceForm = () => {
+    setIsInvoiceFormOpen(false);
+    setEditingInvoiceId(null);
+    setInvoiceNumberInput("");
+    setInvoiceDateInput("");
+    setInvoiceAmountInput("");
+    setInvoiceNotesInput("");
+  };
+
+  const handleSaveInvoiceDetails = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!lead) return;
     setIsSavingInvoice(true);
-    const parsedAmount = invoiceAmountInput ? parseFloat(invoiceAmountInput) : undefined;
-    if (onUpdateInvoiceDetails) {
-      onUpdateInvoiceDetails(lead.id, {
-        invoiceNumber: invoiceNumberInput.trim() || undefined,
-        invoiceDate: invoiceDateInput.trim() || undefined,
-        invoiceAmount: !isNaN(parsedAmount as number) ? parsedAmount : undefined,
-      });
+    const parsedAmount = parseFloat(invoiceAmountInput) || 0;
+    const cleanInvNo = invoiceNumberInput.trim() || `INV-${lead.id.slice(-6).toUpperCase()}`;
+    const cleanDate = invoiceDateInput.trim() || new Date().toISOString().split("T")[0];
+
+    try {
+      if (editingInvoiceId) {
+        // Update existing invoice
+        const updatedList = existingInvoices.map((inv) =>
+          inv.id === editingInvoiceId
+            ? {
+                ...inv,
+                invoiceNumber: cleanInvNo,
+                invoiceDate: cleanDate,
+                invoiceAmount: parsedAmount,
+                notes: invoiceNotesInput.trim() || undefined,
+                updatedAt: new Date().toISOString(),
+              }
+            : inv
+        );
+        if (onUpdateSingleInvoice) {
+          await onUpdateSingleInvoice(lead.id, editingInvoiceId, {
+            invoiceNumber: cleanInvNo,
+            invoiceDate: cleanDate,
+            invoiceAmount: parsedAmount,
+            notes: invoiceNotesInput.trim() || undefined,
+          });
+        } else if (onUpdateInvoiceDetails) {
+          onUpdateInvoiceDetails(lead.id, {
+            invoices: updatedList,
+            invoiceNumber: cleanInvNo,
+            invoiceDate: cleanDate,
+            invoiceAmount: updatedList.reduce((s, i) => s + i.invoiceAmount, 0),
+          });
+        }
+      } else {
+        // Add new invoice
+        const newInvoice: LeadInvoice = {
+          id: "inv-" + Date.now() + "-" + Math.floor(100 + Math.random() * 900),
+          invoiceNumber: cleanInvNo,
+          invoiceDate: cleanDate,
+          invoiceAmount: parsedAmount,
+          notes: invoiceNotesInput.trim() || undefined,
+          createdAt: new Date().toISOString(),
+        };
+        const updatedList = [...existingInvoices, newInvoice];
+        if (onAddInvoice) {
+          await onAddInvoice(lead.id, {
+            invoiceNumber: cleanInvNo,
+            invoiceDate: cleanDate,
+            invoiceAmount: parsedAmount,
+            notes: invoiceNotesInput.trim() || undefined,
+          });
+        } else if (onUpdateInvoiceDetails) {
+          onUpdateInvoiceDetails(lead.id, {
+            invoices: updatedList,
+            invoiceNumber: cleanInvNo,
+            invoiceDate: cleanDate,
+            invoiceAmount: updatedList.reduce((s, i) => s + i.invoiceAmount, 0),
+          });
+        }
+      }
+
+      setInvoiceSaveSuccess(true);
+      setTimeout(() => setInvoiceSaveSuccess(false), 3000);
+      handleCancelInvoiceForm();
+    } catch (err) {
+      console.error("Failed to save invoice:", err);
+    } finally {
+      setIsSavingInvoice(false);
     }
-    setIsSavingInvoice(false);
-    setInvoiceSaveSuccess(true);
-    setTimeout(() => setInvoiceSaveSuccess(false), 3000);
+  };
+
+  const handleDeleteInvoice = async (invoiceId: string) => {
+    if (!lead) return;
+    if (!confirm("Are you sure you want to remove this invoice? It will also be removed from the Forecast tab.")) {
+      return;
+    }
+    try {
+      if (onDeleteInvoice) {
+        await onDeleteInvoice(lead.id, invoiceId);
+      } else if (onUpdateInvoiceDetails) {
+        const filtered = existingInvoices.filter((i) => i.id !== invoiceId);
+        onUpdateInvoiceDetails(lead.id, {
+          invoices: filtered,
+          invoiceNumber: filtered[filtered.length - 1]?.invoiceNumber,
+          invoiceDate: filtered[filtered.length - 1]?.invoiceDate,
+          invoiceAmount: filtered.reduce((s, i) => s + i.invoiceAmount, 0),
+        });
+      }
+      if (editingInvoiceId === invoiceId) {
+        handleCancelInvoiceForm();
+      }
+    } catch (err) {
+      console.error("Failed to delete invoice:", err);
+    }
+  };
+
+  const handleCopyInvoiceNumber = (invNo: string, id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(invNo);
+      setCopiedInvoiceId(id);
+      setTimeout(() => setCopiedInvoiceId(null), 2000);
+    }
   };
 
   // Financial Documents State (Multi-Upload & All Formats)
@@ -1956,12 +2102,17 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                   <Receipt className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center space-x-2">
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center space-x-2 flex-wrap gap-1.5">
                     <span>Invoice & Forecast Details</span>
-                    {lead.invoiceNumber ? (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700/80">
-                        #{lead.invoiceNumber}
-                      </span>
+                    {existingInvoices.length > 0 ? (
+                      <>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700/80">
+                          {existingInvoices.length} {existingInvoices.length === 1 ? "Invoice" : "Invoices"} Raised
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/80">
+                          Total: {formatINR(totalInvoiced)}
+                        </span>
+                      </>
                     ) : (
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
                         Not Invoiced
@@ -1969,55 +2120,245 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                     )}
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Record invoice number, date, and raised amount for live tracking in the Forecast tab.
+                    Record one or multiple invoices with issue date and amounts for live monthly tracking in the Forecast tab.
                   </p>
                 </div>
               </div>
 
-              {invoiceSaveSuccess && (
-                <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 flex items-center space-x-1 animate-fadeIn">
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Invoice Saved & Synced!</span>
-                </span>
-              )}
+              <div className="flex items-center space-x-2">
+                {invoiceSaveSuccess && (
+                  <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 flex items-center space-x-1 animate-fadeIn">
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Invoice Saved & Synced!</span>
+                  </span>
+                )}
+
+                {!isReadOnly && !isInvoiceFormOpen && (
+                  <SpringButton
+                    type="button"
+                    variant="gradient"
+                    size="sm"
+                    onClick={handleOpenAddInvoice}
+                    className="flex items-center space-x-1.5 font-bold shadow-xs cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Invoice</span>
+                  </SpringButton>
+                )}
+              </div>
             </div>
 
-            {isReadOnly ? (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-slate-50 dark:bg-slate-950/60 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
-                <div>
-                  <span className="text-[10px] text-slate-400 block font-bold">Invoice Number</span>
-                  <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
-                    {lead.invoiceNumber || "None"}
-                  </span>
+            {/* Invoicing Progress Bar & Commercial Overview */}
+            {(lead.dealValue > 0 || existingInvoices.length > 0) && (
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-950/60 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  <div>
+                    <span className="text-[10px] text-slate-400 uppercase font-bold block tracking-wider">
+                      Total Invoiced
+                    </span>
+                    <span className="font-mono font-black text-sm text-emerald-600 dark:text-emerald-400">
+                      {formatINR(totalInvoiced)}
+                    </span>
+                    <span className="text-[10px] text-slate-500 block">
+                      Across {existingInvoices.length} {existingInvoices.length === 1 ? "invoice" : "invoices"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 uppercase font-bold block tracking-wider">
+                      Contract Deal Value
+                    </span>
+                    <span className="font-mono font-black text-sm text-slate-900 dark:text-white">
+                      {formatINR(lead.dealValue || 0)}
+                    </span>
+                    <span className="text-[10px] text-slate-500 block">Agreed pipeline value</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 uppercase font-bold block tracking-wider">
+                      Unbilled Balance
+                    </span>
+                    <span
+                      className={`font-mono font-black text-sm ${
+                        unbilledBalance > 0
+                          ? "text-amber-600 dark:text-amber-400"
+                          : "text-emerald-600 dark:text-emerald-400"
+                      }`}
+                    >
+                      {unbilledBalance > 0 ? formatINR(unbilledBalance) : "₹0 (Fully Invoiced)"}
+                    </span>
+                    <span className="text-[10px] text-slate-500 block">
+                      {unbilledBalance > 0 ? "Remaining to raise" : "100% Invoiced"}
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-[10px] text-slate-400 block font-bold">Invoice Date</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200">
-                    {lead.invoiceDate || "None"}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-400 block font-bold">Invoice Amount</span>
-                  <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                    {lead.invoiceAmount ? formatINR(lead.invoiceAmount) : "None"}
-                  </span>
+
+                {/* Progress bar */}
+                {lead.dealValue > 0 && (
+                  <div className="space-y-1 pt-1">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                      <span>Invoicing Realization</span>
+                      <span className="font-mono text-emerald-600 dark:text-emerald-400">
+                        {invoicedPercent}% ({formatINR(totalInvoiced)} of {formatINR(lead.dealValue)})
+                      </span>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all duration-500"
+                        style={{ width: `${invoicedPercent}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* List of Existing Invoices */}
+            {existingInvoices.length > 0 && (
+              <div className="space-y-2">
+                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                  Raised Invoices ({existingInvoices.length})
+                </span>
+                <div className="grid grid-cols-1 gap-2">
+                  {existingInvoices.map((inv, idx) => {
+                    const isCopied = copiedInvoiceId === inv.id;
+                    const dateMonth = inv.invoiceDate ? inv.invoiceDate.slice(0, 7) : "N/A";
+                    return (
+                      <div
+                        key={inv.id || idx}
+                        className={`p-3.5 rounded-xl border transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                          editingInvoiceId === inv.id
+                            ? "bg-amber-50/60 dark:bg-amber-950/20 border-amber-300 dark:border-amber-700 ring-2 ring-amber-500/20"
+                            : "bg-slate-50/80 dark:bg-slate-850/60 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700"
+                        }`}
+                      >
+                        <div className="flex items-start sm:items-center space-x-3">
+                          <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center justify-center font-bold text-xs shrink-0">
+                            #{idx + 1}
+                          </div>
+                          <div>
+                            <div className="flex items-center space-x-2">
+                              <span className="font-mono font-black text-xs text-slate-900 dark:text-white">
+                                {inv.invoiceNumber}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => handleCopyInvoiceNumber(inv.invoiceNumber, inv.id, e)}
+                                className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition"
+                                title="Copy invoice number"
+                              >
+                                {isCopied ? (
+                                  <Check className="w-3 h-3 text-emerald-600" />
+                                ) : (
+                                  <Copy className="w-3 h-3" />
+                                )}
+                              </button>
+                              {inv.notes && (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
+                                  {inv.notes}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center space-x-3 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                              <span className="flex items-center space-x-1">
+                                <Calendar className="w-3 h-3 text-slate-400" />
+                                <span>{inv.invoiceDate || "No Date"}</span>
+                              </span>
+                              <span>•</span>
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                Forecast: {dateMonth}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between sm:justify-end space-x-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200 dark:border-slate-800">
+                          <span className="font-mono font-black text-sm text-emerald-600 dark:text-emerald-400">
+                            {formatINR(inv.invoiceAmount)}
+                          </span>
+
+                          {!isReadOnly && (
+                            <div className="flex items-center space-x-1">
+                              <button
+                                type="button"
+                                onClick={() => handleStartEditInvoice(inv)}
+                                className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 hover:text-indigo-600 transition cursor-pointer"
+                                title="Edit this invoice"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteInvoice(inv.id)}
+                                className="p-1.5 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-950/50 text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                                title="Delete this invoice"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            ) : (
-              <form onSubmit={handleSaveInvoiceDetails} className="space-y-3 pt-1">
+            )}
+
+            {/* Empty state when no invoices exist and form is closed */}
+            {existingInvoices.length === 0 && !isInvoiceFormOpen && (
+              <div className="p-6 text-center rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-dashed border-slate-200 dark:border-slate-800 space-y-2">
+                <Receipt className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                  No invoices recorded yet for this client deal.
+                </p>
+                {!isReadOnly && (
+                  <button
+                    type="button"
+                    onClick={handleOpenAddInvoice}
+                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Raise First Invoice</span>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Add / Edit Invoice Form */}
+            {!isReadOnly && (isInvoiceFormOpen || existingInvoices.length === 0) && (
+              <form
+                onSubmit={handleSaveInvoiceDetails}
+                className="space-y-3 pt-3 p-4 rounded-xl bg-slate-50/80 dark:bg-slate-950/70 border border-amber-200/80 dark:border-amber-900/40"
+              >
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200/70 dark:border-slate-800">
+                  <span className="text-xs font-black text-slate-900 dark:text-white flex items-center space-x-1.5">
+                    <Receipt className="w-4 h-4 text-amber-500" />
+                    <span>{editingInvoiceId ? "Edit Invoice Details" : "Add New Invoice"}</span>
+                  </span>
+                  {(isInvoiceFormOpen || existingInvoices.length > 0) && (
+                    <button
+                      type="button"
+                      onClick={handleCancelInvoiceForm}
+                      className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-semibold cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {/* 1. Invoice Number */}
                   <div>
                     <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
-                      Invoice Number
+                      Invoice Number *
                     </label>
                     <div className="relative">
                       <input
                         type="text"
+                        required
                         value={invoiceNumberInput}
                         onChange={(e) => setInvoiceNumberInput(e.target.value)}
-                        placeholder="e.g. INV-XM-2026-001"
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                        placeholder="e.g. INSP/26-27/052"
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                       />
                       {!invoiceNumberInput && (
                         <button
@@ -2039,67 +2380,112 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                   {/* 2. Invoice Date */}
                   <div>
                     <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
-                      Invoice Date
+                      Invoice Issue Date *
                     </label>
                     <input
                       type="date"
+                      required
                       value={invoiceDateInput}
                       onChange={(e) => setInvoiceDateInput(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                     />
                   </div>
 
                   {/* 3. Invoice Amount */}
                   <div>
-                    <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
                       <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
-                        Invoice Amount (₹)
+                        Invoice Amount (₹) *
                       </label>
-                      {lead.dealValue > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setInvoiceAmountInput(String(lead.dealValue))}
-                          className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-                          title="Set to deal value"
-                        >
-                          Use Deal Value ({formatINR(lead.dealValue)})
-                        </button>
-                      )}
+                      <div className="flex items-center space-x-2">
+                        {unbilledBalance > 0 && unbilledBalance !== lead.dealValue && (
+                          <button
+                            type="button"
+                            onClick={() => setInvoiceAmountInput(String(unbilledBalance))}
+                            className="text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer"
+                            title="Set to remaining balance"
+                          >
+                            Balance ({formatINR(unbilledBalance)})
+                          </button>
+                        )}
+                        {lead.dealValue > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setInvoiceAmountInput(String(lead.dealValue))}
+                            className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                            title="Set to deal value"
+                          >
+                            Deal Val ({formatINR(lead.dealValue)})
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <input
                       type="number"
-                      min="0"
+                      required
+                      min="1"
                       step="1"
                       value={invoiceAmountInput}
                       onChange={(e) => setInvoiceAmountInput(e.target.value)}
-                      placeholder={`e.g. ${lead.dealValue || 100000}`}
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      placeholder={`e.g. ${unbilledBalance > 0 ? unbilledBalance : lead.dealValue || 100000}`}
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-mono"
                     />
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-2">
-                  <span className="text-[11px] text-slate-400">
+                {/* Optional Note / Milestone */}
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                    Invoice Note / Milestone (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={invoiceNotesInput}
+                    onChange={(e) => setInvoiceNotesInput(e.target.value)}
+                    placeholder="e.g. Tranche 1 (50% Advance), Final Delivery Signoff, Milestone 2"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between pt-2 flex-wrap gap-2">
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
                     {invoiceDateInput && invoiceAmountInput ? (
                       <span>
                         Scheduled for Forecast: <strong>{invoiceDateInput}</strong> •{" "}
                         <strong>{formatINR(parseFloat(invoiceAmountInput) || 0)}</strong>
                       </span>
                     ) : (
-                      <span>Fill date, number, and amount to show in the Forecast tab</span>
+                      <span>Fill date, number, and amount to sync into the Forecast tab</span>
                     )}
                   </span>
 
-                  <SpringButton
-                    type="submit"
-                    variant="gradient"
-                    size="sm"
-                    disabled={isSavingInvoice}
-                    className="flex items-center space-x-1.5 shadow-sm font-bold"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>{isSavingInvoice ? "Saving..." : "Save Invoice"}</span>
-                  </SpringButton>
+                  <div className="flex items-center space-x-2">
+                    {isInvoiceFormOpen && (
+                      <button
+                        type="button"
+                        onClick={handleCancelInvoiceForm}
+                        className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 transition cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                    <SpringButton
+                      type="submit"
+                      variant="gradient"
+                      size="sm"
+                      disabled={isSavingInvoice}
+                      className="flex items-center space-x-1.5 shadow-sm font-bold"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>
+                        {isSavingInvoice
+                          ? "Saving..."
+                          : editingInvoiceId
+                          ? "Update Invoice"
+                          : "Save Invoice"}
+                      </span>
+                    </SpringButton>
+                  </div>
                 </div>
               </form>
             )}

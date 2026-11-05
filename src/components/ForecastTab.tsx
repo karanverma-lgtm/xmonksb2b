@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
-import { Lead } from "@/types/lead";
-import { updateLeadInvoiceDetails, updateLeadOwner } from "@/lib/leadsService";
+import { Lead, LeadInvoice, getLeadInvoices } from "@/types/lead";
+import { updateLeadInvoiceDetails, updateLeadOwner, updateLeadSingleInvoice, deleteLeadInvoice } from "@/lib/leadsService";
 import { formatINR, getDateComponents } from "@/lib/formatters";
 import { UserAccount, isSameOwner, canUserExport } from "@/constants/users";
 import { NavTab } from "@/components/Sidebar";
@@ -31,7 +31,8 @@ import {
 } from "lucide-react";
 
 export interface PipelineInvoice {
-  id: string; // lead id
+  id: string; // unique item id
+  invoiceId?: string; // invoice unique id
   leadId: string;
   invoiceNumber: string;
   invoiceDate: string; // YYYY-MM-DD
@@ -43,6 +44,7 @@ export interface PipelineInvoice {
   owner: string;
   program?: string;
   stage: string;
+  notes?: string;
   rawLead: Lead;
 }
 
@@ -54,8 +56,21 @@ interface ForecastTabProps {
   onNavigateToTab?: (tab: NavTab) => void;
   onUpdateInvoiceDetails?: (
     leadId: string,
-    invoiceData: { invoiceNumber?: string; invoiceDate?: string; invoiceAmount?: number }
+    invoiceData: { invoiceNumber?: string; invoiceDate?: string; invoiceAmount?: number; invoices?: LeadInvoice[] }
   ) => void;
+  onAddInvoice?: (
+    leadId: string,
+    invoiceData: { invoiceNumber: string; invoiceDate: string; invoiceAmount: number; notes?: string }
+  ) => Promise<void> | void;
+  onUpdateSingleInvoice?: (
+    leadId: string,
+    invoiceId: string,
+    updates: Partial<LeadInvoice>
+  ) => Promise<void> | void;
+  onDeleteInvoice?: (
+    leadId: string,
+    invoiceId: string
+  ) => Promise<void> | void;
   readOnly?: boolean;
 }
 
@@ -66,6 +81,9 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
   onSelectLead,
   onNavigateToTab,
   onUpdateInvoiceDetails,
+  onAddInvoice,
+  onUpdateSingleInvoice,
+  onDeleteInvoice,
   readOnly = false,
 }) => {
   const isReadOnly = Boolean(readOnly || currentUser?.readOnly);
@@ -84,16 +102,10 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
     const list: PipelineInvoice[] = [];
 
     leads.forEach((l) => {
-      // Only include leads where invoice information has been entered in the Pipeline
-      const hasInvoiceData = Boolean(
-        l.invoiceNumber?.trim() ||
-        l.invoiceDate?.trim() ||
-        (typeof l.invoiceAmount === "number" && l.invoiceAmount > 0)
-      );
-
-      if (hasInvoiceData) {
-        const invNo = l.invoiceNumber?.trim() || `INV-${l.id.slice(-6).toUpperCase()}`;
-        const invDate = l.invoiceDate?.trim() || l.expectedCloseDate || l.updatedAt.split("T")[0];
+      const leadInvs = getLeadInvoices(l);
+      leadInvs.forEach((inv, idx) => {
+        const invNo = inv.invoiceNumber?.trim() || `INV-${l.id.slice(-6).toUpperCase()}-${idx + 1}`;
+        const invDate = inv.invoiceDate?.trim() || l.expectedCloseDate || l.updatedAt.split("T")[0];
         const comps = getDateComponents(invDate);
         const mKey = comps.isValid
           ? `${comps.year}-${String(comps.monthNum).padStart(2, "0")}`
@@ -106,12 +118,13 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
         }
 
         const invAmount =
-          typeof l.invoiceAmount === "number" && !isNaN(l.invoiceAmount)
-            ? l.invoiceAmount
+          typeof inv.invoiceAmount === "number" && !isNaN(inv.invoiceAmount)
+            ? inv.invoiceAmount
             : l.dealValue || 0;
 
         list.push({
-          id: l.id,
+          id: `${l.id}-${inv.id || idx}`,
+          invoiceId: inv.id,
           leadId: l.id,
           invoiceNumber: invNo,
           invoiceDate: invDate,
@@ -123,9 +136,10 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
           owner: l.owner?.trim() || "Unassigned",
           program: l.program || "Executive Development",
           stage: l.stage,
+          notes: inv.notes,
           rawLead: l,
         });
-      }
+      });
     });
 
     // Sort by invoiceDate descending (newest first)
@@ -312,15 +326,34 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
 
     const author = currentUser?.name || "Client Partner";
 
-    await updateLeadInvoiceDetails(
-      editingInvoice.leadId,
-      {
+    if (editingInvoice.invoiceId && onUpdateSingleInvoice) {
+      await onUpdateSingleInvoice(editingInvoice.leadId, editingInvoice.invoiceId, {
         invoiceNumber: updated.invoiceNumber,
         invoiceDate: updated.invoiceDate,
         invoiceAmount: updated.amount,
-      },
-      author
-    );
+      });
+    } else if (editingInvoice.invoiceId) {
+      await updateLeadSingleInvoice(
+        editingInvoice.leadId,
+        editingInvoice.invoiceId,
+        {
+          invoiceNumber: updated.invoiceNumber,
+          invoiceDate: updated.invoiceDate,
+          invoiceAmount: updated.amount,
+        },
+        author
+      );
+    } else {
+      await updateLeadInvoiceDetails(
+        editingInvoice.leadId,
+        {
+          invoiceNumber: updated.invoiceNumber,
+          invoiceDate: updated.invoiceDate,
+          invoiceAmount: updated.amount,
+        },
+        author
+      );
+    }
 
     if (updated.owner && updated.owner !== editingInvoice.owner) {
       await updateLeadOwner(editingInvoice.leadId, updated.owner, author);
@@ -650,6 +683,11 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
                     <span className="font-mono font-black text-xs text-slate-900 dark:text-white">
                       #{inv.invoiceNumber}
                     </span>
+                    {inv.notes && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
+                        {inv.notes}
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={(e) => handleCopyInvoiceNumber(inv.invoiceNumber, inv.id, e)}
@@ -801,7 +839,12 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
                     className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition cursor-pointer"
                   >
                     <td className="py-3.5 px-4 font-mono font-bold text-slate-900 dark:text-white whitespace-nowrap">
-                      #{inv.invoiceNumber}
+                      <span>#{inv.invoiceNumber}</span>
+                      {inv.notes && (
+                        <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
+                          {inv.notes}
+                        </span>
+                      )}
                     </td>
                     <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300 whitespace-nowrap">
                       {inv.invoiceDate}

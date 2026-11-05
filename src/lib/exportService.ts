@@ -1,4 +1,4 @@
-import { Lead } from "@/types/lead";
+import { Lead, getLeadInvoices } from "@/types/lead";
 import { STAGES } from "@/constants/stages";
 import { canUserExport, UserAccount } from "@/constants/users";
 
@@ -56,6 +56,9 @@ export function exportLeadsToCSV(
     "Approach Note URLs",
     "Financial Documents Count",
     "Financial Document Names",
+    "Invoices Count",
+    "Total Invoiced (INR)",
+    "Invoices List",
     "Created Date",
     "Last Updated Date",
     "Total Journey Logs Count",
@@ -73,6 +76,8 @@ export function exportLeadsToCSV(
         : [];
     const finDocs = lead.financialDocuments || [];
     const addlContacts = lead.additionalContacts || [];
+    const invoicesList = getLeadInvoices(lead);
+    const totalInvoiced = invoicesList.reduce((s, i) => s + (i.invoiceAmount || 0), 0);
 
     return [
       escapeCSVField(lead.id),
@@ -111,6 +116,13 @@ export function exportLeadsToCSV(
       escapeCSVField(approachNotesList.map((n) => n.downloadUrl).join("; ")),
       escapeCSVField(finDocs.length),
       escapeCSVField(finDocs.map((d) => d.fileName).join("; ")),
+      escapeCSVField(invoicesList.length),
+      escapeCSVField(totalInvoiced),
+      escapeCSVField(
+        invoicesList
+          .map((i) => `#${i.invoiceNumber}: ${i.invoiceAmount} (${i.invoiceDate}${i.notes ? ` - ${i.notes}` : ""})`)
+          .join("; ")
+      ),
       escapeCSVField(lead.createdAt ? new Date(lead.createdAt).toISOString().split("T")[0] : ""),
       escapeCSVField(lead.updatedAt ? new Date(lead.updatedAt).toISOString().split("T")[0] : ""),
       escapeCSVField(lead.journeyLogs?.length || 0),

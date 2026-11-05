@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { Lead, LeadStage, ApproachNote, FinancialDocument } from "@/types/lead";
+import { Lead, LeadStage, ApproachNote, FinancialDocument, LeadInvoice } from "@/types/lead";
 import {
   subscribeToLeads,
   createLead,
@@ -28,6 +28,9 @@ import {
   setLeadPrimaryContact,
   completeLeadFollowup,
   updateLeadInvoiceDetails,
+  addLeadInvoice,
+  updateLeadSingleInvoice,
+  deleteLeadInvoice,
 } from "@/lib/leadsService";
 import { exportLeadsToCSV } from "@/lib/exportService";
 import { Sidebar, NavTab } from "@/components/Sidebar";
@@ -830,7 +833,12 @@ export default function Home() {
 
   const handleUpdateInvoiceDetails = async (
     leadId: string,
-    invoiceData: { invoiceNumber?: string; invoiceDate?: string; invoiceAmount?: number }
+    invoiceData: {
+      invoiceNumber?: string;
+      invoiceDate?: string;
+      invoiceAmount?: number;
+      invoices?: LeadInvoice[];
+    }
   ) => {
     try {
       const updated = await updateLeadInvoiceDetails(
@@ -838,11 +846,76 @@ export default function Home() {
         invoiceData,
         currentUser?.name || "Client Partner"
       );
-      if (updated && selectedLead && selectedLead.id === leadId) {
-        setSelectedLead(updated);
+      if (updated) {
+        setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
+        if (selectedLead && selectedLead.id === leadId) {
+          setSelectedLead(updated);
+        }
       }
     } catch (err) {
       console.error("Failed to update lead invoice details:", err);
+    }
+  };
+
+  const handleAddLeadInvoice = async (
+    leadId: string,
+    invoiceData: { invoiceNumber: string; invoiceDate: string; invoiceAmount: number; notes?: string }
+  ) => {
+    try {
+      const updated = await addLeadInvoice(
+        leadId,
+        invoiceData,
+        currentUser?.name || "Client Partner"
+      );
+      if (updated) {
+        setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
+        if (selectedLead && selectedLead.id === leadId) {
+          setSelectedLead(updated);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to add lead invoice:", err);
+    }
+  };
+
+  const handleUpdateLeadSingleInvoice = async (
+    leadId: string,
+    invoiceId: string,
+    updates: Partial<LeadInvoice>
+  ) => {
+    try {
+      const updated = await updateLeadSingleInvoice(
+        leadId,
+        invoiceId,
+        updates,
+        currentUser?.name || "Client Partner"
+      );
+      if (updated) {
+        setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
+        if (selectedLead && selectedLead.id === leadId) {
+          setSelectedLead(updated);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to update single lead invoice:", err);
+    }
+  };
+
+  const handleDeleteLeadInvoice = async (leadId: string, invoiceId: string) => {
+    try {
+      const updated = await deleteLeadInvoice(
+        leadId,
+        invoiceId,
+        currentUser?.name || "Client Partner"
+      );
+      if (updated) {
+        setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
+        if (selectedLead && selectedLead.id === leadId) {
+          setSelectedLead(updated);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to delete lead invoice:", err);
     }
   };
 
@@ -2417,6 +2490,9 @@ export default function Home() {
             onSelectLead={(lead) => setSelectedLead(lead)}
             onNavigateToTab={handleTabChange}
             onUpdateInvoiceDetails={isReadOnly ? undefined : handleUpdateInvoiceDetails}
+            onAddInvoice={isReadOnly ? undefined : handleAddLeadInvoice}
+            onUpdateSingleInvoice={isReadOnly ? undefined : handleUpdateLeadSingleInvoice}
+            onDeleteInvoice={isReadOnly ? undefined : handleDeleteLeadInvoice}
           />
         )}
 
@@ -2765,6 +2841,9 @@ export default function Home() {
           onMoveToBilling={isReadOnly ? undefined : handleMoveLeadToBilling}
           onSendToDelivery={isReadOnly ? undefined : handleSendToDelivery}
           onUpdateInvoiceDetails={isReadOnly ? undefined : handleUpdateInvoiceDetails}
+          onAddInvoice={isReadOnly ? undefined : handleAddLeadInvoice}
+          onUpdateSingleInvoice={isReadOnly ? undefined : handleUpdateLeadSingleInvoice}
+          onDeleteInvoice={isReadOnly ? undefined : handleDeleteLeadInvoice}
         />
       )}
 

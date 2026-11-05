@@ -63,6 +63,16 @@ export interface JourneyLog {
   author: string;
 }
 
+export interface LeadInvoice {
+  id: string;
+  invoiceNumber: string; // e.g. "INV-XM-2026-1042" or "INSP/26-27/052"
+  invoiceDate: string; // YYYY-MM-DD
+  invoiceAmount: number; // In INR
+  notes?: string; // Optional milestone / description note
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface Lead {
   id: string;
   companyName: string;
@@ -80,9 +90,10 @@ export interface Lead {
   weightage: number; // Percentage e.g. 10, 25, 50, 75, 100
   expectedCloseDate: string;
   closureMonth?: string; // Target conversion deadline e.g. "2026-10"
-  invoiceNumber?: string; // e.g. "INV-XM-2026-1042"
-  invoiceDate?: string; // YYYY-MM-DD
-  invoiceAmount?: number; // Invoiced amount in INR
+  invoiceNumber?: string; // Legacy e.g. "INV-XM-2026-1042"
+  invoiceDate?: string; // Legacy YYYY-MM-DD
+  invoiceAmount?: number; // Legacy invoiced amount in INR
+  invoices?: LeadInvoice[]; // Multiple invoices raised for this lead
   approachNote?: ApproachNote; // Legacy single approach note
   approachNotes?: ApproachNote[]; // Uploaded approach notes (multi-upload, all formats allowed)
   financialDocuments?: FinancialDocument[]; // Attached financial documents (multi-upload, all formats allowed)
@@ -93,6 +104,38 @@ export interface Lead {
   createdAt: string;
   updatedAt: string;
   journeyLogs: JourneyLog[];
+}
+
+/**
+ * Return all invoices for a lead with 100% backward compatibility for legacy fields
+ */
+export function getLeadInvoices(lead?: Partial<Lead> | null): LeadInvoice[] {
+  if (!lead) return [];
+  if (Array.isArray(lead.invoices) && lead.invoices.length > 0) {
+    return lead.invoices;
+  }
+  const hasLegacyData = Boolean(
+    lead.invoiceNumber?.trim() ||
+    lead.invoiceDate?.trim() ||
+    (typeof lead.invoiceAmount === "number" && lead.invoiceAmount > 0)
+  );
+
+  if (hasLegacyData) {
+    return [
+      {
+        id: `legacy-${lead.id || "inv-1"}`,
+        invoiceNumber: lead.invoiceNumber?.trim() || `INV-${(lead.id || "000").slice(-6).toUpperCase()}`,
+        invoiceDate: lead.invoiceDate?.trim() || lead.expectedCloseDate || new Date().toISOString().split("T")[0],
+        invoiceAmount:
+          typeof lead.invoiceAmount === "number" && !isNaN(lead.invoiceAmount)
+            ? lead.invoiceAmount
+            : lead.dealValue || 0,
+        createdAt: lead.updatedAt || new Date().toISOString(),
+      },
+    ];
+  }
+
+  return [];
 }
 
 export interface StageInfo {

@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Lead, LeadStage } from "@/types/lead";
+import { Lead, LeadStage, getLeadInvoices, LeadInvoice } from "@/types/lead";
 import { PIPELINE_STAGES, STAGES, STAGE_ORDER } from "@/constants/stages";
 import {
   Sparkles,
@@ -323,23 +323,30 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                           )}
 
                           {/* Badge if set */}
-                          {Boolean(lead.invoiceNumber || lead.invoiceAmount || lead.invoiceDate) && (
-                            <span
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setQuickInvoiceLead(lead);
-                              }}
-                              className="inline-flex items-center space-x-1 text-[10px] font-black text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/70 px-2 py-0.5 rounded-md border border-amber-300 dark:border-amber-700 shadow-2xs cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/40"
-                              title="Click to edit Invoice Details (Synced to Forecast)"
-                            >
-                              <Receipt className="w-3 h-3 text-amber-600 dark:text-amber-400 flex-shrink-0" />
-                              <span className="truncate max-w-[130px]">
-                                {lead.invoiceNumber ? `#${lead.invoiceNumber}` : "Invoiced"}
-                                {lead.invoiceAmount ? ` • ${formatCurrency(lead.invoiceAmount)}` : ""}
+                          {(() => {
+                            const leadInvs = getLeadInvoices(lead);
+                            if (leadInvs.length === 0) return null;
+                            const totalInv = leadInvs.reduce((s, i) => s + (i.invoiceAmount || 0), 0);
+                            return (
+                              <span
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onSelectLead(lead);
+                                }}
+                                className="inline-flex items-center space-x-1 text-[10px] font-black text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/70 px-2 py-0.5 rounded-md border border-amber-300 dark:border-amber-700 shadow-2xs cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/40"
+                                title="Click to view & manage Invoices (Synced to Forecast)"
+                              >
+                                <Receipt className="w-3 h-3 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                                <span className="truncate max-w-[130px]">
+                                  {leadInvs.length === 1
+                                    ? `#${leadInvs[0].invoiceNumber}`
+                                    : `${leadInvs.length} Invoices`}
+                                  {totalInv ? ` • ${formatCurrency(totalInv)}` : ""}
+                                </span>
+                                <Pencil className="w-2.5 h-2.5 ml-0.5 text-amber-600 dark:text-amber-400" />
                               </span>
-                              <Pencil className="w-2.5 h-2.5 ml-0.5 text-amber-600 dark:text-amber-400" />
-                            </span>
-                          )}
+                            );
+                          })()}
                         </div>
 
                         {/* Deal Value & Weightage breakdown */}
@@ -363,51 +370,66 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                         </div>
 
                         {/* Invoice Date, Number & Amount (Synced to Forecast) */}
-                        {Boolean(lead.invoiceNumber || lead.invoiceDate || lead.invoiceAmount) ? (
-                          <div
-                            onClick={readOnly ? undefined : (e) => {
-                              e.stopPropagation();
-                              setQuickInvoiceLead(lead);
-                            }}
-                            className={`mt-2 p-2 rounded-xl bg-amber-500/10 dark:bg-amber-950/30 border border-amber-300/80 dark:border-amber-700/60 ${readOnly ? "" : "hover:border-amber-400 cursor-pointer group/inv"} space-y-1 shadow-2xs`}
-                            title={readOnly ? "Invoice Details" : "Click to edit Invoice Date, Number & Amount"}
-                          >
-                            <div className="flex items-center justify-between text-[10px]">
-                              <div className="flex items-center space-x-1 font-mono font-black text-amber-900 dark:text-amber-200">
-                                <Receipt className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                                <span>#{lead.invoiceNumber || "INVOICE"}</span>
-                              </div>
-                              {!readOnly && (
-                                <div className="flex items-center space-x-1 text-amber-700 dark:text-amber-300 text-[10px] font-bold opacity-80 group-hover/inv:opacity-100">
-                                  <Pencil className="w-2.5 h-2.5" />
-                                  <span>Edit</span>
+                        {(() => {
+                          const leadInvs = getLeadInvoices(lead);
+                          if (leadInvs.length > 0) {
+                            const totalInv = leadInvs.reduce((s, i) => s + (i.invoiceAmount || 0), 0);
+                            const latestInv = leadInvs[leadInvs.length - 1];
+                            return (
+                              <div
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onSelectLead(lead);
+                                }}
+                                className={`mt-2 p-2 rounded-xl bg-amber-500/10 dark:bg-amber-950/30 border border-amber-300/80 dark:border-amber-700/60 ${readOnly ? "" : "hover:border-amber-400 cursor-pointer group/inv"} space-y-1 shadow-2xs`}
+                                title={readOnly ? "Invoice Details" : "Click to view and manage all invoices for this lead"}
+                              >
+                                <div className="flex items-center justify-between text-[10px]">
+                                  <div className="flex items-center space-x-1 font-mono font-black text-amber-900 dark:text-amber-200">
+                                    <Receipt className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                                    <span>
+                                      {leadInvs.length === 1
+                                        ? `#${leadInvs[0].invoiceNumber}`
+                                        : `${leadInvs.length} Invoices`}
+                                    </span>
+                                  </div>
+                                  {!readOnly && (
+                                    <div className="flex items-center space-x-1 text-amber-700 dark:text-amber-300 text-[10px] font-bold opacity-80 group-hover/inv:opacity-100">
+                                      <Pencil className="w-2.5 h-2.5" />
+                                      <span>Manage</span>
+                                    </div>
+                                  )}
                                 </div>
-                              )}
-                            </div>
-                            <div className="flex items-center justify-between text-[11px] pt-0.5">
-                              <span className="font-black text-emerald-700 dark:text-emerald-400">
-                                {formatCurrency(lead.invoiceAmount ?? lead.dealValue)}
-                              </span>
-                              <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-300 flex items-center space-x-1">
-                                <Calendar className="w-2.5 h-2.5 text-slate-400" />
-                                <span>{lead.invoiceDate || "No Date"}</span>
-                              </span>
-                            </div>
-                          </div>
-                        ) : !readOnly ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setQuickInvoiceLead(lead);
-                            }}
-                            className="mt-2 w-full py-1.5 px-2 rounded-xl text-[10px] font-bold text-slate-500 dark:text-slate-400 hover:text-amber-700 dark:hover:text-amber-300 bg-slate-100/80 dark:bg-slate-800/60 hover:bg-amber-50 dark:hover:bg-amber-950/40 border border-dashed border-slate-200 dark:border-slate-700 hover:border-amber-300 transition flex items-center justify-center space-x-1.5 cursor-pointer"
-                            title="Set invoice date, invoice number, and invoice amount for the Forecast tab"
-                          >
-                            <Receipt className="w-3 h-3 text-slate-400" />
-                            <span>+ Put Invoice (Date, No, Amount)</span>
-                          </button>
-                        ) : null}
+                                <div className="flex items-center justify-between text-[11px] pt-0.5">
+                                  <span className="font-black text-emerald-700 dark:text-emerald-400 font-mono">
+                                    {formatCurrency(totalInv)}
+                                  </span>
+                                  <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-300 flex items-center space-x-1">
+                                    <Calendar className="w-2.5 h-2.5 text-slate-400" />
+                                    <span>{latestInv?.invoiceDate || "No Date"}</span>
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          }
+                          if (!readOnly) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onSelectLead(lead);
+                                }}
+                                className="mt-2 w-full py-1.5 px-2 rounded-xl text-[10px] font-bold text-slate-500 dark:text-slate-400 hover:text-amber-700 dark:hover:text-amber-300 bg-slate-100/80 dark:bg-slate-800/60 hover:bg-amber-50 dark:hover:bg-amber-950/40 border border-dashed border-slate-200 dark:border-slate-700 hover:border-amber-300 transition flex items-center justify-center space-x-1.5 cursor-pointer"
+                                title="Add invoices for the Forecast tab"
+                              >
+                                <Receipt className="w-3 h-3 text-slate-400" />
+                                <span>+ Add Invoices</span>
+                              </button>
+                            );
+                          }
+                          return null;
+                        })()}
 
                         {/* Latest Activity Stamp */}
                         {latestLog && (
