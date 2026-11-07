@@ -67,60 +67,52 @@ export async function authenticateUserFromFirestore(
   const cleanUser = usernameInput.trim().toLowerCase();
   const cleanPass = passwordInput.trim();
 
-  // Find static config match
-  const staticMatch = VALID_USERS.find(
-    (u) =>
-      u.username.toLowerCase() === cleanUser &&
-      (u.password === cleanPass || u.password.toLowerCase() === cleanPass.toLowerCase())
+  // Find static config user
+  const staticUser = VALID_USERS.find(
+    (u) => u.username.toLowerCase() === cleanUser
   );
 
   try {
     const userDocRef = doc(db, USERS_COLLECTION, cleanUser);
     const docSnap = await getDoc(userDocRef);
 
+    // 1. If user document exists in Firestore, Firestore is the single source of truth!
     if (docSnap.exists()) {
       const user = docSnap.data() as UserAccount;
       if (user.password === cleanPass || user.password.toLowerCase() === cleanPass.toLowerCase()) {
-        if (staticMatch) {
+        if (staticUser) {
           const merged: UserAccount = {
             ...user,
-            ...staticMatch,
-            allowedTabs: staticMatch.allowedTabs || user.allowedTabs,
-            readOnly: staticMatch.readOnly !== undefined ? staticMatch.readOnly : user.readOnly,
+            ...staticUser,
+            password: user.password, // Ensure Firestore password is authoritative
+            allowedTabs: staticUser.allowedTabs || user.allowedTabs,
+            readOnly: staticUser.readOnly !== undefined ? staticUser.readOnly : user.readOnly,
           };
-          if (staticMatch.allowedTabs && JSON.stringify(user.allowedTabs) !== JSON.stringify(staticMatch.allowedTabs)) {
-            setDoc(userDocRef, { allowedTabs: staticMatch.allowedTabs }, { merge: true }).catch(() => {});
+          if (staticUser.allowedTabs && JSON.stringify(user.allowedTabs) !== JSON.stringify(staticUser.allowedTabs)) {
+            setDoc(userDocRef, { allowedTabs: staticUser.allowedTabs }, { merge: true }).catch(() => {});
           }
           return merged;
         }
         return user;
       }
-      // If password in Firestore didn't match, but matches static configuration, update Firestore with static record
-      if (staticMatch && (staticMatch.password === cleanPass || staticMatch.password.toLowerCase() === cleanPass.toLowerCase())) {
-        try {
-          await setDoc(userDocRef, staticMatch, { merge: true });
-        } catch (syncErr) {
-          console.warn("Failed to sync static user to Firestore:", syncErr);
-        }
-        return staticMatch;
-      }
+      // Password does NOT match the password stored in Firestore.
+      // Refuse authentication. Never fall back to static default credentials or overwrite Firestore!
       return null;
     }
 
-    // If not in Firestore but in static config, write to Firestore and log in
-    if (staticMatch) {
+    // 2. If user does NOT exist in Firestore at all (initial first-time setup), check initial static config
+    if (staticUser && (staticUser.password === cleanPass || staticUser.password.toLowerCase() === cleanPass.toLowerCase())) {
       try {
-        await setDoc(userDocRef, staticMatch);
+        await setDoc(userDocRef, staticUser);
       } catch (writeErr) {
-        console.warn("Failed to write user to Firestore:", writeErr);
+        console.warn("Failed to write initial user to Firestore:", writeErr);
       }
-      return staticMatch;
+      return staticUser;
     }
 
     return null;
   } catch (err) {
     console.warn("Firestore authentication check fallback to local cache:", err);
-    if (staticMatch) return staticMatch;
     const cached = getCachedUsers();
     const found = cached.find(
       (u) =>
