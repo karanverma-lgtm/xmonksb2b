@@ -62,6 +62,7 @@ export function exportLeadsToCSV(
     "Created Date",
     "Last Updated Date",
     "Total Journey Logs Count",
+    "Touchpoint History",
   ];
 
   const rows = leads.map((lead) => {
@@ -78,6 +79,22 @@ export function exportLeadsToCSV(
     const addlContacts = lead.additionalContacts || [];
     const invoicesList = getLeadInvoices(lead);
     const totalInvoiced = invoicesList.reduce((s, i) => s + (i.invoiceAmount || 0), 0);
+
+    const journeyLogsList = Array.isArray(lead.journeyLogs) ? [...lead.journeyLogs] : [];
+    journeyLogsList.sort((a, b) => {
+      const dateA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const dateB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return dateB - dateA;
+    });
+
+    const formattedJourneyHistory = journeyLogsList.map((j) => {
+      const d = j.formattedDate || (j.timestamp ? new Date(j.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
+      const author = j.author ? ` by ${j.author}` : "";
+      const type = (j.type || "note").toUpperCase();
+      const title = j.title ? `${j.title}: ` : "";
+      const desc = j.description || "";
+      return `[${d} | ${type}${author}] ${title}${desc}`;
+    }).join(" ; ");
 
     return [
       escapeCSVField(lead.id),
@@ -125,7 +142,8 @@ export function exportLeadsToCSV(
       ),
       escapeCSVField(lead.createdAt ? new Date(lead.createdAt).toISOString().split("T")[0] : ""),
       escapeCSVField(lead.updatedAt ? new Date(lead.updatedAt).toISOString().split("T")[0] : ""),
-      escapeCSVField(lead.journeyLogs?.length || 0),
+      escapeCSVField(journeyLogsList.length),
+      escapeCSVField(formattedJourneyHistory),
     ].join(",");
   });
 

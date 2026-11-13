@@ -647,6 +647,13 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
       return;
     }
     if (filteredClients.length === 0) return;
+
+    const escapeCSV = (val: unknown): string => {
+      if (val === null || val === undefined) return '""';
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
     const headers = [
       "ID",
       "Company Name",
@@ -663,36 +670,59 @@ export const OutreachTab: React.FC<OutreachTabProps> = ({
       "Next Follow-Up",
       "Last Contact",
       "City",
+      "Touchpoint Count",
+      "Touchpoint History",
     ];
 
-    const rows = filteredClients.map((c) => [
-      c.id,
-      `"${c.companyName.replace(/"/g, '""')}"`,
-      `"${c.contactName.replace(/"/g, '""')}"`,
-      `"${(c.designation || "").replace(/"/g, '""')}"`,
-      c.email,
-      c.phone || "",
-      COLD_STATUS_CONFIG[c.status]?.label || c.status,
-      c.channel,
-      c.targetProgram || "",
-      c.estimatedPotentialValue || 0,
-      c.owner,
-      `"${(c.dataset || "").replace(/"/g, '""')}"`,
-      c.nextFollowUpDate || "",
-      c.lastContactDate || "",
-      c.city || "",
-    ]);
+    const rows = filteredClients.map((c) => {
+      const touchpointsList = Array.isArray(c.touchpoints) ? [...c.touchpoints] : [];
+      touchpointsList.sort((a, b) => {
+        const dateA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const dateB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return dateB - dateA;
+      });
+
+      const formattedTouchpointHistory = touchpointsList.map((tp) => {
+        const date = tp.formattedDate || (tp.timestamp ? new Date(tp.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
+        const time = tp.time ? ` ${tp.time}` : "";
+        const channel = (tp.channel || "Note").toUpperCase();
+        const author = tp.author ? ` by ${tp.author}` : "";
+        const summary = (tp.summary || "").trim();
+        return `[${date}${time} | ${channel}${author}] ${summary}`;
+      }).join(" ; ");
+
+      return [
+        escapeCSV(c.id),
+        escapeCSV(c.companyName),
+        escapeCSV(c.contactName),
+        escapeCSV(c.designation || ""),
+        escapeCSV(c.email),
+        escapeCSV(c.phone || ""),
+        escapeCSV(COLD_STATUS_CONFIG[c.status]?.label || c.status),
+        escapeCSV(c.channel),
+        escapeCSV(c.targetProgram || ""),
+        escapeCSV(c.estimatedPotentialValue || 0),
+        escapeCSV(c.owner),
+        escapeCSV(c.dataset || ""),
+        escapeCSV(c.nextFollowUpDate || ""),
+        escapeCSV(c.lastContactDate || ""),
+        escapeCSV(c.city || ""),
+        escapeCSV(touchpointsList.length),
+        escapeCSV(formattedTouchpointHistory),
+      ].join(",");
+    });
 
     const csvContent =
-      "data:text/csv;charset=utf-8," +
-      [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
+      "\uFEFF" + [headers.map(escapeCSV).join(","), ...rows].join("\r\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.href = url;
     link.setAttribute("download", `cold_outreach_prospects_${todayStr}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Grouped for Kanban Board (10 Outreach Statuses matching user workflow with Trigger & Next Step guidance)

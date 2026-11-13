@@ -739,6 +739,7 @@ export const TouchpointHistoryTab: React.FC<TouchpointHistoryTabProps> = ({
       "Latest Channel",
       "Latest Touchpoint Note",
       "Total Touchpoints Count",
+      "Touchpoint History",
     ];
 
     const rows = sortedFilteredLeads.map(({ client, latestDate, latestTp, tpCount }) => {
@@ -746,6 +747,22 @@ export const TouchpointHistoryTab: React.FC<TouchpointHistoryTabProps> = ({
         ? latestDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
         : "None";
       const timeStr = latestTp?.time || (latestDate ? latestDate.toLocaleTimeString("en-US") : "");
+
+      const allTps = Array.isArray(client.touchpoints) ? [...client.touchpoints] : [];
+      allTps.sort((a, b) => {
+        const dateA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const dateB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return dateB - dateA;
+      });
+      const formattedHistory = allTps.map((tp) => {
+        const date = tp.formattedDate || (tp.timestamp ? new Date(tp.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
+        const time = tp.time ? ` ${tp.time}` : "";
+        const channel = (tp.channel || "Note").toUpperCase();
+        const author = tp.author ? ` by ${tp.author}` : "";
+        const summary = (tp.summary || "").trim();
+        return `[${date}${time} | ${channel}${author}] ${summary}`;
+      }).join(" ; ");
+
       return [
         escapeCSV(client.companyName),
         escapeCSV(client.owner || "Unassigned"),
@@ -760,6 +777,7 @@ export const TouchpointHistoryTab: React.FC<TouchpointHistoryTabProps> = ({
         escapeCSV(latestTp?.channel || "none"),
         escapeCSV(latestTp?.summary || "No touchpoints logged"),
         escapeCSV(tpCount),
+        escapeCSV(formattedHistory),
       ].join(",");
     });
 
