@@ -1745,6 +1745,7 @@ export async function saveLeadInvoices(
     invoiceNumber: inv.invoiceNumber?.trim() || `INV-${target.id.slice(-6).toUpperCase()}`,
     invoiceDate: inv.invoiceDate?.trim() || now.toISOString().split("T")[0],
     invoiceAmount: typeof inv.invoiceAmount === "number" && !isNaN(inv.invoiceAmount) ? inv.invoiceAmount : 0,
+    billed: inv.billed !== undefined ? Boolean(inv.billed) : true,
     notes: inv.notes?.trim() || undefined,
     createdAt: inv.createdAt || timestampIso,
     updatedAt: timestampIso,
@@ -1810,6 +1811,7 @@ export async function addLeadInvoice(
     invoiceNumber: string;
     invoiceDate: string;
     invoiceAmount: number;
+    billed?: boolean;
     notes?: string;
   },
   author: string = "Client Partner"
@@ -1824,6 +1826,7 @@ export async function addLeadInvoice(
     invoiceNumber: invoiceData.invoiceNumber.trim(),
     invoiceDate: invoiceData.invoiceDate.trim(),
     invoiceAmount: invoiceData.invoiceAmount,
+    billed: invoiceData.billed !== undefined ? Boolean(invoiceData.billed) : true,
     notes: invoiceData.notes?.trim() || undefined,
     createdAt: new Date().toISOString(),
   };
@@ -1856,6 +1859,7 @@ export async function updateLeadSingleInvoice(
           typeof updates.invoiceAmount === "number" && !isNaN(updates.invoiceAmount)
             ? updates.invoiceAmount
             : inv.invoiceAmount,
+        billed: updates.billed !== undefined ? Boolean(updates.billed) : inv.billed !== false,
         notes: updates.notes !== undefined ? updates.notes?.trim() || undefined : inv.notes,
         updatedAt: new Date().toISOString(),
       };

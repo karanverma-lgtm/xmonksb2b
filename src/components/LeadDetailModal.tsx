@@ -136,6 +136,7 @@ interface LeadDetailModalProps {
       invoiceNumber: string;
       invoiceDate: string;
       invoiceAmount: number;
+      billed?: boolean;
       notes?: string;
     }
   ) => Promise<void> | void;
@@ -256,6 +257,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   const [invoiceNumberInput, setInvoiceNumberInput] = useState("");
   const [invoiceDateInput, setInvoiceDateInput] = useState("");
   const [invoiceAmountInput, setInvoiceAmountInput] = useState("");
+  const [invoiceBilledInput, setInvoiceBilledInput] = useState<boolean>(true);
   const [invoiceNotesInput, setInvoiceNotesInput] = useState("");
   const [copiedInvoiceId, setCopiedInvoiceId] = useState<string | null>(null);
   const [isSavingInvoice, setIsSavingInvoice] = useState(false);
@@ -281,6 +283,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
     setInvoiceAmountInput(
       unbilledBalance > 0 ? String(unbilledBalance) : lead?.dealValue ? String(lead.dealValue) : ""
     );
+    setInvoiceBilledInput(true);
     setInvoiceNotesInput("");
     setIsInvoiceFormOpen(true);
   };
@@ -291,6 +294,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
     setInvoiceNumberInput(inv.invoiceNumber);
     setInvoiceDateInput(inv.invoiceDate);
     setInvoiceAmountInput(String(inv.invoiceAmount));
+    setInvoiceBilledInput(inv.billed !== false);
     setInvoiceNotesInput(inv.notes || "");
     setIsInvoiceFormOpen(true);
   };
@@ -301,6 +305,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
     setInvoiceNumberInput("");
     setInvoiceDateInput("");
     setInvoiceAmountInput("");
+    setInvoiceBilledInput(true);
     setInvoiceNotesInput("");
   };
 
@@ -322,6 +327,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                 invoiceNumber: cleanInvNo,
                 invoiceDate: cleanDate,
                 invoiceAmount: parsedAmount,
+                billed: invoiceBilledInput,
                 notes: invoiceNotesInput.trim() || undefined,
                 updatedAt: new Date().toISOString(),
               }
@@ -332,6 +338,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
             invoiceNumber: cleanInvNo,
             invoiceDate: cleanDate,
             invoiceAmount: parsedAmount,
+            billed: invoiceBilledInput,
             notes: invoiceNotesInput.trim() || undefined,
           });
         } else if (onUpdateInvoiceDetails) {
@@ -349,6 +356,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
           invoiceNumber: cleanInvNo,
           invoiceDate: cleanDate,
           invoiceAmount: parsedAmount,
+          billed: invoiceBilledInput,
           notes: invoiceNotesInput.trim() || undefined,
           createdAt: new Date().toISOString(),
         };
@@ -358,6 +366,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
             invoiceNumber: cleanInvNo,
             invoiceDate: cleanDate,
             invoiceAmount: parsedAmount,
+            billed: invoiceBilledInput,
             notes: invoiceNotesInput.trim() || undefined,
           });
         } else if (onUpdateInvoiceDetails) {
@@ -2256,6 +2265,15 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                                   {inv.notes}
                                 </span>
                               )}
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                  inv.billed !== false
+                                    ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60"
+                                    : "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/60"
+                                }`}
+                              >
+                                Billed: {inv.billed !== false ? "Yes" : "No"}
+                              </span>
                             </div>
                             <div className="flex items-center space-x-3 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                               <span className="flex items-center space-x-1">
@@ -2433,18 +2451,36 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                   </div>
                 </div>
 
-                {/* Optional Note / Milestone */}
-                <div>
-                  <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
-                    Invoice Note / Milestone (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={invoiceNotesInput}
-                    onChange={(e) => setInvoiceNotesInput(e.target.value)}
-                    placeholder="e.g. Tranche 1 (50% Advance), Final Delivery Signoff, Milestone 2"
-                    className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                  />
+                {/* Billed & Optional Note / Milestone */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Billed: Yes / No */}
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                      Billed *
+                    </label>
+                    <select
+                      value={invoiceBilledInput ? "yes" : "no"}
+                      onChange={(e) => setInvoiceBilledInput(e.target.value === "yes")}
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer"
+                    >
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </div>
+
+                  {/* Optional Note / Milestone */}
+                  <div className="sm:col-span-2">
+                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                      Invoice Note / Milestone (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={invoiceNotesInput}
+                      onChange={(e) => setInvoiceNotesInput(e.target.value)}
+                      placeholder="e.g. Tranche 1 (50% Advance), Final Delivery Signoff, Milestone 2"
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between pt-2 flex-wrap gap-2">

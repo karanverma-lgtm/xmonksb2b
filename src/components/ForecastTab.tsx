@@ -39,6 +39,7 @@ export interface PipelineInvoice {
   monthKey: string; // e.g. "2026-10"
   monthLabel: string; // e.g. "Oct 2026"
   amount: number;
+  billed?: boolean;
   companyName: string;
   companyLogo?: string;
   owner: string;
@@ -131,6 +132,7 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
           monthKey: mKey,
           monthLabel: mLabel,
           amount: invAmount,
+          billed: inv.billed !== false,
           companyName: l.companyName,
           companyLogo: l.companyLogo,
           owner: l.owner?.trim() || "Unassigned",
@@ -279,6 +281,7 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
     if (filteredInvoices.length === 0) return;
     const headers = [
       "Invoice Number",
+      "Billed",
       "Invoice Date",
       "Month",
       "Client Company",
@@ -290,6 +293,7 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
 
     const rows = filteredInvoices.map((inv) => [
       `"${inv.invoiceNumber}"`,
+      `"${inv.billed !== false ? "Yes" : "No"}"`,
       `"${inv.invoiceDate}"`,
       `"${inv.monthLabel}"`,
       `"${inv.companyName}"`,
@@ -320,7 +324,9 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
     invoiceNumber: string;
     invoiceDate: string;
     amount: number;
+    billed?: boolean;
     owner: string;
+    notes?: string;
   }) => {
     if (!editingInvoice) return;
 
@@ -331,6 +337,8 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
         invoiceNumber: updated.invoiceNumber,
         invoiceDate: updated.invoiceDate,
         invoiceAmount: updated.amount,
+        billed: updated.billed,
+        notes: updated.notes,
       });
     } else if (editingInvoice.invoiceId) {
       await updateLeadSingleInvoice(
@@ -340,6 +348,8 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
           invoiceNumber: updated.invoiceNumber,
           invoiceDate: updated.invoiceDate,
           invoiceAmount: updated.amount,
+          billed: updated.billed,
+          notes: updated.notes,
         },
         author
       );
@@ -720,6 +730,16 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
                     <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
                       Pipeline Invoiced
                     </span>
+
+                    <span
+                      className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${
+                        inv.billed !== false
+                          ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800"
+                          : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300 dark:border-amber-800"
+                      }`}
+                    >
+                      Billed: {inv.billed !== false ? "Yes" : "No"}
+                    </span>
                   </div>
                 </div>
 
@@ -821,6 +841,7 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
               <thead>
                 <tr className="bg-slate-50 dark:bg-slate-800/80 text-[11px] font-black text-slate-600 dark:text-slate-300 uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
                   <th className="py-3.5 px-4">Invoice #</th>
+                  <th className="py-3.5 px-4 text-center">Billed</th>
                   <th className="py-3.5 px-4">Date</th>
                   <th className="py-3.5 px-4">Month</th>
                   <th className="py-3.5 px-4">Client Company</th>
@@ -845,6 +866,17 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
                           {inv.notes}
                         </span>
                       )}
+                    </td>
+                    <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                      <span
+                        className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${
+                          inv.billed !== false
+                            ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800"
+                            : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-300 dark:border-amber-800"
+                        }`}
+                      >
+                        {inv.billed !== false ? "Yes" : "No"}
+                      </span>
                     </td>
                     <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300 whitespace-nowrap">
                       {inv.invoiceDate}
@@ -904,7 +936,7 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
               </tbody>
               <tfoot>
                 <tr className="bg-slate-50 dark:bg-slate-800/80 font-black text-xs border-t-2 border-slate-200 dark:border-slate-700">
-                  <td colSpan={6} className="py-3.5 px-4 text-slate-600 dark:text-slate-300 uppercase">
+                  <td colSpan={7} className="py-3.5 px-4 text-slate-600 dark:text-slate-300 uppercase">
                     Total Filtered ({filteredInvoices.length} Invoices)
                   </td>
                   <td className="py-3.5 px-4 text-right text-emerald-600 dark:text-emerald-400 text-sm">
@@ -943,7 +975,9 @@ interface EditInvoiceModalProps {
     invoiceNumber: string;
     invoiceDate: string;
     amount: number;
+    billed?: boolean;
     owner: string;
+    notes?: string;
   }) => Promise<void>;
 }
 
@@ -957,6 +991,8 @@ const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [invoiceDate, setInvoiceDate] = useState("");
   const [amount, setAmount] = useState("");
+  const [billed, setBilled] = useState<boolean>(true);
+  const [notes, setNotes] = useState<string>("");
   const [owner, setOwner] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -966,6 +1002,8 @@ const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({
       setInvoiceNumber(invoice.invoiceNumber || "");
       setInvoiceDate(invoice.invoiceDate || "");
       setAmount(String(invoice.amount || 0));
+      setBilled(invoice.billed !== false);
+      setNotes(invoice.notes || "");
       setOwner(invoice.owner || "");
       setError(null);
     }
@@ -992,7 +1030,9 @@ const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({
         invoiceNumber: invoiceNumber.trim(),
         invoiceDate: invoiceDate.trim() || new Date().toISOString().split("T")[0],
         amount: numAmount,
+        billed,
         owner: owner.trim() || invoice.owner,
+        notes: notes.trim() || undefined,
       });
       onClose();
     } catch (err: unknown) {
@@ -1108,6 +1148,37 @@ const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({
                   </option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            {/* Billed */}
+            <div>
+              <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                Billed *
+              </label>
+              <select
+                value={billed ? "yes" : "no"}
+                onChange={(e) => setBilled(e.target.value === "yes")}
+                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-xs cursor-pointer"
+              >
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </div>
+
+            {/* Invoice Note / Milestone */}
+            <div>
+              <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
+                Invoice Note / Milestone (Optional)
+              </label>
+              <input
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="e.g. Tranche 1, Advance 50%"
+                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-xs"
+              />
             </div>
           </div>
 

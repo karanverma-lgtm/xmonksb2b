@@ -859,7 +859,13 @@ export default function Home() {
 
   const handleAddLeadInvoice = async (
     leadId: string,
-    invoiceData: { invoiceNumber: string; invoiceDate: string; invoiceAmount: number; notes?: string }
+    invoiceData: {
+      invoiceNumber: string;
+      invoiceDate: string;
+      invoiceAmount: number;
+      billed?: boolean;
+      notes?: string;
+    }
   ) => {
     try {
       const updated = await addLeadInvoice(

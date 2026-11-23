@@ -137,7 +137,7 @@ export function exportLeadsToCSV(
       escapeCSVField(totalInvoiced),
       escapeCSVField(
         invoicesList
-          .map((i) => `#${i.invoiceNumber}: ${i.invoiceAmount} (${i.invoiceDate}${i.notes ? ` - ${i.notes}` : ""})`)
+          .map((i) => `#${i.invoiceNumber}: ${i.invoiceAmount} [Billed: ${i.billed !== false ? "Yes" : "No"}] (${i.invoiceDate}${i.notes ? ` - ${i.notes}` : ""})`)
           .join("; ")
       ),
       escapeCSVField(lead.createdAt ? new Date(lead.createdAt).toISOString().split("T")[0] : ""),

@@ -68,6 +68,7 @@ export interface LeadInvoice {
   invoiceNumber: string; // e.g. "INV-XM-2026-1042" or "INSP/26-27/052"
   invoiceDate: string; // YYYY-MM-DD
   invoiceAmount: number; // In INR
+  billed?: boolean; // Whether the invoice is billed: true ("Yes") or false ("No")
   notes?: string; // Optional milestone / description note
   createdAt?: string;
   updatedAt?: string;
@@ -112,7 +113,10 @@ export interface Lead {
 export function getLeadInvoices(lead?: Partial<Lead> | null): LeadInvoice[] {
   if (!lead) return [];
   if (Array.isArray(lead.invoices) && lead.invoices.length > 0) {
-    return lead.invoices;
+    return lead.invoices.map((inv) => ({
+      ...inv,
+      billed: inv.billed !== false,
+    }));
   }
   const hasLegacyData = Boolean(
     lead.invoiceNumber?.trim() ||
@@ -130,6 +134,7 @@ export function getLeadInvoices(lead?: Partial<Lead> | null): LeadInvoice[] {
           typeof lead.invoiceAmount === "number" && !isNaN(lead.invoiceAmount)
             ? lead.invoiceAmount
             : lead.dealValue || 0,
+        billed: true,
         createdAt: lead.updatedAt || new Date().toISOString(),
       },
     ];
