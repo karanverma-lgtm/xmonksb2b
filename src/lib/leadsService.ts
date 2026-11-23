@@ -1039,6 +1039,60 @@ export async function removeLeadCompanyLogo(
   return updatedLead;
 }
 
+// Update Company Name for a Lead
+export async function updateLeadCompanyName(
+  leadId: string,
+  newCompanyName: string,
+  author: string = "Client Partner"
+): Promise<Lead | null> {
+  const cleanName = newCompanyName.trim();
+  if (!cleanName) return null;
+
+  const localLeads = getStoredLocalLeads();
+  const target = localLeads.find((l) => l.id === leadId);
+  if (!target) return null;
+
+  const oldName = target.companyName;
+  if (oldName === cleanName) return target;
+
+  const now = new Date();
+  const timestampIso = now.toISOString();
+  const formattedDate = formatTimestamp(now);
+
+  const nameLog: JourneyLog = {
+    id: "log-" + Date.now() + "-" + Math.floor(Math.random() * 1000),
+    timestamp: timestampIso,
+    formattedDate: formattedDate,
+    type: "note",
+    title: "Company Name Updated",
+    description: `Company name updated from "${oldName}" to "${cleanName}".`,
+    author: author,
+  };
+
+  const updatedLead: Lead = {
+    ...target,
+    companyName: cleanName,
+    updatedAt: timestampIso,
+    journeyLogs: [nameLog, ...target.journeyLogs],
+  };
+
+  try {
+    const docRef = doc(db, COLLECTION_NAME, leadId);
+    await updateDoc(docRef, {
+      companyName: cleanName,
+      updatedAt: timestampIso,
+      journeyLogs: updatedLead.journeyLogs,
+    });
+  } catch (err) {
+    console.warn("Firestore company name update skipped, updating local state", err);
+  }
+
+  const updatedAll = localLeads.map((l) => (l.id === leadId ? updatedLead : l));
+  saveStoredLocalLeads(updatedAll);
+
+  return updatedLead;
+}
+
 // Attach Financial Documents (supports multi-upload of all formats) to lead in Firestore & state
 export async function attachLeadFinancialDocuments(
   leadId: string,

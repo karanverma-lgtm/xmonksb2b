@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Lead, LeadStage } from "@/types/lead";
 import { STAGES, STAGE_ORDER, PIPELINE_STAGES } from "@/constants/stages";
 import {
@@ -117,6 +117,7 @@ interface LeadDetailModalProps {
     isPrimary?: boolean
   ) => void;
   onSetPrimaryContact?: (leadId: string, contactId: string) => void;
+  onUpdateCompanyName?: (leadId: string, newCompanyName: string) => Promise<void> | void;
   onUpdateCompanyLogo?: (leadId: string, logoUrl: string) => void;
   onRemoveCompanyLogo?: (leadId: string) => void;
   onMoveToBilling?: (lead: Lead) => void;
@@ -174,6 +175,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   onUpdatePrimaryContact,
   onEditContact,
   onSetPrimaryContact,
+  onUpdateCompanyName,
   onUpdateCompanyLogo,
   onRemoveCompanyLogo,
   onMoveToBilling,
@@ -205,6 +207,40 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   const [personDesignation, setPersonDesignation] = useState("");
   const [personToDelete, setPersonToDelete] = useState<ContactPerson | null>(null);
   const [personFormError, setPersonFormError] = useState<string | null>(null);
+
+  // Company Name Edit State
+  const [isEditingCompanyName, setIsEditingCompanyName] = useState(false);
+  const [companyNameInput, setCompanyNameInput] = useState(lead?.companyName || "");
+  const [isSavingCompanyName, setIsSavingCompanyName] = useState(false);
+
+  useEffect(() => {
+    if (lead?.companyName) {
+      setCompanyNameInput(lead.companyName);
+      setIsEditingCompanyName(false);
+    }
+  }, [lead?.companyName, lead?.id]);
+
+  const handleSaveCompanyName = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!lead) return;
+    const cleanName = companyNameInput.trim();
+    if (!cleanName || cleanName === lead.companyName) {
+      setIsEditingCompanyName(false);
+      return;
+    }
+
+    setIsSavingCompanyName(true);
+    try {
+      if (onUpdateCompanyName) {
+        await onUpdateCompanyName(lead.id, cleanName);
+      }
+      setIsEditingCompanyName(false);
+    } catch (err) {
+      console.error("Failed to update company name:", err);
+    } finally {
+      setIsSavingCompanyName(false);
+    }
+  };
 
   // Logo Upload & URL State
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -937,29 +973,79 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
 
             <div>
               <div className="flex items-center space-x-3 flex-wrap gap-y-1">
-                <h2 className="text-2xl font-black text-slate-900 dark:text-white flex items-center space-x-2">
-                  <span>{lead.companyName}</span>
-                  {/* Logo Options Trigger (Upload or URL) */}
-                  {!isReadOnly && (
-                    <div className="relative">
+                {isEditingCompanyName ? (
+                  <form
+                    onSubmit={handleSaveCompanyName}
+                    className="flex items-center space-x-1.5 my-0.5"
+                  >
+                    <input
+                      type="text"
+                      required
+                      autoFocus
+                      value={companyNameInput}
+                      onChange={(e) => setCompanyNameInput(e.target.value)}
+                      className="px-2.5 py-1 text-xl font-black bg-white dark:bg-slate-800 border-2 border-indigo-500 rounded-xl text-slate-900 dark:text-white focus:outline-none shadow-xs min-w-[200px]"
+                      placeholder="Company Name"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isSavingCompanyName || !companyNameInput.trim()}
+                      className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition cursor-pointer disabled:opacity-50"
+                      title="Save company name"
+                    >
+                      <Check className="w-4 h-4" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
-                        setShowLogoOptions(!showLogoOptions);
-                        setIsEnteringLogoUrl(false);
+                        setCompanyNameInput(lead.companyName);
+                        setIsEditingCompanyName(false);
                       }}
-                      disabled={isUploadingLogo}
-                      className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center space-x-1 font-normal"
+                      disabled={isSavingCompanyName}
+                      className="p-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-200 transition cursor-pointer"
+                      title="Cancel"
                     >
-                      <Camera className="w-3 h-3" />
-                      <span>
-                        {isUploadingLogo
-                          ? "Uploading..."
-                          : lead.companyLogo
-                          ? "Edit Logo"
-                          : "Add Logo"}
-                      </span>
+                      <X className="w-4 h-4" />
                     </button>
+                  </form>
+                ) : (
+                  <h2 className="text-2xl font-black text-slate-900 dark:text-white flex items-center space-x-2">
+                    <span>{lead.companyName}</span>
+                    {!isReadOnly && onUpdateCompanyName && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCompanyNameInput(lead.companyName);
+                          setIsEditingCompanyName(true);
+                        }}
+                        className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                        title="Edit company name"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+
+                    {/* Logo Options Trigger (Upload or URL) */}
+                    {!isReadOnly && (
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowLogoOptions(!showLogoOptions);
+                            setIsEnteringLogoUrl(false);
+                          }}
+                          disabled={isUploadingLogo}
+                          className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center space-x-1 font-normal"
+                        >
+                          <Camera className="w-3 h-3" />
+                          <span>
+                            {isUploadingLogo
+                              ? "Uploading..."
+                              : lead.companyLogo
+                              ? "Edit Logo"
+                              : "Add Logo"}
+                          </span>
+                        </button>
 
                     {/* Popover Menu with Both Options: Upload File or Image URL */}
                     {showLogoOptions && (
@@ -1033,6 +1119,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                   </div>
                 )}
                 </h2>
+              )}
                 {logoUploadError && (
                   <span className="text-xs text-rose-500 font-semibold">{logoUploadError}</span>
                 )}

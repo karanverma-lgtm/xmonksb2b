@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { Lead, LeadInvoice, getLeadInvoices } from "@/types/lead";
-import { updateLeadInvoiceDetails, updateLeadOwner, updateLeadSingleInvoice, deleteLeadInvoice } from "@/lib/leadsService";
+import { updateLeadInvoiceDetails, updateLeadOwner, updateLeadCompanyName, updateLeadSingleInvoice, deleteLeadInvoice } from "@/lib/leadsService";
 import { formatINR, getDateComponents } from "@/lib/formatters";
 import { UserAccount, isSameOwner, canUserExport } from "@/constants/users";
 import { NavTab } from "@/components/Sidebar";
@@ -421,10 +421,15 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
     billed?: boolean;
     owner: string;
     notes?: string;
+    companyName?: string;
   }) => {
     if (!editingInvoice) return;
 
     const author = currentUser?.name || "Client Partner";
+
+    if (updated.companyName && updated.companyName.trim() && updated.companyName.trim() !== editingInvoice.companyName) {
+      await updateLeadCompanyName(editingInvoice.leadId, updated.companyName.trim(), author);
+    }
 
     if (editingInvoice.invoiceId && onUpdateSingleInvoice) {
       await onUpdateSingleInvoice(editingInvoice.leadId, editingInvoice.invoiceId, {
@@ -1341,6 +1346,7 @@ interface EditInvoiceModalProps {
     billed?: boolean;
     owner: string;
     notes?: string;
+    companyName?: string;
   }) => Promise<void>;
 }
 
@@ -1351,6 +1357,7 @@ const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({
   availableOwners,
   onSave,
 }) => {
+  const [companyName, setCompanyName] = useState("");
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [invoiceDate, setInvoiceDate] = useState("");
   const [amount, setAmount] = useState("");
@@ -1362,6 +1369,7 @@ const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({
 
   useEffect(() => {
     if (invoice) {
+      setCompanyName(invoice.companyName || "");
       setInvoiceNumber(invoice.invoiceNumber || "");
       setInvoiceDate(invoice.invoiceDate || "");
       setAmount(String(invoice.amount || 0));
@@ -1396,6 +1404,7 @@ const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({
         billed,
         owner: owner.trim() || invoice.owner,
         notes: notes.trim() || undefined,
+        companyName: companyName.trim() || invoice.companyName,
       });
       onClose();
     } catch (err: unknown) {
@@ -1440,6 +1449,21 @@ const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({
               <span>{error}</span>
             </div>
           )}
+
+          {/* Company Name */}
+          <div>
+            <label className="text-[11px] font-bold text-slate-600 dark:text-slate-300 block mb-1">
+              Client Company Name *
+            </label>
+            <input
+              type="text"
+              required
+              value={companyName}
+              onChange={(e) => setCompanyName(e.target.value)}
+              placeholder="e.g. Amazon"
+              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-xs"
+            />
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
             {/* Invoice Number */}

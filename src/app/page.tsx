@@ -19,6 +19,7 @@ import {
   attachLeadFinancialDocuments,
   removeLeadFinancialDocument,
   updateLeadSource,
+  updateLeadCompanyName,
   updateLeadCompanyLogo,
   removeLeadCompanyLogo,
   addLeadContact,
@@ -964,6 +965,22 @@ export default function Home() {
     if (updated) {
       setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
       setSelectedLead((prev) => (prev && prev.id === leadId ? updated : prev));
+    }
+  };
+
+  const handleUpdateCompanyName = async (leadId: string, newCompanyName: string) => {
+    try {
+      const updated = await updateLeadCompanyName(
+        leadId,
+        newCompanyName,
+        currentUser?.name || "Client Partner"
+      );
+      if (updated) {
+        setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
+        setSelectedLead((prev) => (prev && prev.id === leadId ? updated : prev));
+      }
+    } catch (err) {
+      console.error("Failed to update company name:", err);
     }
   };
 
@@ -2837,6 +2854,7 @@ export default function Home() {
           onRemoveApproachNote={isReadOnly ? undefined : handleRemoveApproachNote}
           onAttachFinancialDocuments={isReadOnly ? undefined : handleAttachFinancialDocuments}
           onRemoveFinancialDocument={isReadOnly ? undefined : handleRemoveFinancialDocument}
+          onUpdateCompanyName={isReadOnly ? undefined : handleUpdateCompanyName}
           onUpdateCompanyLogo={isReadOnly ? undefined : handleUpdateCompanyLogo}
           onRemoveCompanyLogo={isReadOnly ? undefined : handleRemoveCompanyLogo}
           onAddContact={isReadOnly ? undefined : handleAddLeadContact}
