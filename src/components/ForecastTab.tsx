@@ -90,6 +90,7 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
   const isReadOnly = Boolean(readOnly || currentUser?.readOnly);
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [selectedOwner, setSelectedOwner] = useState<string>("all");
+  const [selectedBilled, setSelectedBilled] = useState<"all" | "yes" | "no">("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
   const [copiedInvoiceId, setCopiedInvoiceId] = useState<string | null>(null);
@@ -205,6 +206,15 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
           return false;
         }
       }
+      if (selectedBilled !== "all") {
+        const isBilled = inv.billed !== false;
+        if (selectedBilled === "yes" && !isBilled) {
+          return false;
+        }
+        if (selectedBilled === "no" && isBilled) {
+          return false;
+        }
+      }
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const matchNo = inv.invoiceNumber.toLowerCase().includes(q);
@@ -217,7 +227,7 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
       }
       return true;
     });
-  }, [allInvoices, selectedMonth, selectedOwner, searchQuery]);
+  }, [allInvoices, selectedMonth, selectedOwner, selectedBilled, searchQuery]);
 
   // 4. Financial Aggregate Metrics
   const metrics = useMemo(() => {
@@ -522,22 +532,38 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
             })}
           </div>
 
-          {/* Lead Owner Filter */}
-          <div className="flex items-center space-x-2 shrink-0">
-            <User className="w-3.5 h-3.5 text-slate-400" />
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Lead Owner:</span>
-            <select
-              value={selectedOwner}
-              onChange={(e) => setSelectedOwner(e.target.value)}
-              className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-            >
-              <option value="all">All Lead Owners</option>
-              {availableOwners.map((owner) => (
-                <option key={owner} value={owner}>
-                  {owner}
-                </option>
-              ))}
-            </select>
+          <div className="flex items-center flex-wrap gap-3 shrink-0">
+            {/* Billed Filter */}
+            <div className="flex items-center space-x-2 shrink-0">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Billed:</span>
+              <select
+                value={selectedBilled}
+                onChange={(e) => setSelectedBilled(e.target.value as "all" | "yes" | "no")}
+                className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer"
+              >
+                <option value="all">All</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </div>
+
+            {/* Lead Owner Filter */}
+            <div className="flex items-center space-x-2 shrink-0">
+              <User className="w-3.5 h-3.5 text-slate-400" />
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Lead Owner:</span>
+              <select
+                value={selectedOwner}
+                onChange={(e) => setSelectedOwner(e.target.value)}
+                className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer"
+              >
+                <option value="all">All Lead Owners</option>
+                {availableOwners.map((owner) => (
+                  <option key={owner} value={owner}>
+                    {owner}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
       </div>
