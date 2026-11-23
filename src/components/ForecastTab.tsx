@@ -194,16 +194,6 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
     return Array.from(set).sort();
   }, [allInvoices]);
 
-  // Default month selection
-  useEffect(() => {
-    if (selectedMonth === "all") {
-      const hasOct = availableMonths.some((m) => m.monthKey === "2026-10" && m.count > 0);
-      if (hasOct) {
-        setSelectedMonth("2026-10");
-      }
-    }
-  }, [availableMonths, selectedMonth]);
-
   // 3. Filter Invoices
   const filteredInvoices = useMemo(() => {
     return allInvoices.filter((inv) => {
