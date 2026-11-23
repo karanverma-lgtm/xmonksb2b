@@ -168,8 +168,12 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
       });
     });
 
-    // Sort by invoiceDate descending (newest first)
-    return list.sort((a, b) => b.invoiceDate.localeCompare(a.invoiceDate));
+    // Sort by invoiceDate ascending (earliest to latest)
+    return list.sort(
+      (a, b) =>
+        a.invoiceDate.localeCompare(b.invoiceDate) ||
+        a.invoiceNumber.localeCompare(b.invoiceNumber)
+    );
   }, [leads]);
 
   // 2. Discover Unique Months and Owners for Filters
@@ -205,7 +209,7 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
       }
     });
 
-    return Array.from(map.values()).sort((a, b) => b.monthKey.localeCompare(a.monthKey));
+    return Array.from(map.values()).sort((a, b) => a.monthKey.localeCompare(b.monthKey));
   }, [allInvoices]);
 
   const availableOwners = useMemo(() => {
