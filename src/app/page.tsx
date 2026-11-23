@@ -1682,7 +1682,7 @@ export default function Home() {
       <div className="flex-1 flex flex-col min-w-0 min-h-screen overflow-x-hidden">
         <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 pt-8 sm:pt-9 pb-6">
           {/* Top Header Status & Notification Center Strip */}
-          <div className="flex items-center justify-between pt-2 pb-4 mb-4 border-b border-slate-200 dark:border-slate-800 gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-2 pb-4 mb-4 border-b border-slate-200 dark:border-slate-800 gap-3 min-w-0">
             <div className="flex items-center space-x-2 shrink-0">
               <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                 Logged in as <span className="font-bold text-slate-900 dark:text-white">{currentUser?.name || "User"}</span>
@@ -1693,8 +1693,10 @@ export default function Home() {
               </span>
             </div>
 
-            {/* Center: Daily/Hourly Sales Motivation & Humor Quote */}
-            <SalesQuoteBanner />
+            {/* Center: Daily/Hourly Sales Motivation & Humor Quote (visible on wide screens with guaranteed min width) */}
+            <div className="hidden xl:flex flex-1 justify-center min-w-0 px-2 max-w-xl mx-auto">
+              <SalesQuoteBanner />
+            </div>
 
             {/* Right: Live Follow-up Reminder Pill + Notifications Trigger */}
             <div className="flex items-center space-x-2.5 shrink-0">

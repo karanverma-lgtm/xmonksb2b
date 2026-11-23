@@ -85,7 +85,7 @@ export const SalesQuoteBanner: React.FC = () => {
 
   return (
     <div
-      className="relative hidden md:flex items-center space-x-2.5 px-3.5 py-1.5 bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-amber-500/10 dark:from-amber-950/30 dark:via-orange-950/20 dark:to-amber-950/30 border border-amber-200/80 dark:border-amber-800/60 rounded-2xl shadow-2xs max-w-2xl xl:max-w-4xl transition-all hover:border-amber-300 dark:hover:border-amber-700 group flex-1 mt-1"
+      className="relative flex items-center space-x-2.5 px-3.5 py-1.5 bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-amber-500/10 dark:from-amber-950/30 dark:via-orange-950/20 dark:to-amber-950/30 border border-amber-200/80 dark:border-amber-800/60 rounded-2xl shadow-2xs w-full max-w-xl min-w-0 transition-all hover:border-amber-300 dark:hover:border-amber-700 group"
       title={`"${quoteData.quote}" — Click copy icon or refresh for a new one`}
     >
       {/* Icon Pill */}
@@ -94,9 +94,9 @@ export const SalesQuoteBanner: React.FC = () => {
       </div>
 
       {/* Quote Content with 10s Crossfade Transition */}
-      <div className="flex items-center space-x-2 flex-1 min-w-0">
+      <div className="flex items-center space-x-2 flex-1 min-w-0 overflow-hidden">
         <p
-          className={`text-xs font-medium italic text-slate-800 dark:text-slate-200 leading-snug transition-all duration-200 ${
+          className={`text-xs font-medium italic text-slate-800 dark:text-slate-200 truncate flex-1 min-w-0 transition-all duration-200 ${
             isFading ? "opacity-0 -translate-y-0.5" : "opacity-100 translate-y-0"
           }`}
         >
@@ -141,7 +141,7 @@ export const SalesQuoteBanner: React.FC = () => {
           <RefreshCw
             className={`w-3 h-3 ${isLoading ? "animate-spin text-amber-600 dark:text-amber-400" : ""}`}
           />
-          <span className="hidden lg:inline">{isLoading ? "Rolling..." : "Get new one"}</span>
+          <span className="hidden xl:inline">{isLoading ? "Rolling..." : "Get new one"}</span>
         </button>
       </div>
     </div>
