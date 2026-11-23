@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { Lead, LeadInvoice, getLeadInvoices } from "@/types/lead";
 import { updateLeadInvoiceDetails, updateLeadOwner, updateLeadSingleInvoice, deleteLeadInvoice } from "@/lib/leadsService";
 import { formatINR, getDateComponents } from "@/lib/formatters";
@@ -88,9 +88,32 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
   readOnly = false,
 }) => {
   const isReadOnly = Boolean(readOnly || currentUser?.readOnly);
+  type DateFilterMode = "all" | "current_month" | "last_month" | "this_year" | "month" | "custom";
+
+  const [dateFilterMode, setDateFilterMode] = useState<DateFilterMode>("all");
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
+  const [customStartDate, setCustomStartDate] = useState<string>("");
+  const [customEndDate, setCustomEndDate] = useState<string>("");
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState<boolean>(false);
+  const datePickerRef = useRef<HTMLDivElement>(null);
+
   const [selectedOwner, setSelectedOwner] = useState<string>("all");
   const [selectedBilled, setSelectedBilled] = useState<"all" | "yes" | "no">("all");
+
+  // Close calendar popover on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (datePickerRef.current && !datePickerRef.current.contains(e.target as Node)) {
+        setIsDatePickerOpen(false);
+      }
+    };
+    if (isDatePickerOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isDatePickerOpen]);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
   const [copiedInvoiceId, setCopiedInvoiceId] = useState<string | null>(null);
@@ -195,17 +218,74 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
     return Array.from(set).sort();
   }, [allInvoices]);
 
+  // Date Presets & Dynamic Labels
+  const now = new Date();
+  const currentYearNum = now.getFullYear();
+  const currentMonthNum = now.getMonth() + 1;
+  const currentMonthKey = `${currentYearNum}-${String(currentMonthNum).padStart(2, "0")}`;
+  const currentMonthLabel = now.toLocaleString("en-US", { month: "short", year: "numeric" });
+
+  const lastMonthDate = new Date(currentYearNum, now.getMonth() - 1, 1);
+  const lastMonthKey = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, "0")}`;
+  const lastMonthLabel = lastMonthDate.toLocaleString("en-US", { month: "short", year: "numeric" });
+
+  const thisYearKey = String(currentYearNum);
+
+  const currentMonthCount = useMemo(
+    () => allInvoices.filter((inv) => inv.monthKey === currentMonthKey).length,
+    [allInvoices, currentMonthKey]
+  );
+  const lastMonthCount = useMemo(
+    () => allInvoices.filter((inv) => inv.monthKey === lastMonthKey).length,
+    [allInvoices, lastMonthKey]
+  );
+  const thisYearCount = useMemo(
+    () => allInvoices.filter((inv) => inv.invoiceDate.startsWith(thisYearKey)).length,
+    [allInvoices, thisYearKey]
+  );
+
+  const activeDateLabel = useMemo(() => {
+    if (dateFilterMode === "current_month") return `Current Month (${currentMonthLabel})`;
+    if (dateFilterMode === "last_month") return `Last Month (${lastMonthLabel})`;
+    if (dateFilterMode === "this_year") return `This Year (${thisYearKey})`;
+    if (dateFilterMode === "month") {
+      const match = availableMonths.find((m) => m.monthKey === selectedMonth);
+      return match ? match.label : selectedMonth;
+    }
+    if (dateFilterMode === "custom") {
+      if (customStartDate && customEndDate) return `${customStartDate} → ${customEndDate}`;
+      if (customStartDate) return `From ${customStartDate}`;
+      if (customEndDate) return `Until ${customEndDate}`;
+      return "Custom Range";
+    }
+    return "All Time";
+  }, [dateFilterMode, currentMonthLabel, lastMonthLabel, thisYearKey, selectedMonth, availableMonths, customStartDate, customEndDate]);
+
   // 3. Filter Invoices
   const filteredInvoices = useMemo(() => {
     return allInvoices.filter((inv) => {
-      if (selectedMonth !== "all" && inv.monthKey !== selectedMonth) {
-        return false;
+      // Date filter
+      if (dateFilterMode === "current_month") {
+        if (inv.monthKey !== currentMonthKey) return false;
+      } else if (dateFilterMode === "last_month") {
+        if (inv.monthKey !== lastMonthKey) return false;
+      } else if (dateFilterMode === "this_year") {
+        if (!inv.invoiceDate.startsWith(thisYearKey)) return false;
+      } else if (dateFilterMode === "month") {
+        if (selectedMonth !== "all" && inv.monthKey !== selectedMonth) return false;
+      } else if (dateFilterMode === "custom") {
+        if (customStartDate && inv.invoiceDate < customStartDate) return false;
+        if (customEndDate && inv.invoiceDate > customEndDate) return false;
       }
+
+      // Owner filter
       if (selectedOwner !== "all") {
         if (!isSameOwner(inv.owner, selectedOwner)) {
           return false;
         }
       }
+
+      // Billed filter
       if (selectedBilled !== "all") {
         const isBilled = inv.billed !== false;
         if (selectedBilled === "yes" && !isBilled) {
@@ -215,6 +295,8 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
           return false;
         }
       }
+
+      // Search query filter
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const matchNo = inv.invoiceNumber.toLowerCase().includes(q);
@@ -227,7 +309,19 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
       }
       return true;
     });
-  }, [allInvoices, selectedMonth, selectedOwner, selectedBilled, searchQuery]);
+  }, [
+    allInvoices,
+    dateFilterMode,
+    selectedMonth,
+    currentMonthKey,
+    lastMonthKey,
+    thisYearKey,
+    customStartDate,
+    customEndDate,
+    selectedOwner,
+    selectedBilled,
+    searchQuery,
+  ]);
 
   // 4. Financial Aggregate Metrics
   const metrics = useMemo(() => {
@@ -312,7 +406,7 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
     link.setAttribute("href", encodedUri);
     link.setAttribute(
       "download",
-      `Pipeline_Invoice_Forecast_${selectedMonth}_${new Date().toISOString().split("T")[0]}.csv`
+      `Pipeline_Invoice_Forecast_${activeDateLabel.replace(/[^a-zA-Z0-9_-]/g, "_")}_${new Date().toISOString().split("T")[0]}.csv`
     );
     document.body.appendChild(link);
     link.click();
@@ -481,20 +575,24 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
           </div>
         </div>
 
-        {/* Row 2: Month Filter Chips & Lead Owner Dropdown */}
-        <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
-          {/* Month Quick Select */}
-          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1">
+        {/* Row 2: Date Filters & Lead Owner Dropdown */}
+        <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          {/* Date Filter Controls */}
+          <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-xs font-bold text-slate-400 mr-1 flex items-center space-x-1 shrink-0">
               <Calendar className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Month:</span>
+              <span>Date:</span>
             </span>
 
+            {/* 1. All Months */}
             <button
               type="button"
-              onClick={() => setSelectedMonth("all")}
-              className={`px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer border ${
-                selectedMonth === "all"
+              onClick={() => {
+                setDateFilterMode("all");
+                setSelectedMonth("all");
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer border ${
+                dateFilterMode === "all"
                   ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
                   : "bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-300"
               }`}
@@ -502,34 +600,283 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
               All Months ({allInvoices.length})
             </button>
 
-            {availableMonths.map((m) => {
-              const isSelected = selectedMonth === m.monthKey;
-              return (
-                <button
+            {/* 2. Current Month */}
+            <button
+              type="button"
+              onClick={() => {
+                setDateFilterMode("current_month");
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer border flex items-center space-x-1.5 ${
+                dateFilterMode === "current_month"
+                  ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                  : "bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-300"
+              }`}
+            >
+              <span>Current Month</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                  dateFilterMode === "current_month"
+                    ? "bg-white/20 text-white"
+                    : "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300"
+                }`}
+              >
+                {currentMonthCount}
+              </span>
+            </button>
+
+            {/* 3. Last Month */}
+            <button
+              type="button"
+              onClick={() => {
+                setDateFilterMode("last_month");
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer border flex items-center space-x-1.5 ${
+                dateFilterMode === "last_month"
+                  ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                  : "bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-300"
+              }`}
+            >
+              <span>Last Month</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                  dateFilterMode === "last_month"
+                    ? "bg-white/20 text-white"
+                    : "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300"
+                }`}
+              >
+                {lastMonthCount}
+              </span>
+            </button>
+
+            {/* 4. This Year */}
+            <button
+              type="button"
+              onClick={() => {
+                setDateFilterMode("this_year");
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer border flex items-center space-x-1.5 ${
+                dateFilterMode === "this_year"
+                  ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                  : "bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-300"
+              }`}
+            >
+              <span>This Year ({thisYearKey})</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                  dateFilterMode === "this_year"
+                    ? "bg-white/20 text-white"
+                    : "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300"
+                }`}
+              >
+                {thisYearCount}
+              </span>
+            </button>
+
+            {/* 5. Month Select Dropdown */}
+            <select
+              value={dateFilterMode === "month" ? selectedMonth : ""}
+              onChange={(e) => {
+                if (e.target.value) {
+                  setSelectedMonth(e.target.value);
+                  setDateFilterMode("month");
+                }
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                dateFilterMode === "month"
+                  ? "bg-emerald-600 text-white border-emerald-600"
+                  : "bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-300"
+              }`}
+            >
+              <option value="" disabled={dateFilterMode === "month"}>
+                {dateFilterMode === "month"
+                  ? availableMonths.find((m) => m.monthKey === selectedMonth)?.label || "Selected Month"
+                  : "Specific Month..."}
+              </option>
+              {availableMonths.map((m) => (
+                <option
                   key={m.monthKey}
-                  type="button"
-                  onClick={() => setSelectedMonth(m.monthKey)}
-                  className={`px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer border flex items-center space-x-1.5 ${
-                    isSelected
-                      ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
-                      : "bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-300"
-                  }`}
+                  value={m.monthKey}
+                  className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
                 >
-                  <span>{m.label}</span>
-                  {m.count > 0 && (
-                    <span
-                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                        isSelected
-                          ? "bg-white/20 text-white"
-                          : "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300"
-                      }`}
-                    >
-                      {m.count}
+                  {m.label} ({m.count})
+                </option>
+              ))}
+            </select>
+
+            {/* 6. Calendar Date Picker Dropdown Popover */}
+            <div className="relative" ref={datePickerRef}>
+              <button
+                type="button"
+                onClick={() => setIsDatePickerOpen((prev) => !prev)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer border flex items-center space-x-1.5 ${
+                  dateFilterMode === "custom"
+                    ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                    : "bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-300"
+                }`}
+                title="Filter by custom date range"
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>
+                  {dateFilterMode === "custom" && (customStartDate || customEndDate)
+                    ? `${customStartDate || "Start"} → ${customEndDate || "End"}`
+                    : "Calendar Date Picker"}
+                </span>
+                {dateFilterMode === "custom" && (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCustomStartDate("");
+                      setCustomEndDate("");
+                      setDateFilterMode("all");
+                    }}
+                    className="p-0.5 rounded-full hover:bg-emerald-700 transition"
+                    title="Clear date range"
+                  >
+                    <X className="w-3 h-3 text-white" />
+                  </span>
+                )}
+              </button>
+
+              {/* Popover */}
+              {isDatePickerOpen && (
+                <div className="absolute left-0 mt-2 z-50 w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-3 animate-fadeIn">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                    <span className="text-xs font-black text-slate-900 dark:text-white flex items-center space-x-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>Calendar Date Picker</span>
                     </span>
-                  )}
-                </button>
-              );
-            })}
+                    <button
+                      type="button"
+                      onClick={() => setIsDatePickerOpen(false)}
+                      className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* From & To Date Inputs */}
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
+                        From Date
+                      </label>
+                      <input
+                        type="date"
+                        value={customStartDate}
+                        onChange={(e) => setCustomStartDate(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
+                        To Date
+                      </label>
+                      <input
+                        type="date"
+                        value={customEndDate}
+                        onChange={(e) => setCustomEndDate(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Quick Helper Shortcuts */}
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+                      Quick Shortcuts
+                    </span>
+                    <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const today = new Date().toISOString().split("T")[0];
+                          setCustomStartDate(today);
+                          setCustomEndDate(today);
+                          setDateFilterMode("custom");
+                          setIsDatePickerOpen(false);
+                        }}
+                        className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/60 font-semibold text-left transition cursor-pointer"
+                      >
+                        ⚡ Today
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = new Date();
+                          const past30 = new Date(d.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+                          const today = d.toISOString().split("T")[0];
+                          setCustomStartDate(past30);
+                          setCustomEndDate(today);
+                          setDateFilterMode("custom");
+                          setIsDatePickerOpen(false);
+                        }}
+                        className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/60 font-semibold text-left transition cursor-pointer"
+                      >
+                        ⚡ Last 30 Days
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = new Date();
+                          const past90 = new Date(d.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+                          const today = d.toISOString().split("T")[0];
+                          setCustomStartDate(past90);
+                          setCustomEndDate(today);
+                          setDateFilterMode("custom");
+                          setIsDatePickerOpen(false);
+                        }}
+                        className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/60 font-semibold text-left transition cursor-pointer"
+                      >
+                        ⚡ Last 90 Days
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = new Date();
+                          const next90 = new Date(d.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+                          const today = d.toISOString().split("T")[0];
+                          setCustomStartDate(today);
+                          setCustomEndDate(next90);
+                          setDateFilterMode("custom");
+                          setIsDatePickerOpen(false);
+                        }}
+                        className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/60 font-semibold text-left transition cursor-pointer"
+                      >
+                        ⚡ Next 90 Days
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomStartDate("");
+                        setCustomEndDate("");
+                        setDateFilterMode("all");
+                        setIsDatePickerOpen(false);
+                      }}
+                      className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (customStartDate || customEndDate) {
+                          setDateFilterMode("custom");
+                        }
+                        setIsDatePickerOpen(false);
+                      }}
+                      className="px-4 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition cursor-pointer"
+                    >
+                      Apply Range
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center flex-wrap gap-3 shrink-0">
@@ -580,7 +927,7 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
               <span>Total Pipeline Invoiced</span>
             </span>
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-200/60 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 font-extrabold uppercase">
-              {selectedMonth === "all" ? "All Time" : selectedMonth}
+              {activeDateLabel}
             </span>
           </div>
           <div className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
