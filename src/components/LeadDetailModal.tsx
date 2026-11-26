@@ -2626,8 +2626,8 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                     <input
                       type="number"
                       required
-                      min="1"
-                      step="1"
+                      min="0.01"
+                      step="any"
                       value={invoiceAmountInput}
                       onChange={(e) => setInvoiceAmountInput(e.target.value)}
                       placeholder={`e.g. ${unbilledBalance > 0 ? unbilledBalance : lead.dealValue || 100000}`}

@@ -1505,7 +1505,7 @@ const EditInvoiceModal: React.FC<EditInvoiceModalProps> = ({
               <input
                 type="number"
                 min="0"
-                step="1"
+                step="any"
                 required
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
