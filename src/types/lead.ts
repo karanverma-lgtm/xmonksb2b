@@ -108,15 +108,49 @@ export interface Lead {
 }
 
 /**
- * Return all invoices for a lead with 100% backward compatibility for legacy fields
+ * Comparator to sort invoices in ascending order by date (earliest first),
+ * tie-breaking by invoice number
+ */
+export function compareInvoiceDatesAsc(
+  a?: Partial<LeadInvoice> | { invoiceDate?: string; invoiceNumber?: string },
+  b?: Partial<LeadInvoice> | { invoiceDate?: string; invoiceNumber?: string }
+): number {
+  if (!a && !b) return 0;
+  if (!a) return 1;
+  if (!b) return -1;
+
+  const dateA = a.invoiceDate?.trim() || "";
+  const dateB = b.invoiceDate?.trim() || "";
+
+  if (!dateA && !dateB) return (a.invoiceNumber || "").localeCompare(b.invoiceNumber || "");
+  if (!dateA) return 1;
+  if (!dateB) return -1;
+
+  const timeA = Date.parse(dateA);
+  const timeB = Date.parse(dateB);
+
+  if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) {
+    return timeA - timeB;
+  }
+
+  const dateComp = dateA.localeCompare(dateB);
+  if (dateComp !== 0) return dateComp;
+
+  return (a.invoiceNumber || "").localeCompare(b.invoiceNumber || "");
+}
+
+/**
+ * Return all invoices for a lead with 100% backward compatibility for legacy fields,
+ * automatically sorted in ascending order of invoice date.
  */
 export function getLeadInvoices(lead?: Partial<Lead> | null): LeadInvoice[] {
   if (!lead) return [];
   if (Array.isArray(lead.invoices) && lead.invoices.length > 0) {
-    return lead.invoices.map((inv) => ({
+    const list = lead.invoices.map((inv) => ({
       ...inv,
       billed: inv.billed !== false,
     }));
+    return list.sort(compareInvoiceDatesAsc);
   }
   const hasLegacyData = Boolean(
     lead.invoiceNumber?.trim() ||

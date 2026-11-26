@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useEffect, useRef } from "react";
-import { Lead, LeadInvoice, getLeadInvoices } from "@/types/lead";
+import { Lead, LeadInvoice, getLeadInvoices, compareInvoiceDatesAsc } from "@/types/lead";
 import { updateLeadInvoiceDetails, updateLeadOwner, updateLeadCompanyName, updateLeadSingleInvoice, deleteLeadInvoice } from "@/lib/leadsService";
 import { formatINR, getDateComponents } from "@/lib/formatters";
 import { UserAccount, isSameOwner, canUserExport } from "@/constants/users";
@@ -169,11 +169,7 @@ export const ForecastTab: React.FC<ForecastTabProps> = ({
     });
 
     // Sort by invoiceDate ascending (earliest to latest)
-    return list.sort(
-      (a, b) =>
-        a.invoiceDate.localeCompare(b.invoiceDate) ||
-        a.invoiceNumber.localeCompare(b.invoiceNumber)
-    );
+    return list.sort((a, b) => compareInvoiceDatesAsc(a, b));
   }, [leads]);
 
   // 2. Discover Unique Months and Owners for Filters

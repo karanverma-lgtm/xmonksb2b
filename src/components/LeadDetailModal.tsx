@@ -51,7 +51,14 @@ import { formatINR, formatClosureMonth } from "@/lib/formatters";
 import { PRESET_PROGRAMS, getProgramBadgeStyle } from "@/constants/programs";
 import { LEAD_SOURCES, getLeadSourceBadgeStyle } from "@/constants/leadSources";
 import { SpringButton } from "@/components/spring";
-import { ApproachNote, FinancialDocument, ContactPerson, LeadInvoice, getLeadInvoices } from "@/types/lead";
+import {
+  ApproachNote,
+  FinancialDocument,
+  ContactPerson,
+  LeadInvoice,
+  getLeadInvoices,
+  compareInvoiceDatesAsc,
+} from "@/types/lead";
 import {
   uploadApproachNoteToFirebase,
   uploadMultipleApproachNotesToR2,
@@ -378,11 +385,12 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
             notes: invoiceNotesInput.trim() || undefined,
           });
         } else if (onUpdateInvoiceDetails) {
+          const sortedList = [...updatedList].sort(compareInvoiceDatesAsc);
           onUpdateInvoiceDetails(lead.id, {
-            invoices: updatedList,
-            invoiceNumber: cleanInvNo,
-            invoiceDate: cleanDate,
-            invoiceAmount: updatedList.reduce((s, i) => s + i.invoiceAmount, 0),
+            invoices: sortedList,
+            invoiceNumber: sortedList[sortedList.length - 1]?.invoiceNumber,
+            invoiceDate: sortedList[sortedList.length - 1]?.invoiceDate,
+            invoiceAmount: sortedList.reduce((s, i) => s + i.invoiceAmount, 0),
           });
         }
       } else {
@@ -396,7 +404,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
           notes: invoiceNotesInput.trim() || undefined,
           createdAt: new Date().toISOString(),
         };
-        const updatedList = [...existingInvoices, newInvoice];
+        const updatedList = [...existingInvoices, newInvoice].sort(compareInvoiceDatesAsc);
         if (onAddInvoice) {
           await onAddInvoice(lead.id, {
             invoiceNumber: cleanInvNo,
@@ -408,8 +416,8 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
         } else if (onUpdateInvoiceDetails) {
           onUpdateInvoiceDetails(lead.id, {
             invoices: updatedList,
-            invoiceNumber: cleanInvNo,
-            invoiceDate: cleanDate,
+            invoiceNumber: updatedList[updatedList.length - 1]?.invoiceNumber,
+            invoiceDate: updatedList[updatedList.length - 1]?.invoiceDate,
             invoiceAmount: updatedList.reduce((s, i) => s + i.invoiceAmount, 0),
           });
         }

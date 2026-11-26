@@ -10,7 +10,17 @@ import {
   orderBy,
   writeBatch,
 } from "firebase/firestore";
-import { Lead, LeadStage, JourneyLog, ApproachNote, FinancialDocument, ContactPerson, LeadInvoice, getLeadInvoices } from "@/types/lead";
+import {
+  Lead,
+  LeadStage,
+  JourneyLog,
+  ApproachNote,
+  FinancialDocument,
+  ContactPerson,
+  LeadInvoice,
+  getLeadInvoices,
+  compareInvoiceDatesAsc,
+} from "@/types/lead";
 import { STAGES } from "@/constants/stages";
 import { formatINR, formatClosureMonth } from "./formatters";
 import { deleteApproachNoteFromFirebase } from "./approachNoteService";
@@ -1793,17 +1803,19 @@ export async function saveLeadInvoices(
   const timestampIso = now.toISOString();
   const formattedDate = formatTimestamp(now);
 
-  // Clean and filter valid invoices
-  const cleanInvoices = invoices.map((inv) => ({
-    id: inv.id || "inv-" + Date.now() + "-" + Math.floor(100 + Math.random() * 900),
-    invoiceNumber: inv.invoiceNumber?.trim() || `INV-${target.id.slice(-6).toUpperCase()}`,
-    invoiceDate: inv.invoiceDate?.trim() || now.toISOString().split("T")[0],
-    invoiceAmount: typeof inv.invoiceAmount === "number" && !isNaN(inv.invoiceAmount) ? inv.invoiceAmount : 0,
-    billed: inv.billed !== undefined ? Boolean(inv.billed) : true,
-    notes: inv.notes?.trim() || undefined,
-    createdAt: inv.createdAt || timestampIso,
-    updatedAt: timestampIso,
-  }));
+  // Clean, filter, and sort valid invoices in ascending order of invoice date
+  const cleanInvoices = invoices
+    .map((inv) => ({
+      id: inv.id || "inv-" + Date.now() + "-" + Math.floor(100 + Math.random() * 900),
+      invoiceNumber: inv.invoiceNumber?.trim() || `INV-${target.id.slice(-6).toUpperCase()}`,
+      invoiceDate: inv.invoiceDate?.trim() || now.toISOString().split("T")[0],
+      invoiceAmount: typeof inv.invoiceAmount === "number" && !isNaN(inv.invoiceAmount) ? inv.invoiceAmount : 0,
+      billed: inv.billed !== undefined ? Boolean(inv.billed) : true,
+      notes: inv.notes?.trim() || undefined,
+      createdAt: inv.createdAt || timestampIso,
+      updatedAt: timestampIso,
+    }))
+    .sort(compareInvoiceDatesAsc);
 
   const totalInvoiced = cleanInvoices.reduce((sum, inv) => sum + (inv.invoiceAmount || 0), 0);
   const latestInvoice = cleanInvoices.length > 0 ? cleanInvoices[cleanInvoices.length - 1] : null;
