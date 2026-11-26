@@ -20,6 +20,7 @@ import {
   removeLeadFinancialDocument,
   updateLeadSource,
   updateLeadCompanyName,
+  updateLeadLocation,
   updateLeadCompanyLogo,
   removeLeadCompanyLogo,
   addLeadContact,
@@ -981,6 +982,22 @@ export default function Home() {
       }
     } catch (err) {
       console.error("Failed to update company name:", err);
+    }
+  };
+
+  const handleUpdateLocation = async (leadId: string, newLocation: string) => {
+    try {
+      const updated = await updateLeadLocation(
+        leadId,
+        newLocation,
+        currentUser?.name || "Client Partner"
+      );
+      if (updated) {
+        setLeads((prev) => prev.map((l: Lead) => (l.id === leadId ? updated : l)));
+        setSelectedLead((prev) => (prev && prev.id === leadId ? updated : prev));
+      }
+    } catch (err) {
+      console.error("Failed to update location:", err);
     }
   };
 
@@ -2857,6 +2874,7 @@ export default function Home() {
           onAttachFinancialDocuments={isReadOnly ? undefined : handleAttachFinancialDocuments}
           onRemoveFinancialDocument={isReadOnly ? undefined : handleRemoveFinancialDocument}
           onUpdateCompanyName={isReadOnly ? undefined : handleUpdateCompanyName}
+          onUpdateLocation={isReadOnly ? undefined : handleUpdateLocation}
           onUpdateCompanyLogo={isReadOnly ? undefined : handleUpdateCompanyLogo}
           onRemoveCompanyLogo={isReadOnly ? undefined : handleRemoveCompanyLogo}
           onAddContact={isReadOnly ? undefined : handleAddLeadContact}

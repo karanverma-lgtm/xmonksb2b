@@ -125,6 +125,7 @@ interface LeadDetailModalProps {
   ) => void;
   onSetPrimaryContact?: (leadId: string, contactId: string) => void;
   onUpdateCompanyName?: (leadId: string, newCompanyName: string) => Promise<void> | void;
+  onUpdateLocation?: (leadId: string, newLocation: string) => Promise<void> | void;
   onUpdateCompanyLogo?: (leadId: string, logoUrl: string) => void;
   onRemoveCompanyLogo?: (leadId: string) => void;
   onMoveToBilling?: (lead: Lead) => void;
@@ -183,6 +184,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   onEditContact,
   onSetPrimaryContact,
   onUpdateCompanyName,
+  onUpdateLocation,
   onUpdateCompanyLogo,
   onRemoveCompanyLogo,
   onMoveToBilling,
@@ -246,6 +248,38 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
       console.error("Failed to update company name:", err);
     } finally {
       setIsSavingCompanyName(false);
+    }
+  };
+
+  // Location / City Edit State
+  const [isEditingLocation, setIsEditingLocation] = useState(false);
+  const [locationInput, setLocationInput] = useState(lead?.city || "");
+  const [isSavingLocation, setIsSavingLocation] = useState(false);
+
+  useEffect(() => {
+    setLocationInput(lead?.city || "");
+    setIsEditingLocation(false);
+  }, [lead?.city, lead?.id]);
+
+  const handleSaveLocation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!lead) return;
+    const cleanLocation = locationInput.trim();
+    if (cleanLocation === (lead.city || "")) {
+      setIsEditingLocation(false);
+      return;
+    }
+
+    setIsSavingLocation(true);
+    try {
+      if (onUpdateLocation) {
+        await onUpdateLocation(lead.id, cleanLocation);
+      }
+      setIsEditingLocation(false);
+    } catch (err) {
+      console.error("Failed to update location:", err);
+    } finally {
+      setIsSavingLocation(false);
     }
   };
 
@@ -1204,13 +1238,69 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                     </span>
                   </>
                 )}
-                {lead.city && (
+                {(lead.city || (!isReadOnly && onUpdateLocation)) && (
                   <>
                     <span>•</span>
-                    <span className="flex items-center space-x-1">
-                      <MapPin className="w-3.5 h-3.5 text-indigo-400" />
-                      <span className="font-semibold text-slate-700 dark:text-slate-300">{lead.city}</span>
-                    </span>
+                    {isEditingLocation ? (
+                      <form
+                        onSubmit={handleSaveLocation}
+                        className="inline-flex items-center space-x-1"
+                      >
+                        <MapPin className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                        <input
+                          type="text"
+                          autoFocus
+                          value={locationInput}
+                          onChange={(e) => setLocationInput(e.target.value)}
+                          className="px-2 py-0.5 text-xs font-semibold bg-white dark:bg-slate-800 border border-indigo-500 rounded-lg text-slate-900 dark:text-white focus:outline-none w-32"
+                          placeholder="City / Location"
+                        />
+                        <button
+                          type="submit"
+                          disabled={isSavingLocation}
+                          className="p-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white transition cursor-pointer disabled:opacity-50"
+                          title="Save location"
+                        >
+                          <Check className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLocationInput(lead.city || "");
+                            setIsEditingLocation(false);
+                          }}
+                          disabled={isSavingLocation}
+                          className="p-1 rounded bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-200 transition cursor-pointer"
+                          title="Cancel"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </form>
+                    ) : (
+                      <span className="flex items-center space-x-1">
+                        <MapPin className="w-3.5 h-3.5 text-indigo-400" />
+                        {lead.city ? (
+                          <span className="font-semibold text-slate-700 dark:text-slate-300">
+                            {lead.city}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 italic">No location</span>
+                        )}
+                        {!isReadOnly && onUpdateLocation && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLocationInput(lead.city || "");
+                              setIsEditingLocation(true);
+                            }}
+                            className="p-1 rounded-md text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950 transition cursor-pointer"
+                            title={lead.city ? "Edit location" : "Add location"}
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                        )}
+                      </span>
+                    )}
                   </>
                 )}
               </div>

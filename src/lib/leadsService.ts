@@ -1103,6 +1103,63 @@ export async function updateLeadCompanyName(
   return updatedLead;
 }
 
+// Update Location / City for a Lead
+export async function updateLeadLocation(
+  leadId: string,
+  newLocation: string,
+  author: string = "Client Partner"
+): Promise<Lead | null> {
+  const cleanLocation = newLocation.trim();
+
+  const localLeads = getStoredLocalLeads();
+  const target = localLeads.find((l) => l.id === leadId);
+  if (!target) return null;
+
+  const oldLocation = target.city || "";
+  if (oldLocation === cleanLocation) return target;
+
+  const now = new Date();
+  const timestampIso = now.toISOString();
+  const formattedDate = formatTimestamp(now);
+
+  const locationLog: JourneyLog = {
+    id: "log-" + Date.now() + "-" + Math.floor(Math.random() * 1000),
+    timestamp: timestampIso,
+    formattedDate: formattedDate,
+    type: "note",
+    title: "Location Updated",
+    description: oldLocation
+      ? cleanLocation
+        ? `Location updated from "${oldLocation}" to "${cleanLocation}".`
+        : `Location "${oldLocation}" cleared.`
+      : `Location set to "${cleanLocation}".`,
+    author: author,
+  };
+
+  const updatedLead: Lead = {
+    ...target,
+    city: cleanLocation || undefined,
+    updatedAt: timestampIso,
+    journeyLogs: [locationLog, ...target.journeyLogs],
+  };
+
+  try {
+    const docRef = doc(db, COLLECTION_NAME, leadId);
+    await updateDoc(docRef, {
+      city: cleanLocation || null,
+      updatedAt: timestampIso,
+      journeyLogs: updatedLead.journeyLogs,
+    });
+  } catch (err) {
+    console.warn("Firestore location update skipped, updating local state", err);
+  }
+
+  const updatedAll = localLeads.map((l) => (l.id === leadId ? updatedLead : l));
+  saveStoredLocalLeads(updatedAll);
+
+  return updatedLead;
+}
+
 // Attach Financial Documents (supports multi-upload of all formats) to lead in Firestore & state
 export async function attachLeadFinancialDocuments(
   leadId: string,
